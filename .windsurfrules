@@ -1,0 +1,49 @@
+# Windsurf Rules — engrama-backend
+
+## Contexto obligatorio
+Antes de cualquier tarea, lee en este orden:
+1. ARQUITECTURA.md
+2. WINDSURF.md
+3. SPECS/*.md del módulo a tocar (si existe)
+
+Si falta alguno, pausa y avisa al usuario.
+
+## Stack
+Python 3.11+, FastAPI, Pydantic v2 strict, SQLAlchemy 2.x async + asyncpg,
+Alembic, Celery + Redis, pytest, ruff, mypy.
+
+## Idioma
+- Hablas conmigo en español.
+- Código, variables, comentarios y commits en inglés.
+- Errores al usuario final en español.
+
+## Reglas críticas
+1. NUNCA importes cross-dominio. Usa shared/events.py o shared/services.py.
+2. TODA tabla transaccional lleva tenant_id UUID NOT NULL REFERENCES tenants(id).
+3. TODA query filtra por tenant_id aunque RLS lo cubra.
+4. service_role SOLO en tareas admin (Celery, webhooks Stripe).
+5. Pydantic strict: ConfigDict(strict=True, extra="forbid").
+6. Nada de Any ni dict/list sin parametrizar.
+7. Commits Conventional: feat(modulo): msg.
+8. Lógica de dinero/coins SIEMPRE con tests.
+
+## Estructura obligatoria de módulo
+src/<dominio>/
+  __init__.py
+  router.py    (endpoints)
+  service.py   (lógica negocio)
+  schemas.py   (Pydantic)
+  models.py    (SQLAlchemy)
+
+router.py no importa models.py. service.py es la única capa que habla con models.py.
+
+## Antes de cerrar tarea
+- Tests del módulo pasan
+- ruff check . limpio
+- mypy src/ sin errores
+- Sin secretos en código
+- Sin imports cross-dominio
+
+## Ambigüedad
+Haz UNA pregunta concreta. No adivines.
+
