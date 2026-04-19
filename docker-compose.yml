@@ -1,0 +1,58 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    container_name: engrama-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    networks:
+      - engrama
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    container_name: engrama-worker
+    command: celery -A src.shared.celery_app worker --loglevel=info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    networks:
+      - engrama
+    profiles:
+      - workers
+
+  redis:
+    image: redis:7-alpine
+    container_name: engrama-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - engrama
+
+  flower:
+    image: mher/flower:2.0
+    container_name: engrama-flower
+    command: celery --broker=redis://redis:6379/0 flower --port=5555
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+    networks:
+      - engrama
+    profiles:
+      - workers
+
+networks:
+  engrama:
+    driver: bridge
