@@ -163,20 +163,29 @@ ai_usage_logs, audit_logs
 SPECS/
 ├── 00-database-schema.md   ✅ completo (471 líneas)
 ├── 00b-rls-policies.md     ✅ completo
-└── 01-auth.md              ❌ pendiente (próximo paso)
-alembic/versions/           29+ archivos
+├── 01-auth.md              ✅ completo
+├── 02-engrama-core.md      ✅ completo
+├── 03-challenges.md        ✅ completo
+└── 04-leaderboard.md       ❌ pendiente (próximo paso)
+alembic/versions/           30 archivos (000–029)
 src/
-├── main.py                 ✅ /health funcionando
-├── shared/models.py        ✅ 26 modelos SQLAlchemy
-└── auth/                   ❌ vacío (próximo paso)
+├── main.py                 ✅ /health + /auth + /core + /challenges
+├── shared/                 ✅ config.py, db.py, deps.py, models.py
+├── auth/                   ✅ feat(auth) — JWT + /auth/me
+├── engrama_core/           ✅ feat(core) — coins + attendance
+└── challenge_engine/       ✅ feat(challenges) — AI generation
 docker-compose.yml          ✅ api + redis corriendo
 .env                        ✅ configurado con Session Pooler
 ```
 
 ### ❌ Pendiente inmediato
 - ✅ Migración 029_rls_policies completada
-- Generar `SPECS/01-auth.md`
-- Implementar módulo `auth/` en backend
+- ✅ feat(auth) — módulo auth con JWT validation y /auth/me
+- ✅ feat(core) — coins (double-entry) + attendance (QR + streak)
+- ✅ feat(challenges) — challenge engine con generación IA (Anthropic)
+- Generar `SPECS/04-leaderboard.md` (próximo paso)
+- Implementar módulo `leaderboard/` en backend
+- Fixture de testcontainers Postgres para desbloquear 24 integration tests skipped
 - Walking Skeleton frontend
 
 ---
