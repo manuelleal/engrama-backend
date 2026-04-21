@@ -156,7 +156,7 @@ ai_usage_logs, audit_logs
 
 **Migraciones Alembic aplicadas:**
 - 000_extensions → 028_enable_rls (29 migraciones)
-- 029_rls_policies (en ejecución al momento del handoff)
+- 029_rls_policies ✅ aplicada — 51 políticas activas
 
 **Archivos clave en engrama-backend:**
 ```
@@ -174,7 +174,7 @@ docker-compose.yml          ✅ api + redis corriendo
 ```
 
 ### ❌ Pendiente inmediato
-- Confirmar migración 029_rls_policies completada
+- ✅ Migración 029_rls_policies completada
 - Generar `SPECS/01-auth.md`
 - Implementar módulo `auth/` en backend
 - Walking Skeleton frontend
