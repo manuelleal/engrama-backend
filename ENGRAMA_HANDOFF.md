@@ -166,14 +166,15 @@ SPECS/
 ├── 01-auth.md              ✅ completo
 ├── 02-engrama-core.md      ✅ completo
 ├── 03-challenges.md        ✅ completo
-└── 04-leaderboard.md       ❌ pendiente (próximo paso)
+└── 04-leaderboard.md       ✅ completo
 alembic/versions/           30 archivos (000–029)
 src/
-├── main.py                 ✅ /health + /auth + /core + /challenges
+├── main.py                 ✅ /health + /auth + /core + /challenges + /leaderboard
 ├── shared/                 ✅ config.py, db.py, deps.py, models.py
 ├── auth/                   ✅ feat(auth) — JWT + /auth/me
 ├── engrama_core/           ✅ feat(core) — coins + attendance
-└── challenge_engine/       ✅ feat(challenges) — AI generation
+├── challenge_engine/       ✅ feat(challenges) — AI generation
+└── leaderboard/            ✅ feat(leaderboard) — ranking por coins (read-only)
 docker-compose.yml          ✅ api + redis corriendo
 .env                        ✅ configurado con Session Pooler
 ```
@@ -183,9 +184,9 @@ docker-compose.yml          ✅ api + redis corriendo
 - ✅ feat(auth) — módulo auth con JWT validation y /auth/me
 - ✅ feat(core) — coins (double-entry) + attendance (QR + streak)
 - ✅ feat(challenges) — challenge engine con generación IA (Anthropic)
-- Generar `SPECS/04-leaderboard.md` (próximo paso)
-- Implementar módulo `leaderboard/` en backend
-- Fixture de testcontainers Postgres para desbloquear 24 integration tests skipped
+- ✅ feat(leaderboard) — ranking por coins (read-only, sin tablas nuevas), +8 tests
+- Fixture de testcontainers Postgres para desbloquear los integration tests skipped
+- Fase 2: módulos bets / shop / badges / teachers + streaks en engrama_core
 - Walking Skeleton frontend
 
 ---
@@ -289,5 +290,5 @@ Al retomar el proyecto el orden es:
 
 ---
 
-**Última actualización:** 2026-04-19 por Claude Sonnet 4.6  
-**Próxima revisión:** al completar módulo auth
+**Última actualización:** 2026-06-21 por Claude Code (Opus 4.8) — módulo leaderboard
+**Próxima revisión:** al completar el fixture de testcontainers o el primer módulo de Fase 2
