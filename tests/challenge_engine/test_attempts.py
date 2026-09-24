@@ -8,6 +8,8 @@ Niveles:
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -193,20 +195,14 @@ def test_get_challenge_detail_without_auth_returns_401() -> None:
 
 
 # =============================================================================
-# 4. Integration DB-bound — skipped
+# 4. Integración con base real (marca `integ`, fixture Docker engrama-test-pg)
 # =============================================================================
-# BUG-1 (encontrado por esta fixture; src/ no se toca): AnswerSubmit hereda
-# ConfigDict(strict=True) (src/challenge_engine/schemas.py:22) y declara
-# `question_id: UUID` (schemas.py:141). FastAPI valida el body en modo Python,
-# donde strict exige una instancia de UUID y rechaza el string del JSON: todo
-# POST /challenges/attempts/{id}/submit con un cuerpo válido da 422
-# (type=is_instance_of, loc=body.answers.0.question_id). strict=True: cuando se
-# arregle, estos tests pasan a XPASS, que cuenta como fallo, y hay que quitar la marca.
-_BUG_1 = pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="BUG-1: submit da 422 a todo JSON válido (strict=True + UUID en AnswerSubmit)",
-)
+# Historia: estos tests encontraron BUG-1. AnswerSubmit era strict=True con
+# `question_id: UUID`, así que FastAPI (que valida en modo Python) rechazaba el
+# UUID en texto del JSON y todo submit válido daba 422. Se corrigió con
+# `UUIDIn = Annotated[UUID, Strict(False)]` solo en los campos de entrada
+# afectados (docs/ESPEC_bug1_strict_uuid.md). Si alguien vuelve a poner strict
+# en esos campos, los tests de submit fallan con 422 explícito.
 
 
 def _responder(respuestas: list[tuple[object, str]]) -> dict:
@@ -258,7 +254,6 @@ def test_start_attempt_max_attempts_exceeded_returns_429(integ) -> None:
 
 
 @pytest.mark.integ
-@_BUG_1
 def test_submit_all_correct_awards_coins_and_xp(integ) -> None:
     tenant = integ.crear_tenant(pool=1000)
     teacher = integ.crear_perfil(tenant, rol="teacher")
@@ -294,9 +289,18 @@ def test_submit_all_correct_awards_coins_and_xp(integ) -> None:
         "select status from challenge_attempts where id = :a", a=intento
     ) == "completed"
 
+    # Humo de BUG-1 (espec §5): submit real por HTTP, no es un test nuevo.
+    ruta_humo = Path(__file__).resolve().parent.parent / "_salida" / "humo_bug1.json"
+    humo = {
+        "status": r.status_code,
+        "score_percent": body["score_percent"],
+        "coins_earned": body["coins_earned"],
+        "ledger_filas": integ.valor("select count(*) from coin_ledger"),
+    }
+    ruta_humo.write_text(json.dumps(humo, indent=2), encoding="utf-8")
+
 
 @pytest.mark.integ
-@_BUG_1
 def test_submit_all_wrong_awards_nothing(integ) -> None:
     tenant = integ.crear_tenant(pool=1000)
     teacher = integ.crear_perfil(tenant, rol="teacher")
@@ -331,7 +335,6 @@ def test_submit_all_wrong_awards_nothing(integ) -> None:
 
 
 @pytest.mark.integ
-@_BUG_1
 def test_submit_partial_correct_computes_score(integ) -> None:
     tenant = integ.crear_tenant(pool=1000)
     teacher = integ.crear_perfil(tenant, rol="teacher")
@@ -357,7 +360,6 @@ def test_submit_partial_correct_computes_score(integ) -> None:
 
 
 @pytest.mark.integ
-@_BUG_1
 def test_submit_twice_returns_409(integ) -> None:
     tenant = integ.crear_tenant(pool=1000)
     teacher = integ.crear_perfil(tenant, rol="teacher")
@@ -383,7 +385,6 @@ def test_submit_twice_returns_409(integ) -> None:
 
 
 @pytest.mark.integ
-@_BUG_1
 def test_submit_increments_current_winners_only_if_correct(integ) -> None:
     tenant = integ.crear_tenant(pool=1000)
     teacher = integ.crear_perfil(tenant, rol="teacher")

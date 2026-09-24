@@ -13,13 +13,20 @@ REGLA CRÍTICA (spec §9):
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, Strict
 
 
 _STRICT = ConfigDict(strict=True, extra="forbid")
+
+# El resto del modelo queda en modo estricto (`_STRICT`); solo estos tres
+# campos bajan a laxo porque el JSON manda el UUID como texto y
+# `validate_python` en modo estricto exige una instancia de UUID (ESPEC
+# bug1_strict_uuid.md §1). `strict=False` a nivel de MODELO no sirve: ahí
+# "10" también pasaría a int y "yes" a bool (medido en la espec).
+UUIDIn = Annotated[UUID, Strict(False)]
 
 # CEFR levels aceptados por el CHECK constraint de challenges.cefr_level.
 _CEFR_LEVELS = (
@@ -64,7 +71,7 @@ class ChallengeCreate(BaseModel):
     xp_reward: int = Field(default=10, ge=0)
     max_attempts: int = Field(default=2, ge=1)
     max_winners: int = Field(default=10, ge=1)
-    group_id: UUID | None = None  # None = visible a todo el tenant
+    group_id: UUIDIn | None = None  # None = visible a todo el tenant
     questions: list[ChallengeQuestionIn] = Field(min_length=1)
 
 
@@ -77,7 +84,7 @@ class ChallengeGenerateRequest(BaseModel):
     skill: str  # grammar | vocabulary | reading | listening | writing
     topic: str
     num_questions: int = Field(default=3, ge=1, le=10)
-    group_id: UUID | None = None
+    group_id: UUIDIn | None = None
     specific_instructions: str | None = None
 
 
@@ -138,7 +145,7 @@ class AnswerSubmit(BaseModel):
 
     model_config = _STRICT
 
-    question_id: UUID
+    question_id: UUIDIn
     answer: str
 
 
