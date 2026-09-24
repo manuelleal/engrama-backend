@@ -10,3 +10,4 @@ venv/
 .ruff_cache/
 *.log
 .DS_Store
+tests/_salida/humo_integ.json

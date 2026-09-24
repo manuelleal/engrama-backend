@@ -39,3 +39,6 @@ target-version = "py311"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integ: requiere Postgres en Docker (contenedor engrama-test-pg, 127.0.0.1:55432)",
+]

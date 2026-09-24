@@ -24,3 +24,7 @@ os.environ.setdefault(
     "postgresql+asyncpg://test:test@localhost:5432/test",
 )
 os.environ.setdefault("APP_ENV", "test")
+
+# Fixture de integración con Postgres en Docker (docs/ESPEC_fixture_integracion.md).
+# Solo se activa en los tests marcados `integ`; `-m "not integ"` no necesita Docker.
+pytest_plugins = ["tests.integ_db"]
