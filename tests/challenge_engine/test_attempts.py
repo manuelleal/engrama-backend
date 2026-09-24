@@ -195,36 +195,219 @@ def test_get_challenge_detail_without_auth_returns_401() -> None:
 # =============================================================================
 # 4. Integration DB-bound — skipped
 # =============================================================================
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_start_attempt_creates_in_progress() -> None:
-    ...
+# BUG-1 (encontrado por esta fixture; src/ no se toca): AnswerSubmit hereda
+# ConfigDict(strict=True) (src/challenge_engine/schemas.py:22) y declara
+# `question_id: UUID` (schemas.py:141). FastAPI valida el body en modo Python,
+# donde strict exige una instancia de UUID y rechaza el string del JSON: todo
+# POST /challenges/attempts/{id}/submit con un cuerpo válido da 422
+# (type=is_instance_of, loc=body.answers.0.question_id). strict=True: cuando se
+# arregle, estos tests pasan a XPASS, que cuenta como fallo, y hay que quitar la marca.
+_BUG_1 = pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="BUG-1: submit da 422 a todo JSON válido (strict=True + UUID en AnswerSubmit)",
+)
 
 
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_start_attempt_max_attempts_exceeded_returns_429() -> None:
-    ...
+def _responder(respuestas: list[tuple[object, str]]) -> dict:
+    """Cuerpo de submit: [(question_id, answer), ...]."""
+    return {"answers": [{"question_id": str(q), "answer": a} for q, a in respuestas]}
 
 
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_submit_all_correct_awards_coins_and_xp() -> None:
-    ...
+@pytest.mark.integ
+def test_start_attempt_creates_in_progress(integ) -> None:
+    tenant = integ.crear_tenant()
+    teacher = integ.crear_perfil(tenant, rol="teacher")
+    alumno = integ.crear_perfil(tenant)
+    cid, _ = integ.crear_challenge(tenant, teacher)
+
+    r = client.post(f"/challenges/{cid}/attempt", headers=integ.headers(alumno))
+    assert r.status_code == 201
+    body = r.json()
+    assert body["attempt_number"] == 1
+    assert body["challenge"]["id"] == str(cid)
+
+    fila = integ.fila(
+        "select id, status, student_id, tenant_id, challenge_id "
+        "from challenge_attempts"
+    )
+    assert fila is not None
+    assert str(fila["id"]) == body["attempt_id"]
+    assert fila["status"] == "in_progress"
+    assert (fila["student_id"], fila["tenant_id"], fila["challenge_id"]) == (
+        alumno, tenant, cid
+    )
+    assert integ.valor("select count(*) from challenge_attempts") == 1
 
 
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_submit_all_wrong_awards_nothing() -> None:
-    ...
+@pytest.mark.integ
+def test_start_attempt_max_attempts_exceeded_returns_429(integ) -> None:
+    tenant = integ.crear_tenant()
+    teacher = integ.crear_perfil(tenant, rol="teacher")
+    alumno = integ.crear_perfil(tenant)
+    cid, _ = integ.crear_challenge(tenant, teacher, respuestas=("A",), max_attempts=1)
+    # El único intento permitido ya se gastó (sembrado directo en la base: este
+    # test es sobre start_attempt; no depende del submit por HTTP, ver BUG-1).
+    integ.crear_intento(tenant, cid, alumno, status="completed")
+    h = integ.headers(alumno)
+
+    otra_vez = client.post(f"/challenges/{cid}/attempt", headers=h)
+    assert otra_vez.status_code == 429
+    assert otra_vez.json()["detail"] == "No attempts remaining for this challenge"
+    assert integ.valor("select count(*) from challenge_attempts") == 1
 
 
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_submit_partial_correct_computes_score() -> None:
-    ...
+@pytest.mark.integ
+@_BUG_1
+def test_submit_all_correct_awards_coins_and_xp(integ) -> None:
+    tenant = integ.crear_tenant(pool=1000)
+    teacher = integ.crear_perfil(tenant, rol="teacher")
+    alumno = integ.crear_perfil(tenant)
+    cid, qids = integ.crear_challenge(tenant, teacher, respuestas=("A", "B"),
+                                      coins=20, xp=15)
+    h = integ.headers(alumno)
+    intento = client.post(f"/challenges/{cid}/attempt", headers=h).json()["attempt_id"]
+
+    r = client.post(
+        f"/challenges/attempts/{intento}/submit",
+        json=_responder([(qids[0], "A"), (qids[1], " b ")]),  # strip + minúsculas
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["is_correct"] is True
+    assert body["score_percent"] == 100.0
+    assert body["coins_earned"] == 20
+    assert body["xp_earned"] == 15
+    assert body["correct_answers"] == [
+        {"question_id": str(qids[0]), "correct_answer": "A"},
+        {"question_id": str(qids[1]), "correct_answer": "B"},
+    ]
+
+    assert integ.saldo("profile", alumno) == 20
+    assert integ.saldo("tenant", tenant) == 980
+    assert integ.valor("select xp from profiles where id = :p", p=alumno) == 15
+    assert integ.valor(
+        "select current_winners from challenges where id = :c", c=cid
+    ) == 1
+    assert integ.valor(
+        "select status from challenge_attempts where id = :a", a=intento
+    ) == "completed"
 
 
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_submit_twice_returns_409() -> None:
-    ...
+@pytest.mark.integ
+@_BUG_1
+def test_submit_all_wrong_awards_nothing(integ) -> None:
+    tenant = integ.crear_tenant(pool=1000)
+    teacher = integ.crear_perfil(tenant, rol="teacher")
+    alumno = integ.crear_perfil(tenant)
+    cid, qids = integ.crear_challenge(tenant, teacher, respuestas=("A", "B"),
+                                      coins=20, xp=15)
+    h = integ.headers(alumno)
+    intento = client.post(f"/challenges/{cid}/attempt", headers=h).json()["attempt_id"]
+
+    r = client.post(
+        f"/challenges/attempts/{intento}/submit",
+        json=_responder([(qids[0], "Z"), (qids[1], "Z")]),
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["is_correct"] is False
+    assert body["score_percent"] == 0.0
+    assert body["coins_earned"] == 0
+    assert body["xp_earned"] == 0
+
+    assert integ.saldo("profile", alumno) in (None, 0)
+    assert integ.saldo("tenant", tenant) == 1000
+    assert integ.valor("select count(*) from coin_ledger") == 0
+    assert integ.valor("select xp from profiles where id = :p", p=alumno) == 0
+    assert integ.valor(
+        "select current_winners from challenges where id = :c", c=cid
+    ) == 0
+    assert integ.valor(
+        "select status from challenge_attempts where id = :a", a=intento
+    ) == "completed"
 
 
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_submit_increments_current_winners_only_if_correct() -> None:
-    ...
+@pytest.mark.integ
+@_BUG_1
+def test_submit_partial_correct_computes_score(integ) -> None:
+    tenant = integ.crear_tenant(pool=1000)
+    teacher = integ.crear_perfil(tenant, rol="teacher")
+    alumno = integ.crear_perfil(tenant)
+    cid, qids = integ.crear_challenge(tenant, teacher, respuestas=("A", "B", "C", "D"))
+    h = integ.headers(alumno)
+    intento = client.post(f"/challenges/{cid}/attempt", headers=h).json()["attempt_id"]
+
+    r = client.post(
+        f"/challenges/attempts/{intento}/submit",
+        json=_responder([(qids[0], "A"), (qids[1], "B"), (qids[2], "C"), (qids[3], "X")]),
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["score_percent"] == 75.0  # 3 de 4
+    # multiple_choice exige 100 %: 75 no gana ni cobra.
+    assert body["is_correct"] is False
+    assert body["coins_earned"] == 0
+    assert float(integ.valor(
+        "select score_percent from challenge_attempts where id = :a", a=intento
+    )) == 75.0
+
+
+@pytest.mark.integ
+@_BUG_1
+def test_submit_twice_returns_409(integ) -> None:
+    tenant = integ.crear_tenant(pool=1000)
+    teacher = integ.crear_perfil(tenant, rol="teacher")
+    alumno = integ.crear_perfil(tenant)
+    cid, qids = integ.crear_challenge(tenant, teacher, respuestas=("A",), coins=20)
+    h = integ.headers(alumno)
+    intento = client.post(f"/challenges/{cid}/attempt", headers=h).json()["attempt_id"]
+    respuestas = _responder([(qids[0], "A")])
+
+    primero = client.post(
+        f"/challenges/attempts/{intento}/submit", json=respuestas, headers=h
+    )
+    assert primero.status_code == 200, primero.text
+
+    segundo = client.post(
+        f"/challenges/attempts/{intento}/submit", json=respuestas, headers=h
+    )
+    assert segundo.status_code == 409
+    assert segundo.json()["detail"] == "Attempt already completed or abandoned"
+    # No se paga dos veces.
+    assert integ.saldo("profile", alumno) == 20
+    assert integ.valor("select count(*) from coin_ledger") == 1
+
+
+@pytest.mark.integ
+@_BUG_1
+def test_submit_increments_current_winners_only_if_correct(integ) -> None:
+    tenant = integ.crear_tenant(pool=1000)
+    teacher = integ.crear_perfil(tenant, rol="teacher")
+    falla = integ.crear_perfil(tenant)
+    acierta = integ.crear_perfil(tenant)
+    cid, qids = integ.crear_challenge(tenant, teacher, respuestas=("A",))
+
+    def enviar(alumno, respuesta: str) -> dict:
+        h = integ.headers(alumno)
+        intento = client.post(f"/challenges/{cid}/attempt", headers=h).json()["attempt_id"]
+        r = client.post(
+            f"/challenges/attempts/{intento}/submit",
+            json=_responder([(qids[0], respuesta)]),
+            headers=h,
+        )
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    assert enviar(falla, "Z")["is_correct"] is False
+    assert integ.valor(
+        "select current_winners from challenges where id = :c", c=cid
+    ) == 0
+
+    assert enviar(acierta, "A")["is_correct"] is True
+    assert integ.valor(
+        "select current_winners from challenges where id = :c", c=cid
+    ) == 1

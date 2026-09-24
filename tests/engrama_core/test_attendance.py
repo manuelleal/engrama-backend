@@ -11,7 +11,7 @@ Niveles:
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -141,49 +141,209 @@ def test_attendance_history_without_auth_returns_401() -> None:
 # =============================================================================
 # 3. Integration DB-bound — skipped hasta fixture de Postgres
 # =============================================================================
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_create_session_as_student_returns_403() -> None:
+def _escenario(integ, *, racha: int = 0, ultima: date | None = None):
+    """Tenant con 1000 coins, grupo G1 con coordenadas (Bogotá), teacher y alumno.
+
+    Devuelve (tenant, grupo, teacher, alumno).
+    """
+    tenant = integ.crear_tenant(pool=1000)
+    grupo = integ.crear_grupo(tenant, "G1", lat=4.6097, lng=-74.0817)
+    teacher = integ.crear_perfil(tenant, rol="teacher", group_code="G1")
+    alumno = integ.crear_perfil(
+        tenant, group_code="G1", racha=racha, ultima_asistencia=ultima
+    )
+    return tenant, grupo, teacher, alumno
+
+
+def _hoy_utc() -> date:
+    # check_in usa datetime.now(UTC).date(): "hoy" y "ayer" se cuentan en UTC.
+    return datetime.now(UTC).date()
+
+
+@pytest.mark.integ
+def test_create_session_as_student_returns_403(integ) -> None:
     """Un JWT de un student NO debe poder crear sesiones (require_teacher)."""
-    ...
+    _, _, teacher, alumno = _escenario(integ)
+    cuerpo = {"group_code": "G1", "duration_minutes": 15}
+
+    r = client.post(
+        "/core/attendance/sessions", json=cuerpo, headers=integ.headers(alumno)
+    )
+    assert r.status_code == 403
+    assert r.json()["detail"] == "Teacher role required"
+    assert integ.valor("select count(*) from attendance_sessions") == 0
+
+    # Control: con el mismo cuerpo, el teacher sí puede (el 403 es por rol).
+    r_ok = client.post(
+        "/core/attendance/sessions", json=cuerpo, headers=integ.headers(teacher)
+    )
+    assert r_ok.status_code == 201
+    assert integ.valor("select count(*) from attendance_sessions") == 1
 
 
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_checkin_invalid_session_code_returns_404() -> None:
+@pytest.mark.integ
+def test_checkin_invalid_session_code_returns_404(integ) -> None:
     """session_code que no existe → 404."""
-    ...
+    tenant, grupo, teacher, alumno = _escenario(integ)
+    integ.crear_sesion_asistencia(tenant, grupo, teacher)  # existe otra, válida
+
+    r = client.post(
+        "/core/attendance/check-in",
+        json={"session_code": "NOEXST"},
+        headers=integ.headers(alumno),
+    )
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Session code not found"
+    assert integ.valor("select count(*) from attendance") == 0
+    assert integ.saldo("tenant", tenant) == 1000
 
 
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_checkin_expired_session_returns_410() -> None:
+@pytest.mark.integ
+def test_checkin_expired_session_returns_410(integ) -> None:
     """session con expires_at pasado → 410."""
-    ...
+    tenant, grupo, teacher, alumno = _escenario(integ)
+    codigo = integ.crear_sesion_asistencia(
+        tenant, grupo, teacher, expira_en=timedelta(minutes=-1)
+    )
+
+    r = client.post(
+        "/core/attendance/check-in",
+        json={"session_code": codigo},
+        headers=integ.headers(alumno),
+    )
+    assert r.status_code == 410
+    assert r.json()["detail"] == "Session expired or no longer active"
+    assert integ.valor("select count(*) from attendance") == 0
+    assert integ.valor(
+        "select current_streak from profiles where id = :p", p=alumno
+    ) == 0
+    assert integ.saldo("tenant", tenant) == 1000
 
 
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_checkin_duplicate_returns_409() -> None:
+@pytest.mark.integ
+def test_checkin_duplicate_returns_409(integ) -> None:
     """Dos check-ins del mismo estudiante a la misma sesión → 409."""
-    ...
+    tenant, grupo, teacher, alumno = _escenario(integ)
+    codigo = integ.crear_sesion_asistencia(tenant, grupo, teacher)
+    h = integ.headers(alumno)
+
+    primero = client.post(
+        "/core/attendance/check-in", json={"session_code": codigo}, headers=h
+    )
+    assert primero.status_code == 200
+
+    segundo = client.post(
+        "/core/attendance/check-in", json={"session_code": codigo}, headers=h
+    )
+    assert segundo.status_code == 409
+    assert segundo.json()["detail"] == "Student already checked in to this session"
+    # Solo cuenta el primero: una fila, un pago.
+    assert integ.valor("select count(*) from attendance") == 1
+    assert integ.valor("select count(*) from coin_ledger") == 1
+    assert integ.saldo("profile", alumno) == 50
 
 
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_checkin_valid_awards_50_and_streak_1() -> None:
+@pytest.mark.integ
+def test_checkin_valid_awards_50_and_streak_1(integ) -> None:
     """Primer check-in del alumno → coins=50, streak=1, success=True."""
-    ...
+    tenant, grupo, teacher, alumno = _escenario(integ)
+    codigo = integ.crear_sesion_asistencia(tenant, grupo, teacher)
+
+    r = client.post(
+        "/core/attendance/check-in",
+        json={"session_code": codigo},
+        headers=integ.headers(alumno),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["success"] is True
+    assert body["coins_awarded"] == 50
+    assert body["streak"] == 1
+
+    perfil = integ.fila(
+        "select current_streak, longest_streak, last_attendance_date "
+        "from profiles where id = :p", p=alumno,
+    )
+    assert perfil == {
+        "current_streak": 1,
+        "longest_streak": 1,
+        "last_attendance_date": _hoy_utc(),
+    }
+    assert integ.saldo("profile", alumno) == 50
+    assert integ.saldo("tenant", tenant) == 950
+    assert integ.valor(
+        "select coins_awarded from attendance where student_id = :p", p=alumno
+    ) == 50
 
 
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_checkin_streak_7_awards_75() -> None:
+@pytest.mark.integ
+def test_checkin_streak_7_awards_75(integ) -> None:
     """Con current_streak=6 y last_attendance=ayer → nuevo=7 → 50*1.5=75."""
-    ...
+    ayer = _hoy_utc() - timedelta(days=1)
+    tenant, grupo, teacher, alumno = _escenario(integ, racha=6, ultima=ayer)
+    codigo = integ.crear_sesion_asistencia(tenant, grupo, teacher)
+
+    r = client.post(
+        "/core/attendance/check-in",
+        json={"session_code": codigo},
+        headers=integ.headers(alumno),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["success"] is True
+    assert body["streak"] == 7
+    assert body["coins_awarded"] == 75
+    assert integ.saldo("profile", alumno) == 75
+    assert integ.saldo("tenant", tenant) == 925
+    assert integ.valor(
+        "select current_streak from profiles where id = :p", p=alumno
+    ) == 7
 
 
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_checkin_streak_14_awards_100() -> None:
+@pytest.mark.integ
+def test_checkin_streak_14_awards_100(integ) -> None:
     """Con streak=13 y ayer → nuevo=14 → 50*2.0=100."""
-    ...
+    ayer = _hoy_utc() - timedelta(days=1)
+    tenant, grupo, teacher, alumno = _escenario(integ, racha=13, ultima=ayer)
+    codigo = integ.crear_sesion_asistencia(tenant, grupo, teacher)
+
+    r = client.post(
+        "/core/attendance/check-in",
+        json={"session_code": codigo},
+        headers=integ.headers(alumno),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["success"] is True
+    assert body["streak"] == 14
+    assert body["coins_awarded"] == 100
+    assert integ.saldo("profile", alumno) == 100
+    assert integ.saldo("tenant", tenant) == 900
+    assert integ.valor(
+        "select current_streak from profiles where id = :p", p=alumno
+    ) == 14
 
 
-@pytest.mark.skip(reason="Needs testcontainers Postgres fixture (Fase 1 integ)")
-def test_checkin_geo_out_of_range_still_succeeds() -> None:
+@pytest.mark.integ
+def test_checkin_geo_out_of_range_still_succeeds(integ) -> None:
     """Geo distante no bloquea el check-in, solo marca geo_status."""
-    ...
+    tenant, grupo, teacher, alumno = _escenario(integ)
+    # La sesión tiene coordenadas de referencia en Bogotá...
+    codigo = integ.crear_sesion_asistencia(
+        tenant, grupo, teacher, lat=4.6097, lng=-74.0817
+    )
+
+    # ...y el alumno reporta Medellín (~240 km).
+    r = client.post(
+        "/core/attendance/check-in",
+        json={"session_code": codigo, "latitude": 6.2442, "longitude": -75.5812},
+        headers=integ.headers(alumno),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["success"] is True
+    assert body["coins_awarded"] == 50
+    assert integ.valor(
+        "select geo_status from attendance where student_id = :p", p=alumno
+    ) == "out_of_range"
+    assert integ.saldo("profile", alumno) == 50
