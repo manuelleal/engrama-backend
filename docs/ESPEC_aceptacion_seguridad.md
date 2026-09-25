@@ -70,9 +70,9 @@ H-8 a H-11 no aplican: los secretos son sintéticos (`conftest.py:19`).
 - **Exige módulos:** R2 por compra, apuesta o subasta; las escrituras del docente (teachers); `xp` en el ranking (`feat/leaderboard`).
 
 ## 5. Criterio medible
-- `python -m pytest -q` → **112 passed, 15 xfailed, 0 failed**.
+- `python -m pytest -q` → ~~112 passed~~ **122 passed, 15 xfailed, 0 failed**. Corregido por ERR-10: los 10 tramposos también se recolectan (102 + 10 + 10).
 - Los 102 ids anteriores, en PASSED.
-- 10 tramposos, cada uno en rojo **solo** en su test.
+- 10 tramposos, cada uno en rojo en su test. **Excepción documentada (ERR-10):** los tramposos D1 y D4 abren una política `USING (true)` o `WITH CHECK (true)`, que es justo lo que D10 detecta, así que también ponen en rojo a D10. Cualquier otro rojo fuera de la diagonal es fallo.
 - El motivo de cada xfail registra el SQLSTATE obtenido.
 
 **Falló si:**
