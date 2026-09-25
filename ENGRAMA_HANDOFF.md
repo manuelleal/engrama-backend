@@ -1,5 +1,46 @@
 # ENGRAMA 2.0 — Handoff Document
 
+## 🆕 Estado al 2026-09-25
+
+> Fuente única del estado del ecosistema: `..\..\TABLERO.md` (sección "🧭 Dónde
+> está el trabajo"). Esto es el resumen de lo que toca a `engrama-backend`; el
+> resto del documento (abajo) es el handoff histórico de abril, desactualizado
+> salvo donde el código y esta sección lo confirman.
+
+**Rama activa:** `test/fixture-integ`. **163 passed / 0 xfail / 0 fallan** (última medición limpia, `d0bcf12`..`8a1f075`); ruff 0; mypy 0. Ahora mismo hay trabajo sin commitear encima de esa base (grupos y panel del docente, ver más abajo) — **no lo toques desde otro chat**.
+
+### Commits clave de la sesión F4 (por hito, ver `REGISTRO.md` para números completos)
+| Hito | Commits |
+|---|---|
+| Fixture de integración (Docker + 24 tests con cuerpo) | `9d3b2f7`, `46687c5`, `4a570a8` — 94 passed / 5 xfail |
+| BUG-1 (UUID en texto, 3 esquemas) | `d86574c`, `16de639` — 102 passed / 0 xfail |
+| BUG-2 (recursión RLS en `memberships`, migración **030**) | `4b3a1fb`, `5deeec0`, `5a13428`, `f1fef55` — 128 passed / 14 xfail |
+| CI y deudas (lint/tipos a 0, `integ_db.py` partido, workflow) | `80b7abb`, `e39fdb2`, `89c1fe8`, `e57d970`, `b474cca` — 130 passed / 14 xfail |
+| BUG-3..9 (sin acceso directo de clientes, migración **031**) | `d0bcf12`, `fbc9081`, `8a1f075`, `d77dcb4` — **163 passed / 0 xfail**. El backend no tiene huecos de seguridad conocidos abiertos en local |
+
+### Specs pendientes / en curso
+- **Grupos y panel del docente** (`docs/ESPEC_grupos_y_panel_docente.md`, corregida por ERR-16 en `8318ca7`, con respuestas del pedagogo P1-P5 en `4a0ae72`): **en implementación ahora**, sin commitear (`src/teachers/admin_router.py`, `src/teachers/service/`, `tests/teachers/`, `tests/tramposos/test_tramposos_grupos.py` nuevos; `src/main.py`, `src/teachers/router.py`, `src/teachers/schemas.py`, `tests/integ_ayudante.py` modificados). Meta: 269 passed / 96 no-integ. Pendiente: BUG-10 (docente sin asignación abre asistencia de un grupo ajeno) y el candidato a BUG-11 (M3 reutiliza perfiles entre colegios por `documento_id`).
+- **Login vendible** (decisión 008, `36c1ea8`): correo+contraseña, enlace mágico, Google, Microsoft y cuenta gestionada por el colegio (código de clase + PIN argon2id para menores sin correo); `/auth/me`, onboarding, licencias, migración 032. Meta N+45. **Se implementa después de cerrar grupos y panel.** Decisiones de Christiam pendientes: proveedor SMTP, riesgo residual del PIN de 6 dígitos, límites de la licencia gratis.
+
+### Entorno oficial (ERR-11)
+- El entorno oficial es `.venv` reconstruido con `poetry install --with dev` **desde `poetry.lock`** (Python 3.12, mismas versiones que usará el CI).
+- **Nunca `poetry env use` con una ruta dentro de este repo**: con un `.venv` ya presente, Poetry lo recrea vacío y se pierde el entorno medido. Un entorno alternativo se crea con `py -3.x -m venv` + `pip install` **fuera** de la carpeta del proyecto.
+
+### Cómo correr la suite
+```bash
+cd engrama-backend
+docker rm -f engrama-test-pg   # solo ese nombre exacto, si quedó uno de una corrida anterior
+poetry run pytest -q           # 163 passed / 0 xfail / 0 fallan (levanta y tumba engrama-test-pg solo)
+poetry run ruff check .        # 0
+poetry run mypy .              # 0
+```
+La fixture de integración (`tests/integ_db.py`, registrada en `tests/conftest.py`) levanta un contenedor Docker `engrama-test-pg` (`public.ecr.aws/supabase/postgres:17.6.1.167`, con `auth.uid()` y los roles `anon`/`authenticated`/`service_role`) y lo tumba al terminar. Al final no debe quedar ningún `engrama-test-pg` en `docker ps -a`.
+
+### No verificado / a confirmar
+- El README.md de este repo todavía anuncia "79 passed, 27 skipped": desactualizado frente a los 163 medidos arriba (no se tocó README.md en esta pasada, fuera del alcance del encargo de documentación).
+
+---
+
 > **Propósito:** Este documento empaca TODO el contexto de construcción de Engrama 2.0 para que cualquier agente de Claude (Chat, Code, Cowork) pueda continuar sin preguntar lo básico.
 >
 > **Fecha de handoff:** 2026-04-19  
