@@ -61,18 +61,32 @@ Las funciones futuras en `public` hacen `REVOKE … FROM PUBLIC` explícito, com
 - ids: 144 + 2 tests (D12, D13) + 17 tramposos (D12, D13 y 15 `regrant`) = **163**.
 - Resultado: 130 + 14 antes xfail + 19 = **163 passed / 0 xfailed / 0 failed**.
 - Sin integ: **76**.
+- **Re-medido tras el CI (2026-09-25)**, en HEAD `b474cca` con el `.venv` oficial: 130 passed / 14 xfailed (144 ids), 76 sin integ, ruff 0 y mypy 0. Es la misma base que se usó arriba, así que la cuenta **163 / 0 / 0 y 76 no cambia**.
 
 ## 3. Tramposos (`test_tramposos_seguridad.py`)
-| Tramposo | Rojo en |
-|---|---|
-| D1: `GRANT SELECT ON profiles TO authenticated` | D1, D12 |
-| D4: `GRANT INSERT ON coin_ledger TO authenticated` | D4, D12 |
-| D12: `CREATE FUNCTION public.trampa()` | D12 |
-| D13: quitar el DEFAULT (`… GRANT ALL ON TABLES TO anon, authenticated`) | D13 |
-| `regrant[x]`: `GRANT ALL` en la tabla atacada; x = D2, D3, D5-D9, D11×8 | x, D12 |
-| D10 y `recursiva`: sin cambios | D10; D3 (42P17) |
+**Corregido por ERR-15 (2026-09-25).** La tabla original preveía solo la diagonal más D12, y la matriz medida la refutó. Esta es la matriz medida completa: cada tramposo de base contra D1-D13 (D11 × 8), `bug2_blindada` y `bug2_no_filtra`, con la base limpia en cada celda. Son 23 tramposos × 22 tests = 506 celdas, con 0 `PruebaRota`.
 
-D12 fuera de la diagonal está documentado (ERR-10) y se verifica una vez a mano. Cualquier otro rojo fuera de la diagonal es fallo.
+| Tramposo | Diagonal | Rojo también en (medido) |
+|---|---|---|
+| D1: `GRANT SELECT ON profiles TO authenticated` | D1 | D2, D8, D12 |
+| D4: `GRANT INSERT ON coin_ledger TO authenticated` | D4 | D12 |
+| D10: política `USING (true)` en `badges` (sin cambios) | D10 | — |
+| D12: `CREATE FUNCTION public.trampa()` | D12 | — |
+| D13: quitar el DEFAULT (`… GRANT ALL ON TABLES TO anon, authenticated`) | D13 | — |
+| `regrant-D2` (`profiles`) | D2 | D1, D8, D12 |
+| `regrant-D8` (`profiles`) | D8 | D1, D2, D12 |
+| `regrant-D7` (`memberships`) | D7 | `bug2_no_filtra`, D12 |
+| `regrant-x`, con x = D3, D5, D6, D9 y D11 × 8 | x | D12 |
+| `recursiva` (BUG-2, sin cambios) | D3 (42P17) | D1, D2, D5-D9, D11 × 8, `bug2_no_filtra` (todos los D menos D4 y D10, y ni D12 ni D13) |
+| `sin_search_path`, `fuga` (BUG-2, sin cambios) | `bug2_blindada`, `bug2_no_filtra` | — |
+
+Por qué hay cruces. Son rojos correctos: el tramposo abre o rompe justo lo que ese otro test vigila.
+- **D12** mira todo el catálogo: cualquier GRANT a un cliente lo pone en rojo.
+- **D1, D2 y D8** atacan `profiles` como `authenticated`. Abrir `profiles` los pone en rojo a los tres.
+- **`bug2_no_filtra`** lee `memberships` como `authenticated`. Por eso cae con `regrant-D7`.
+- **`recursiva`** devuelve la recursión a `memberships`. Todo ataque como `authenticated` sobre una tabla cuyas políticas consultan `memberships` da 42P17 antes del chequeo de privilegios. Antes de la 031 los xfail lo escondían.
+
+La matriz se verifica una vez a mano; la suite solo automatiza la diagonal. **Cualquier rojo fuera de esta tabla es fallo**, y un tramposo que no pone en rojo su diagonal, también.
 
 ## 4. La API sigue funcionando
 La suite completa queda en verde: A1-A7 y los flujos de `auth`, `challenge_engine` y `engrama_core`. `src/` no hace `SET ROLE` ni usa `request.jwt` (grep), así que **no se toca**.
