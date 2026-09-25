@@ -17,6 +17,11 @@ cualquier cosa. Si el test real pasara con el tramposo, este queda en rojo.
   D1  GRANT SELECT ON profiles TO authenticated              -> test_d1
   D4  GRANT INSERT ON coin_ledger TO authenticated           -> test_d4
   D10 se crea una política `USING (true)`                    -> test_d10
+  D12 CREATE FUNCTION public.trampa() (EXECUTE por PUBLIC)   -> test_d12
+  D13 los DEFAULT de postgres vuelven a dar ALL ON TABLES    -> test_d13
+  regrant-X  GRANT ALL a anon y authenticated en la tabla que
+             ataca X (deshace la 031 en esa tabla)           -> test X
+             X = D2, D3, D5-D9 y D11 por cada una de sus 8 tablas
 
 Los tramposos de base CAMBIAN la base de verdad (confirmado: `como` usa su
 propia conexión y solo ve lo confirmado) y la RESTAURAN en el `finally`. Los
@@ -24,17 +29,20 @@ de privilegios comprueban además que las ACL de `public` y los DEFAULT
 quedaron exactamente como los dejó la 031. El contenedor es desechable
 (tmpfs); si el proceso muriera a mitad, el daño no sobrevive a la sesión.
 
-Fuera de la diagonal (ERR-10): D1 y D4 también ponen rojo a D12, que mira
-todo el catálogo. Está documentado en la espec §3; se verifica a mano y no se
-automatiza aquí. Medido a mano el 2026-09-25 y NO previsto por la espec: D1
-también pone rojo a D2 y D8 (los tres atacan `profiles` como `authenticated`).
-Reportado como candidato a ERR. Los tramposos de D12, D13 y los regrant van
-en el commit siguiente.
+Fuera de la diagonal (ERR-10): D1, D4 y los regrant también ponen rojo a D12,
+que mira todo el catálogo. Está documentado en la espec §3; se verifica a mano
+y no se automatiza aquí. Medido a mano el 2026-09-25 (matriz de 506 celdas) y
+NO previsto por la espec: D1, regrant-D2 y regrant-D8 se cruzan entre D1, D2
+y D8 (los tres atacan `profiles` como `authenticated`); regrant-D7 pone rojo a
+bug2_no_filtra (lee `memberships`); y `recursiva` (BUG-2) pone rojo a todo
+ataque como `authenticated` sobre una tabla cuyas políticas consultan
+`memberships`. Reportado como candidato a ERR.
 """
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
+from functools import partial
 from typing import Any
 from uuid import UUID
 
@@ -43,6 +51,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 import tests.seguridad.test_aceptacion as seg
+import tests.seguridad.test_sin_acceso as catalogo
 import tests.seguridad.veredictos as veredictos
 from src.auth import router as auth_router
 from src.auth import service as auth_service
@@ -51,6 +60,7 @@ from src.challenge_engine.service import challenges as challenges_mod
 from src.main import app
 from src.shared import deps
 from src.shared.models import Challenge, ChallengeAttempt
+from tests.seguridad.modulos import INSERTS_MODULOS
 from tests.seguridad.veredictos import sembrar
 
 pytestmark = pytest.mark.integ
@@ -142,6 +152,8 @@ _ACL = """
       from pg_default_acl d, lateral aclexplode(d.defaclacl) a
     ) as t
 """
+_CLIENTES = "anon, authenticated"
+_DEFAULT_TABLAS = "alter default privileges for role postgres in schema public {} all on tables "
 
 
 @contextmanager
@@ -195,7 +207,40 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[Any], None], str]] = {
     "D10": (lambda i, _mp: _politica(i, "badges", "trampa_d10",
                                      "for select to authenticated using (true)"),
             seg.test_d10_ninguna_politica_abierta, "políticas abiertas: badges.trampa_d10"),
+    "D12": (lambda i, _mp: _privilegios(
+                i, ["create function public.trampa() returns int language sql as 'select 1'"],
+                ["drop function public.trampa()"]),
+            catalogo.test_d12_catalogo_sin_privilegios_de_clientes,
+            r"ejecutables por clientes: trampa\(\)\(anon\)"),
+    "D13": (lambda i, _mp: _privilegios(
+                i, [_DEFAULT_TABLAS.format("grant") + "to " + _CLIENTES],
+                [_DEFAULT_TABLAS.format("revoke") + "from " + _CLIENTES]),
+            catalogo.test_d13_lo_nuevo_nace_cerrado,
+            r"nace abierto para: \['anon_tabla', 'authenticated_tabla'\]"),
 }
+
+# regrant-X: la tabla que ataca X y su PRIMER ataque, que es el que debe caer:
+# `anon` va primero y, con GRANT ALL, la RLS le da 0 filas o "new row violates
+# row-level security policy"; ninguno es el 42501 que exige `sin_acceso`.
+_REGRANT: dict[str, tuple[str, Callable[[Any], None], str]] = {
+    "D2": ("profiles", seg.test_d2_pin_hash_ajeno_invisible,
+           "admin de otro colegio lee pin_hash"),
+    "D3": ("coin_wallets", seg.test_d3_alumno_no_edita_saldos, "alumno UPDATE wallet profile"),
+    "D5": ("challenge_questions", seg.test_d5_alumno_no_lee_correct_answer,
+           "alumno lee correct_answer"),
+    "D6": ("challenge_attempts", seg.test_d6_alumno_no_inserta_intentos, "INSERT intento propio"),
+    "D7": ("memberships", seg.test_d7_alumno_no_crea_membresia_admin,
+           "alumno INSERT memberships admin"),
+    "D8": ("profiles", seg.test_d8_alumno_no_edita_racha_xp_ni_rol,
+           r"alumno UPDATE profiles\.current_streak"),
+    "D9": ("attendance_sessions", seg.test_d9_alumno_no_crea_sesion_ni_marca_asistencia,
+           "alumno INSERT attendance_sessions"),
+    **{f"D11-{t}": (t, partial(seg.test_d11_alumno_no_escribe_tablas_de_modulos, tabla=t),
+                    f"alumno INSERT {t}") for t in sorted(INSERTS_MODULOS)},
+}
+for _x, (_tabla, _test, _que) in _REGRANT.items():
+    TRAMPOSOS[f"regrant-{_x}"] = (_grant("all", _tabla, _CLIENTES), _test,
+                                  rf"\[anon\] {_que}: se esperaba 42501")
 
 
 @pytest.mark.parametrize("clave", list(TRAMPOSOS))

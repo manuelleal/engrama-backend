@@ -50,7 +50,7 @@ jobs:
       - name: pytest -m "not integ" (debe dar 76 passed)
         run: poetry run pytest -m "not integ"
 
-  # Suite completa contra Postgres real en Docker (130 passed / 14 xfailed).
+  # Suite completa contra Postgres real en Docker (163 passed, 0 xfailed; espec BUG-3..9 §2).
   integ:
     name: Tests de integración (Postgres real en Docker)
     runs-on: ubuntu-latest
@@ -84,7 +84,7 @@ jobs:
           IMAGEN=$(poetry run python -c "from tests.integ_db import IMAGEN; print(IMAGEN)")
           docker pull "$IMAGEN"
 
-      - name: pytest completo (debe dar 130 passed / 14 xfailed)
+      - name: pytest completo (debe dar 163 passed / 0 xfailed)
         run: poetry run pytest
 
       - name: Subir humo_integ.json
