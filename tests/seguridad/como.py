@@ -47,6 +47,21 @@ def _sqlstate(exc: Exception) -> str:
     return "desconocido"
 
 
+def validar_identidad(rol: str, perfil: UUID | None) -> None:
+    """Rechaza una identidad que Supabase nunca produce: `anon` con `perfil`.
+
+    Una sesión sin JWT (rol `anon`) nunca trae `sub`: `auth.uid()` da NULL.
+    Simular `rol="anon"` con un `perfil` fabricaría un `auth.uid()` que
+    Supabase jamás entrega en una sesión anónima. Ninguna llamada real usa
+    esa combinación (docs/ESPEC_ci_y_deudas.md, C3).
+    """
+    if rol == "anon" and perfil is not None:
+        raise ValueError(
+            f"como: rol 'anon' no admite perfil ({perfil}); "
+            "Supabase nunca manda 'sub' sin JWT"
+        )
+
+
 class ComoMixin:
     """`como`: exige que quien lo herede tenga `self.engine` y `self.run` (ver `Integ`)."""
 
@@ -73,6 +88,7 @@ class ComoMixin:
         control de "la sentencia es válida; si falla, fue la RLS".
         """
         rol_efectivo = rol or ("anon" if perfil is None else "authenticated")
+        validar_identidad(rol_efectivo, perfil)
         if rol_efectivo not in ROLES_COMO:
             raise ValueError(f"como: rol {rol_efectivo!r} no está en {ROLES_COMO}")
         if rol_efectivo == "authenticated" and perfil is None:
