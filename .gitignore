@@ -11,3 +11,6 @@ venv/
 *.log
 .DS_Store
 tests/_salida/humo_integ.json
+
+# Salidas sueltas de herramientas
+*_output.txt
