@@ -3,8 +3,8 @@
 Espec: docs/ESPEC_aceptacion_seguridad.md. Un test por ataque; cada test AFIRMA
 EL RECHAZO. A1-A7 van por la API; D1-D11, directo en la base con
 `Integ.como(perfil, sql)` (rol y JWT de un usuario real de Supabase, en una
-transacción que se deshace). Lo que hoy pasa, o se "rechaza" por rotura (42P17),
-queda en xfail estricto con su BUG. Controles y juicios: veredictos.py.
+transacción que se deshace). Lo que hoy pasa queda en xfail estricto con su
+BUG (desde la 030, ya ninguno cae por 42P17: BUG-2 corregido). Controles y juicios: veredictos.py.
 Réplica: `ENGRAMA_REPLICA=1`. Tramposos: tests/tramposos/test_tramposos_seguridad.py.
 """
 from __future__ import annotations
@@ -184,7 +184,7 @@ def test_a7_otro_colegio_no_se_ve(integ) -> None:
 
 
 # =============================================================================
-# D · directo en la base (RLS). Hoy rechazan: D1, D4, D10.
+# D · directo en la base (RLS). Hoy rechazan: D1, D3, D4, D10.
 # =============================================================================
 def test_d1_anon_no_lee_ni_escribe(integ) -> None:
     """E1/H-1: `anon` no ve perfiles (0 filas) ni los crea (42501)."""
@@ -243,12 +243,12 @@ def test_d10_ninguna_politica_abierta(integ) -> None:
 
 
 # =============================================================================
-# D · directo en la base. Hoy 42P17 (BUG-2); tras BUG-2, cada uno cae en su BUG.
+# D · directo en la base. Tras BUG-2 (030) el ataque PASA: cada uno queda en su BUG.
 # =============================================================================
 
 
-@xfail_bug("BUG-2: hoy 42P17 al leer profiles; tras BUG-2 -> BUG-8 (profiles_select_admin "
-        "no filtra tenant: el admin de otro colegio lee pin_hash)")
+@xfail_bug("BUG-8: el ataque PASA (sin SQLSTATE, 1 fila): profiles_select_admin no "
+        "filtra tenant y el admin de otro colegio lee pin_hash")
 def test_d2_pin_hash_ajeno_invisible(integ) -> None:
     """E1b: el admin o el docente de OTRO colegio no leen el pin_hash (0 filas)."""
     propio, ajeno = colegios(integ)
@@ -264,8 +264,6 @@ def test_d2_pin_hash_ajeno_invisible(integ) -> None:
                   "la víctima lee su perfil")
 
 
-@xfail_bug("BUG-2: hoy 42P17 en el propio UPDATE de coin_wallets (la espec §2 decía "
-        "'Rechaza (medido)'); tras BUG-2 debe pasar: no hay política UPDATE")
 def test_d3_alumno_no_edita_saldos(integ) -> None:
     """E2: UPDATE coin_wallets (propia y del colegio) -> UPDATE 0, valores intactos."""
     tenant = integ.crear_tenant(pool=1000)
@@ -283,8 +281,8 @@ def test_d3_alumno_no_edita_saldos(integ) -> None:
                   "el dueño lee su wallet")
 
 
-@xfail_bug("BUG-2: hoy 42P17 al leer challenge_questions; tras BUG-2 -> BUG-3 "
-        "(tenant_isolation_select deja leer correct_answer)")
+@xfail_bug("BUG-3: el ataque PASA (sin SQLSTATE, 2 filas): tenant_isolation_select "
+        "deja leer correct_answer")
 def test_d5_alumno_no_lee_correct_answer(integ) -> None:
     """E3: SELECT correct_answer de challenge_questions -> 0 filas o 42501."""
     tenant = integ.crear_tenant()
@@ -298,8 +296,8 @@ def test_d5_alumno_no_lee_correct_answer(integ) -> None:
                   "el alumno ve el reto activo de su colegio")
 
 
-@xfail_bug("BUG-2: hoy 42P17 al insertar en challenge_attempts; tras BUG-2 -> BUG-4 "
-        "(tenant_isolation_insert solo mira el tenant)")
+@xfail_bug("BUG-4: el ataque PASA (sin SQLSTATE, 1 fila): tenant_isolation_insert "
+        "solo mira el tenant y el alumno inserta un intento ganado")
 def test_d6_alumno_no_inserta_intentos(integ) -> None:
     """E4/R1: INSERT de un intento 'ganado', propio o a nombre de otro -> 42501."""
     tenant = integ.crear_tenant()
@@ -318,8 +316,8 @@ def test_d6_alumno_no_inserta_intentos(integ) -> None:
                   "el alumno ve el reto")
 
 
-@xfail_bug("BUG-2: hoy 42P17 al insertar en memberships; tras BUG-2 -> BUG-5 "
-        "(un alumno da membresía admin a otro perfil)")
+@xfail_bug("BUG-5: el ataque PASA (sin SQLSTATE, 1 fila): un alumno da membresía "
+        "admin a otro perfil")
 def test_d7_alumno_no_crea_membresia_admin(integ) -> None:
     """E5: INSERT memberships role='admin' para otro perfil -> 42501. Escribe humo."""
     propio, ajeno = colegios(integ)
@@ -336,8 +334,8 @@ def test_d7_alumno_no_crea_membresia_admin(integ) -> None:
                   "el alumno lee su membresía")
 
 
-@xfail_bug("BUG-2: hoy 42P17 al actualizar profiles; tras BUG-2 -> BUG-6 "
-        "(profiles_update_own deja editar current_streak, xp y role)")
+@xfail_bug("BUG-6: el ataque PASA (sin SQLSTATE, 1 fila): profiles_update_own deja "
+        "editar current_streak, xp y role")
 def test_d8_alumno_no_edita_racha_xp_ni_rol(integ) -> None:
     """E2b: UPDATE de la propia current_streak, xp o role -> no editable."""
     tenant = integ.crear_tenant()
@@ -353,8 +351,8 @@ def test_d8_alumno_no_edita_racha_xp_ni_rol(integ) -> None:
                   "el alumno lee su perfil")
 
 
-@xfail_bug("BUG-2: hoy 42P17 al insertar en attendance_sessions; tras BUG-2 -> BUG-7 "
-        "(el alumno crea su sesión y marca su asistencia)")
+@xfail_bug("BUG-7: el ataque PASA (sin SQLSTATE, 1 fila): el alumno crea su sesión "
+        "y marca su asistencia")
 def test_d9_alumno_no_crea_sesion_ni_marca_asistencia(integ) -> None:
     """Nuevo: INSERT attendance_sessions y attendance -> 42501; el código -> 404."""
     tenant = integ.crear_tenant(pool=1000)
@@ -384,8 +382,8 @@ def test_d9_alumno_no_crea_sesion_ni_marca_asistencia(integ) -> None:
     assert ok.status_code == 200, ok.text  # control: el check-in legítimo funciona
 
 
-@xfail_bug("BUG-2: hoy 42P17 (tenant_isolation_insert consulta memberships); tras BUG-2 "
-        "-> BUG-9 predicho (el alumno escribe en tablas de módulos sin código)")
+@xfail_bug("BUG-9: el ataque PASA (sin SQLSTATE, 1 fila): el alumno escribe en "
+        "tablas de módulos sin código")
 @pytest.mark.parametrize("tabla", sorted(INSERTS_MODULOS))
 def test_d11_alumno_no_escribe_tablas_de_modulos(integ, tabla: str) -> None:
     """D11: INSERT del alumno en 8 tablas de módulos vacíos -> 42501."""

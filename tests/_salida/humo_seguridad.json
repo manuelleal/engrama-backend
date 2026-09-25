@@ -21,10 +21,10 @@
     "veredicto": "rechaza"
   },
   "D7": {
-    "filas": 0,
+    "filas": 1,
     "id": "D7",
     "rol": "authenticated",
-    "sqlstate": "42P17",
-    "veredicto": "rota (42P17)"
+    "sqlstate": null,
+    "veredicto": "pasa"
   }
 }
