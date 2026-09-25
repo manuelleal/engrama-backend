@@ -8,14 +8,15 @@ sujeto a la RLS de `memberships`. Por eso se prueban dos cosas:
     quién puede ejecutarla). Es lo que evita el secuestro por search_path y
     que `anon` la use.
   - no_filtra: lo que devuelve. Solo los colegios activos del que llama; ni un
-    colegio ajeno, ni una membresía inactiva.
+    colegio ajeno, ni una membresía inactiva. Desde la 031, `memberships`
+    leída directo da 42501 (docs/ESPEC_bug3a9_sin_acceso_directo.md §2).
 Tramposos: tests/tramposos/test_tramposos_bug2.py.
 """
 from __future__ import annotations
 
 import pytest
 
-from tests.seguridad.veredictos import PruebaRota, colegios, identidad, sembrar
+from tests.seguridad.veredictos import PruebaRota, colegios, identidad, sembrar, sin_acceso
 
 pytestmark = pytest.mark.integ
 
@@ -63,7 +64,7 @@ def test_bug2_funcion_blindada(integ) -> None:
 
 
 def test_bug2_funcion_no_filtra(integ) -> None:
-    """La función y memberships muestran solo los colegios ACTIVOS del que llama."""
+    """La función muestra solo los colegios ACTIVOS del que llama; memberships directo, 42501."""
     propio, ajeno = colegios(integ)
     alumno = integ.crear_perfil(propio)
     integ.crear_perfil(ajeno)  # otra persona, activa, en el colegio ajeno
@@ -78,11 +79,10 @@ def test_bug2_funcion_no_filtra(integ) -> None:
     assert res.sqlstate is None, f"la función falla: {res.sqlstate} {res.mensaje}"
     assert res.filas == [{"t": propio}], f"la función devuelve colegios ajenos: {res.filas}"
 
-    res = integ.como(alumno, "select distinct tenant_id from memberships")
-    assert res.sqlstate is None, f"memberships falla: {res.sqlstate} {res.mensaje}"
-    assert res.filas == [{"tenant_id": propio}], (
-        f"memberships muestra colegios ajenos: {res.filas}"
-    )
+    # Desde la 031 el alumno no lee memberships directo (decisión 005): la
+    # función es lo único que responde "mis colegios", y sin salir por la API.
+    sin_acceso(integ.como(alumno, "select distinct tenant_id from memberships"),
+               "memberships", "el alumno lee memberships directo")
 
     res = integ.como(None, f"select * from {FUNCION}")
     assert res.sqlstate == "42501", f"anon ejecuta la función: {res.sqlstate} {res.filas}"

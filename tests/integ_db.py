@@ -63,9 +63,10 @@ RUTA_HUMO = RAIZ_BACKEND / "tests" / "_salida" / "humo_integ.json"
 # Valores exactos que el humo debe encontrar (espec §5). Si uno difiere se
 # reporta; NO se ajusta este diccionario para que pase.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "030_rls_sin_recursion",  # BUG-2: la 030 corta la recursión
+    "alembic_version": "031_sin_acceso_directo",  # BUG-3..9: sin acceso de clientes
     "tablas_con_rls": 26,
-    "politicas_public": 51,  # 19 x 2 + 13 especiales (029); la 030 reemplaza 2, no suma
+    # 19 x 2 + 13 especiales (029); la 030 reemplaza 2, no suma; la 031 no toca políticas
+    "politicas_public": 51,
     "auth_uid_existe": True,
 }
 

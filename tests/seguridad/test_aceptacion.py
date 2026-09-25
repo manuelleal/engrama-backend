@@ -3,8 +3,10 @@
 Espec: docs/ESPEC_aceptacion_seguridad.md. Un test por ataque; cada test AFIRMA
 EL RECHAZO. A1-A7 van por la API; D1-D11, directo en la base con
 `Integ.como(perfil, sql)` (rol y JWT de un usuario real de Supabase, en una
-transacción que se deshace). Lo que hoy pasa queda en xfail estricto con su
-BUG (desde la 030, ya ninguno cae por 42P17: BUG-2 corregido). Controles y juicios: veredictos.py.
+transacción que se deshace). Desde la 031 (docs/ESPEC_bug3a9_sin_acceso_directo.md,
+decisión 005) cada ataque D, como `anon` y como `authenticated`, debe dar
+42501 "permission denied for table <la atacada>": ya no hay xfail (BUG-3..9
+cerrados). Controles y juicios: veredictos.py. D12 y D13: test_sin_acceso.py.
 Réplica: `ENGRAMA_REPLICA=1`. Tramposos: tests/tramposos/test_tramposos_seguridad.py.
 """
 from __future__ import annotations
@@ -18,15 +20,12 @@ from fastapi.testclient import TestClient
 from src.main import app
 from tests.seguridad.modulos import INSERTS_MODULOS, parametros, sembrar_modulos
 from tests.seguridad.veredictos import (
+    atacar,
     colegios,
-    control_dueno,
-    control_postgres,
     identidad,
     par,
-    rechazado,
-    registrar_humo,
     sembrar,
-    xfail_bug,
+    sin_acceso,
 )
 
 pytestmark = pytest.mark.integ
@@ -184,30 +183,31 @@ def test_a7_otro_colegio_no_se_ve(integ) -> None:
 
 
 # =============================================================================
-# D · directo en la base (RLS). Hoy rechazan: D1, D3, D4, D10.
+# D · directo en la base. Desde la 031 (decisión 005) ningún cliente tiene
+# privilegios sobre `public`: cada ataque, como `anon` y como `authenticated`,
+# da 42501 "permission denied for table <la atacada>" (veredictos.atacar).
+# Lo legítimo del alumno (leer su perfil, su wallet...) tampoco va directo:
+# pasa por la API.
 # =============================================================================
 def test_d1_anon_no_lee_ni_escribe(integ) -> None:
-    """E1/H-1: `anon` no ve perfiles (0 filas) ni los crea (42501)."""
+    """E1/H-1: ni `anon` ni el propio alumno leen o crean perfiles: 42501 en profiles."""
     tenant = integ.crear_tenant()
     alumno = integ.crear_perfil(tenant)
     identidad(integ, None)
+    identidad(integ, alumno)
     leer, p_leer = "select id, pin_hash from profiles where id = :p", {"p": alumno}
-    control_postgres(integ.como(None, leer, p_leer, rol="postgres"), "postgres lee el perfil")
-    res = integ.como(None, leer, p_leer)
-    registrar_humo("D1-select", "anon", res)
-    rechazado(res, "anon SELECT profiles")
+    atacar(integ, alumno, leer, p_leer, tabla="profiles", que="SELECT profiles",
+           humo=("D1-select", "anon"))
     crear = ("insert into profiles (id, documento_id, full_name, pin_hash) "
              "values (:i, :d, 'Intruso', 'x')")
     nuevo = uuid4()
     p_crear = {"i": nuevo, "d": f"doc-{nuevo.hex[:12]}"}
-    control_postgres(integ.como(None, crear, p_crear, rol="postgres"), "postgres crea un perfil")
-    res = integ.como(None, crear, p_crear)
-    registrar_humo("D1-insert", "anon", res)
-    rechazado(res, "anon INSERT profiles", solo_42501=True)
+    atacar(integ, alumno, crear, p_crear, tabla="profiles", que="INSERT profiles",
+           humo=("D1-insert", "anon"))
 
 
 def test_d4_nadie_escribe_el_ledger(integ) -> None:
-    """E6: un alumno no inserta movimientos en coin_ledger (42501)."""
+    """E6: nadie inserta movimientos en coin_ledger (42501 en coin_ledger)."""
     tenant = integ.crear_tenant(pool=1000)
     alumno = integ.crear_perfil(tenant, saldo=0)
     identidad(integ, alumno)
@@ -218,10 +218,8 @@ def test_d4_nadie_escribe_el_ledger(integ) -> None:
     }
     sql = ("insert into coin_ledger (tenant_id, from_wallet_id, to_wallet_id, amount, action) "
            "values (:t, :desde, :hacia, 500, 'challenge')")
-    control_postgres(integ.como(None, sql, carteras, rol="postgres"), "postgres escribe el ledger")
-    res = integ.como(alumno, sql, carteras)
-    registrar_humo("D4", "authenticated", res)
-    rechazado(res, "alumno INSERT coin_ledger", solo_42501=True)
+    atacar(integ, alumno, sql, carteras, tabla="coin_ledger", que="alumno INSERT coin_ledger",
+           humo=("D4", "authenticated"))
     assert integ.valor("select count(*) from coin_ledger") == 0
 
 
@@ -243,29 +241,24 @@ def test_d10_ninguna_politica_abierta(integ) -> None:
 
 
 # =============================================================================
-# D · directo en la base. Tras BUG-2 (030) el ataque PASA: cada uno queda en su BUG.
+# D · los ataques que pasaban tras la 030 (BUG-3..9). Cerrados por la 031.
 # =============================================================================
-
-
-@xfail_bug("BUG-8: el ataque PASA (sin SQLSTATE, 1 fila): profiles_select_admin no "
-        "filtra tenant y el admin de otro colegio lee pin_hash")
 def test_d2_pin_hash_ajeno_invisible(integ) -> None:
-    """E1b: el admin o el docente de OTRO colegio no leen el pin_hash (0 filas)."""
+    """E1b/BUG-8: el admin o el docente de OTRO colegio no leen el pin_hash (42501)."""
     propio, ajeno = colegios(integ)
     admin = integ.crear_perfil(propio, rol="admin")
     profe = integ.crear_perfil(propio, rol="teacher")
     victima = integ.crear_perfil(ajeno)
     leer, p = "select id, pin_hash from profiles where id = :v", {"v": victima}
-    control_postgres(integ.como(None, leer, p, rol="postgres"), "postgres lee a la víctima")
     for quien, pid in (("admin", admin), ("docente", profe)):
         identidad(integ, pid)
-        rechazado(integ.como(pid, leer, p), f"{quien} de otro colegio lee pin_hash")
-    control_dueno(integ.como(victima, "select id from profiles where id = auth.uid()"),
-                  "la víctima lee su perfil")
+        atacar(integ, pid, leer, p, tabla="profiles", que=f"{quien} de otro colegio lee pin_hash")
+    sin_acceso(integ.como(victima, "select id from profiles where id = auth.uid()"),
+               "profiles", "la víctima lee su perfil directo")
 
 
 def test_d3_alumno_no_edita_saldos(integ) -> None:
-    """E2: UPDATE coin_wallets (propia y del colegio) -> UPDATE 0, valores intactos."""
+    """E2: UPDATE coin_wallets (propia y del colegio) -> 42501; valores intactos."""
     tenant = integ.crear_tenant(pool=1000)
     alumno = integ.crear_perfil(tenant, saldo=10)
     identidad(integ, alumno)
@@ -273,33 +266,28 @@ def test_d3_alumno_no_edita_saldos(integ) -> None:
         sql = ("update coin_wallets set balance = :v "
                "where owner_type = :tipo and owner_id = :o")
         p = {"v": valor, "tipo": tipo, "o": dueno}
-        control_postgres(integ.como(None, sql, p, rol="postgres"), f"postgres edita {tipo}")
-        rechazado(integ.como(alumno, sql, p), f"alumno UPDATE wallet {tipo}")
+        atacar(integ, alumno, sql, p, tabla="coin_wallets", que=f"alumno UPDATE wallet {tipo}")
     assert (integ.saldo("profile", alumno), integ.saldo("tenant", tenant)) == (10, 1000)
-    control_dueno(integ.como(alumno, "select balance from coin_wallets "
-                                     "where owner_type = 'profile' and owner_id = auth.uid()"),
-                  "el dueño lee su wallet")
+    sin_acceso(integ.como(alumno, "select balance from coin_wallets "
+                                  "where owner_type = 'profile' and owner_id = auth.uid()"),
+               "coin_wallets", "el dueño lee su wallet directo")
 
 
-@xfail_bug("BUG-3: el ataque PASA (sin SQLSTATE, 2 filas): tenant_isolation_select "
-        "deja leer correct_answer")
 def test_d5_alumno_no_lee_correct_answer(integ) -> None:
-    """E3: SELECT correct_answer de challenge_questions -> 0 filas o 42501."""
+    """E3/BUG-3: SELECT correct_answer de challenge_questions -> 42501."""
     tenant = integ.crear_tenant()
     alumno = integ.crear_perfil(tenant)
     cid, _ = integ.crear_challenge(tenant, integ.crear_perfil(tenant, rol="teacher"))
     sql, p = "select correct_answer from challenge_questions where challenge_id = :c", {"c": cid}
-    control_postgres(integ.como(None, sql, p, rol="postgres"), "postgres lee las claves", filas=2)
     identidad(integ, alumno)
-    rechazado(integ.como(alumno, sql, p), "alumno lee correct_answer")
-    control_dueno(integ.como(alumno, "select id from challenges where id = :c", p),
-                  "el alumno ve el reto activo de su colegio")
+    atacar(integ, alumno, sql, p, tabla="challenge_questions", que="alumno lee correct_answer",
+           filas=2)
+    sin_acceso(integ.como(alumno, "select id from challenges where id = :c", p),
+               "challenges", "el alumno ve el reto directo")
 
 
-@xfail_bug("BUG-4: el ataque PASA (sin SQLSTATE, 1 fila): tenant_isolation_insert "
-        "solo mira el tenant y el alumno inserta un intento ganado")
 def test_d6_alumno_no_inserta_intentos(integ) -> None:
-    """E4/R1: INSERT de un intento 'ganado', propio o a nombre de otro -> 42501."""
+    """E4/R1/BUG-4: INSERT de un intento 'ganado', propio o a nombre de otro -> 42501."""
     tenant = integ.crear_tenant()
     atacante, victima = par(integ.crear_perfil(tenant), integ.crear_perfil(tenant))
     cid, _ = integ.crear_challenge(tenant, integ.crear_perfil(tenant, rol="teacher"))
@@ -309,52 +297,42 @@ def test_d6_alumno_no_inserta_intentos(integ) -> None:
     identidad(integ, atacante)
     for quien, alumno in (("propio", atacante), ("ajeno", victima)):
         p = {"t": tenant, "c": cid, "s": alumno}
-        control_postgres(integ.como(None, sql, p, rol="postgres"), f"postgres, intento {quien}")
-        rechazado(integ.como(atacante, sql, p), f"INSERT intento {quien}", solo_42501=True)
+        atacar(integ, atacante, sql, p, tabla="challenge_attempts", que=f"INSERT intento {quien}")
     assert integ.valor("select count(*) from challenge_attempts") == 0
-    control_dueno(integ.como(atacante, "select id from challenges where id = :c", {"c": cid}),
-                  "el alumno ve el reto")
+    sin_acceso(integ.como(atacante, "select id from challenges where id = :c", {"c": cid}),
+               "challenges", "el alumno ve el reto directo")
 
 
-@xfail_bug("BUG-5: el ataque PASA (sin SQLSTATE, 1 fila): un alumno da membresía "
-        "admin a otro perfil")
 def test_d7_alumno_no_crea_membresia_admin(integ) -> None:
-    """E5: INSERT memberships role='admin' para otro perfil -> 42501. Escribe humo."""
+    """E5/BUG-5: INSERT memberships role='admin' para otro perfil -> 42501. Escribe humo."""
     propio, ajeno = colegios(integ)
     alumno = integ.crear_perfil(propio)
     otro = integ.crear_perfil(ajeno)  # sin membresía en `propio`: no choca con el UNIQUE
     sql = "insert into memberships (tenant_id, profile_id, role) values (:t, :p, 'admin')"
     p = {"t": propio, "p": otro}
-    control_postgres(integ.como(None, sql, p, rol="postgres"), "postgres crea la membresía")
     identidad(integ, alumno)
-    res = integ.como(alumno, sql, p)
-    registrar_humo("D7", "authenticated", res)
-    rechazado(res, "alumno INSERT memberships admin", solo_42501=True)
-    control_dueno(integ.como(alumno, "select id from memberships where profile_id = auth.uid()"),
-                  "el alumno lee su membresía")
+    atacar(integ, alumno, sql, p, tabla="memberships", que="alumno INSERT memberships admin",
+           humo=("D7", "authenticated"))
+    sin_acceso(integ.como(alumno, "select id from memberships where profile_id = auth.uid()"),
+               "memberships", "el alumno lee su membresía directo")
 
 
-@xfail_bug("BUG-6: el ataque PASA (sin SQLSTATE, 1 fila): profiles_update_own deja "
-        "editar current_streak, xp y role")
 def test_d8_alumno_no_edita_racha_xp_ni_rol(integ) -> None:
-    """E2b: UPDATE de la propia current_streak, xp o role -> no editable."""
+    """E2b/BUG-6: UPDATE de la propia current_streak, xp o role -> 42501."""
     tenant = integ.crear_tenant()
     alumno = integ.crear_perfil(tenant, racha=2)
     identidad(integ, alumno)
     for columna, valor in (("current_streak", 999), ("xp", 999999), ("role", "super_admin")):
         sql, p = f"update profiles set {columna} = :v where id = :p", {"v": valor, "p": alumno}
-        control_postgres(integ.como(None, sql, p, rol="postgres"), f"postgres edita {columna}")
-        rechazado(integ.como(alumno, sql, p), f"alumno UPDATE profiles.{columna}")
+        atacar(integ, alumno, sql, p, tabla="profiles", que=f"alumno UPDATE profiles.{columna}")
     assert integ.fila("select current_streak, xp, role from profiles where id = :p",
                       p=alumno) == {"current_streak": 2, "xp": 0, "role": "student"}
-    control_dueno(integ.como(alumno, "select id from profiles where id = auth.uid()"),
-                  "el alumno lee su perfil")
+    sin_acceso(integ.como(alumno, "select id from profiles where id = auth.uid()"),
+               "profiles", "el alumno lee su perfil directo")
 
 
-@xfail_bug("BUG-7: el ataque PASA (sin SQLSTATE, 1 fila): el alumno crea su sesión "
-        "y marca su asistencia")
 def test_d9_alumno_no_crea_sesion_ni_marca_asistencia(integ) -> None:
-    """Nuevo: INSERT attendance_sessions y attendance -> 42501; el código -> 404."""
+    """BUG-7: INSERT attendance_sessions y attendance -> 42501; por la API, el código -> 404."""
     tenant = integ.crear_tenant(pool=1000)
     profe = integ.crear_perfil(tenant, rol="teacher", group_code="G1")
     alumno = integ.crear_perfil(tenant, group_code="G1", saldo=0)
@@ -372,9 +350,8 @@ def test_d9_alumno_no_crea_sesion_ni_marca_asistencia(integ) -> None:
     identidad(integ, alumno)
     todos = {"t": tenant, "g": grupo, "c": falso, "s": sesion, "yo": alumno}
     for tabla, sql in ataques:
-        p = parametros(sql, todos)
-        control_postgres(integ.como(None, sql, p, rol="postgres"), f"postgres inserta {tabla}")
-        rechazado(integ.como(alumno, sql, p), f"alumno INSERT {tabla}", solo_42501=True)
+        atacar(integ, alumno, sql, parametros(sql, todos), tabla=tabla,
+               que=f"alumno INSERT {tabla}")
     h = integ.headers(alumno)
     r = client.post("/core/attendance/check-in", headers=h, json={"session_code": falso})
     assert r.status_code == 404, r.text
@@ -382,15 +359,12 @@ def test_d9_alumno_no_crea_sesion_ni_marca_asistencia(integ) -> None:
     assert ok.status_code == 200, ok.text  # control: el check-in legítimo funciona
 
 
-@xfail_bug("BUG-9: el ataque PASA (sin SQLSTATE, 1 fila): el alumno escribe en "
-        "tablas de módulos sin código")
 @pytest.mark.parametrize("tabla", sorted(INSERTS_MODULOS))
 def test_d11_alumno_no_escribe_tablas_de_modulos(integ, tabla: str) -> None:
-    """D11: INSERT del alumno en 8 tablas de módulos vacíos -> 42501."""
+    """D11/BUG-9: INSERT del alumno en 8 tablas de módulos vacíos -> 42501."""
     tenant = integ.crear_tenant()
     alumno, otro = par(integ.crear_perfil(tenant), integ.crear_perfil(tenant))
     sql = INSERTS_MODULOS[tabla]
     p = parametros(sql, sembrar_modulos(integ, tenant, alumno, otro))
-    control_postgres(integ.como(None, sql, p, rol="postgres"), f"postgres inserta en {tabla}")
     identidad(integ, alumno)
-    rechazado(integ.como(alumno, sql, p), f"alumno INSERT {tabla}", solo_42501=True)
+    atacar(integ, alumno, sql, p, tabla=tabla, que=f"alumno INSERT {tabla}")

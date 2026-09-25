@@ -1,8 +1,8 @@
 """Humo de la fixture de integración (espec §5).
 
 Comprueba que la base que usan los tests `integ` es la que dicen las
-migraciones: Alembic en 030, RLS activo en las 26 tablas, las 51 políticas
-de la 030 y la función `auth.uid()` de Supabase. El resultado queda escrito en
+migraciones: Alembic en 031, RLS activo en las 26 tablas, las 51 políticas
+(la 031 no las toca) y la función `auth.uid()` de Supabase. El resultado queda escrito en
 `tests/_salida/humo_integ.json` (lo escribe la fixture `humo_integ`).
 """
 from __future__ import annotations

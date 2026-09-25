@@ -18,7 +18,10 @@ if TYPE_CHECKING:
 # Roles con los que `como` puede ejecutar. `anon` y `authenticated` son los de
 # Supabase (la RLS aplica); `postgres` es el de la fixture (ignora la RLS) y se
 # usa solo para los controles: "la misma sentencia, sin RLS, sí funciona".
-ROLES_COMO = ("anon", "authenticated", "postgres")
+# `service_role` es el rol con el que se conecta el backend (BYPASSRLS): es el
+# segundo control de la 031, "a los clientes se les quitó el acceso, pero al
+# backend no" (docs/ESPEC_bug3a9_sin_acceso_directo.md §2).
+ROLES_COMO = ("anon", "authenticated", "postgres", "service_role")
 
 
 @dataclass(frozen=True)
@@ -86,6 +89,8 @@ class ComoMixin:
           4. ROLLBACK siempre: el ataque no deja rastro en la base.
         `rol="postgres"` corre la misma sentencia sin cambiar de rol: es el
         control de "la sentencia es válida; si falla, fue la RLS".
+        `rol="service_role"` (sin perfil) hace `SET LOCAL ROLE service_role`:
+        el control de "el backend sí conserva el acceso" (031).
         """
         rol_efectivo = rol or ("anon" if perfil is None else "authenticated")
         validar_identidad(rol_efectivo, perfil)

@@ -22,6 +22,7 @@ import pytest
 
 import tests.seguridad.test_aceptacion as seg
 import tests.seguridad.test_bug2_funcion as funcion
+import tests.seguridad.veredictos as veredictos
 from tests.seguridad.veredictos import sembrar
 
 pytestmark = pytest.mark.integ
@@ -68,7 +69,7 @@ def test_tramposo_bug2_pone_rojo_su_test(integ, monkeypatch, clave: str) -> None
         "and tablename = 'memberships' and policyname = 'tenant_isolation_select'")
     assert definicion and condicion, "control: la 030 no está aplicada"
     # El humo lo escribe la corrida real; un tramposo no debe ensuciarlo.
-    monkeypatch.setattr(seg, "registrar_humo", lambda *_a, **_k: None)
+    monkeypatch.setattr(veredictos, "registrar_humo", lambda *_a, **_k: None)
     try:
         for sql in romper:
             sembrar(integ, sql)

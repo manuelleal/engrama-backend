@@ -1,14 +1,24 @@
-"""Cómo se juzga un ataque contra la base (docs/ESPEC_aceptacion_seguridad.md §3).
+"""Cómo se juzga un ataque contra la base.
 
-Regla anti-vacío: un "rechazo" solo vale si en la misma prueba hay un control
-que demuestra que la sentencia era válida y que la identidad llegó a la base.
+Espec: docs/ESPEC_aceptacion_seguridad.md §3 y, desde la 031,
+docs/ESPEC_bug3a9_sin_acceso_directo.md §2 (decisión 005: los clientes no
+tienen NINGÚN acceso directo a `public`).
 
-  Rechazo válido  : 0 filas, UPDATE 0 con el valor intacto, o SQLSTATE 42501.
-  42P17 (recursión infinita en la RLS, BUG-2): es ROTURA, nunca rechazo
-                    -> AssertionError (un xfail de BUG-2 lo espera así).
-  Otro SQLSTATE   : el test está mal escrito (FK, sintaxis, NOT NULL...)
-                    -> PruebaRota, que NO es AssertionError: un xfail con
-                    `raises=AssertionError` no puede esconderlo y queda en rojo.
+Regla anti-vacío: un "sin acceso" solo vale si en la misma prueba hay un
+control que demuestra que la sentencia era válida (como `postgres`) y que el
+backend sí la puede correr (como `service_role`), y que la identidad del
+atacante llegó a la base (`identidad`).
+
+`sin_acceso(res, tabla, que)`:
+  42501 "permission denied for table <tabla>" : el único resultado válido.
+  42P17, otro 42501 o sin error               : AssertionError. "0 filas" NO
+      vale: la RLS también las produce, y un GRANT devuelto a mano dejaría
+      pasar el test. Otro 42501 (p. ej. "permission denied for table
+      memberships" o "new row violates row-level security policy") significa
+      que el cliente SÍ tiene permiso sobre `tabla` y lo paró otra cosa.
+  Otro SQLSTATE                               : PruebaRota (FK, sintaxis,
+      NOT NULL...). NO es AssertionError: un tramposo que espera
+      AssertionError no puede confundirlo con un rechazo.
 
 Este módulo no empieza por `test_`: pytest no lo recolecta.
 """
@@ -16,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 from uuid import UUID
 
@@ -25,6 +36,10 @@ from tests.seguridad.como import Resultado
 
 RECHAZO = "42501"   # insufficient_privilege: la RLS (o un GRANT) dijo que no
 RLS_ROTA = "42P17"  # infinite_recursion: la política se consulta a sí misma
+
+# Roles de cliente de Supabase, en el orden en que se ataca (031: ninguno
+# tiene acceso directo a `public`).
+CLIENTES = ("anon", "authenticated")
 
 RUTA_HUMO_SEGURIDAD = RAIZ_BACKEND / "tests" / "_salida" / "humo_seguridad.json"
 
@@ -68,36 +83,57 @@ def _describir(res: Resultado) -> str:
     return f"SQLSTATE {res.sqlstate}: {res.mensaje}"
 
 
-def rechazado(res: Resultado, que: str, *, solo_42501: bool = False) -> None:
-    """Afirma el rechazo. `solo_42501`: en un INSERT, 0 filas no es un rechazo."""
+def sin_acceso(res: Resultado, tabla: str, que: str) -> None:
+    """Afirma que el cliente no tiene privilegio sobre `tabla` (031, espec §2).
+
+    Único válido: 42501 con "permission denied for table <tabla>" (la palabra
+    completa: `groups` no se confunde con `teacher_groups`).
+    """
     if res.sqlstate == RLS_ROTA:
-        raise AssertionError(f"{que}: 42P17, la RLS se rompe en vez de rechazar (BUG-2)")
+        raise AssertionError(f"{que}: 42P17, la RLS se rompe (BUG-2) -> {_describir(res)}")
     if res.sqlstate is not None and res.sqlstate != RECHAZO:
-        raise PruebaRota(f"{que}: error que no es rechazo ni BUG-2 -> {_describir(res)}")
-    if res.sqlstate == RECHAZO:
+        raise PruebaRota(f"{que}: error que no es de privilegios -> {_describir(res)}")
+    patron = rf"permission denied for table {re.escape(tabla)}\b"
+    if res.sqlstate == RECHAZO and re.search(patron, res.mensaje):
         return
-    assert not solo_42501 and res.afectadas == 0, (
-        f"{que}: el ataque PASA ({_describir(res)})"
+    raise AssertionError(
+        f"{que}: se esperaba 42501 'permission denied for table {tabla}' "
+        f"y llegó {_describir(res)}"
     )
 
 
-def control_postgres(res: Resultado, que: str, *, filas: int = 1) -> None:
-    """La misma sentencia como `postgres` (sin RLS) funciona. Si no, el test está roto."""
+def control_postgres(res: Resultado, que: str, *, filas: int = 1, rol: str = "postgres") -> None:
+    """La misma sentencia como `rol` funciona. Si no, el test está roto."""
     if res.sqlstate is not None or res.afectadas != filas:
         raise PruebaRota(
-            f"control '{que}' como postgres: {_describir(res)}; se esperaban {filas} fila(s)"
+            f"control '{que}' como {rol}: {_describir(res)}; se esperaban {filas} fila(s)"
         )
 
 
-def control_dueno(res: Resultado, que: str, *, filas: int = 1) -> None:
-    """Lo legítimo funciona con RLS. 42P17 o 0 filas aquí es un bug, no un test roto."""
-    if res.sqlstate == RLS_ROTA:
-        raise AssertionError(f"control '{que}': 42P17, la RLS rompe lo legítimo (BUG-2)")
-    if res.sqlstate is not None:
-        raise PruebaRota(f"control '{que}': {_describir(res)}")
-    assert res.afectadas == filas, (
-        f"control '{que}': {res.afectadas} fila(s), se esperaban {filas}"
-    )
+def controles(integ: Integ, sql: str, params: dict[str, Any], que: str,
+              *, filas: int = 1) -> None:
+    """Control positivo (espec §2): `postgres` y `service_role` corren la sentencia.
+
+    `postgres` prueba que la sentencia es válida; `service_role` (el backend)
+    prueba que la 031 no le quitó el acceso. Se deshace (`como` hace ROLLBACK).
+    """
+    for rol in ("postgres", "service_role"):
+        control_postgres(integ.como(None, sql, params, rol=rol), que, filas=filas, rol=rol)
+
+
+def atacar(integ: Integ, perfil: UUID, sql: str, params: dict[str, Any], *, tabla: str,
+           que: str, filas: int = 1, humo: tuple[str, str] | None = None) -> None:
+    """Controles y el ataque como `anon` y como `authenticated` (con `perfil`).
+
+    `humo` = (id, rol): registra en humo_seguridad.json el resultado de ese
+    rol ANTES de juzgarlo, para que un rojo también quede escrito.
+    """
+    controles(integ, sql, params, f"{que} ({tabla})", filas=filas)
+    for rol in CLIENTES:
+        res = integ.como(None if rol == "anon" else perfil, sql, params)
+        if humo is not None and humo[1] == rol:
+            registrar_humo(humo[0], rol, res)
+        sin_acceso(res, tabla, f"[{rol}] {que}")
 
 
 def identidad(integ: Integ, perfil: UUID | None) -> None:

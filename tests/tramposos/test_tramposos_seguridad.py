@@ -1,4 +1,6 @@
-"""Tramposos de la aceptación de seguridad (docs/ESPEC_aceptacion_seguridad.md §3).
+"""Tramposos de la aceptación de seguridad.
+
+Especs: docs/ESPEC_aceptacion_seguridad.md §3 y docs/ESPEC_bug3a9_sin_acceso_directo.md §3.
 
 Mismo patrón que test_tramposos_integ.py: se pone una versión ROTA a propósito,
 se corre el cuerpo del test real y se exige AssertionError con el mensaje del
@@ -12,15 +14,22 @@ cualquier cosa. Si el test real pasara con el tramposo, este queda en rojo.
   A5  submit usa al dueño del intento, no al que envía       -> test_a5
   A6  build_auth_context toma profiles.role                  -> test_a6
   A7  get_challenge sin filtro de tenant                     -> test_a7
-  D1  política `TO anon USING (true)` en profiles            -> test_d1
-  D4  política `WITH CHECK (true)` en coin_ledger            -> test_d4
+  D1  GRANT SELECT ON profiles TO authenticated              -> test_d1
+  D4  GRANT INSERT ON coin_ledger TO authenticated           -> test_d4
   D10 se crea una política `USING (true)`                    -> test_d10
 
-Los tramposos de base CREAN una política real (confirmada) y la BORRAN en el
-`finally`: `como` usa su propia conexión y solo ve lo confirmado. El contenedor
-es desechable (tmpfs); si el proceso muriera a mitad, la política no sobrevive
-a la siguiente sesión. Los xfail (D2, D5-D9, D11) llevan su tramposo en la
-espec de su BUG (§3), no aquí.
+Los tramposos de base CAMBIAN la base de verdad (confirmado: `como` usa su
+propia conexión y solo ve lo confirmado) y la RESTAURAN en el `finally`. Los
+de privilegios comprueban además que las ACL de `public` y los DEFAULT
+quedaron exactamente como los dejó la 031. El contenedor es desechable
+(tmpfs); si el proceso muriera a mitad, el daño no sobrevive a la sesión.
+
+Fuera de la diagonal (ERR-10): D1 y D4 también ponen rojo a D12, que mira
+todo el catálogo. Está documentado en la espec §3; se verifica a mano y no se
+automatiza aquí. Medido a mano el 2026-09-25 y NO previsto por la espec: D1
+también pone rojo a D2 y D8 (los tres atacan `profiles` como `authenticated`).
+Reportado como candidato a ERR. Los tramposos de D12, D13 y los regrant van
+en el commit siguiente.
 """
 from __future__ import annotations
 
@@ -34,6 +43,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 import tests.seguridad.test_aceptacion as seg
+import tests.seguridad.veredictos as veredictos
 from src.auth import router as auth_router
 from src.auth import service as auth_service
 from src.challenge_engine.service import attempts as attempts_mod
@@ -100,6 +110,9 @@ def _ruta_patch_saldo() -> Iterator[None]:
         app.router.routes.remove(ruta)
 
 
+Aplicar = Callable[[Any, pytest.MonkeyPatch], AbstractContextManager]
+
+
 @contextmanager
 def _politica(integ: Any, tabla: str, nombre: str, cuerpo: str) -> Iterator[None]:
     sembrar(integ, f"create policy {nombre} on {tabla} {cuerpo}")
@@ -107,6 +120,47 @@ def _politica(integ: Any, tabla: str, nombre: str, cuerpo: str) -> Iterator[None
         yield
     finally:
         sembrar(integ, f"drop policy if exists {nombre} on {tabla}")
+
+
+# Las ACL de `public` (relaciones y funciones) y todos los DEFAULT, como texto
+# ordenado: sirve para comprobar que un tramposo dejó TODO como estaba.
+_ACL = """
+    select coalesce(string_agg(x, ';' order by x), '') from (
+      select format('rel|%s|%s|%s|%s', c.relname, a.grantee, a.privilege_type,
+                    a.is_grantable) as x
+      from pg_class c join pg_namespace n on n.oid = c.relnamespace,
+           lateral aclexplode(c.relacl) a
+      where n.nspname = 'public'
+      union all
+      select format('proc|%s|%s|%s', p.oid::regprocedure, a.grantee, a.privilege_type)
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace,
+           lateral aclexplode(p.proacl) a
+      where n.nspname = 'public'
+      union all
+      select format('def|%s|%s|%s|%s|%s', d.defaclrole, d.defaclnamespace,
+                    d.defaclobjtype, a.grantee, a.privilege_type)
+      from pg_default_acl d, lateral aclexplode(d.defaclacl) a
+    ) as t
+"""
+
+
+@contextmanager
+def _privilegios(integ: Any, romper: list[str], restaurar: list[str]) -> Iterator[None]:
+    """Rompe los privilegios, y al salir los restaura y exige ACL idénticas."""
+    antes = integ.valor(_ACL)
+    for sql in romper:
+        sembrar(integ, sql)
+    try:
+        yield
+    finally:
+        for sql in restaurar:
+            sembrar(integ, sql)
+        assert integ.valor(_ACL) == antes, "el tramposo no dejó las ACL como las dejó la 031"
+
+
+def _grant(privilegio: str, tabla: str, roles: str) -> Aplicar:
+    return lambda i, _mp: _privilegios(i, [f"grant {privilegio} on {tabla} to {roles}"],
+                                       [f"revoke {privilegio} on {tabla} from {roles}"])
 
 
 def _parche(objetivo: Any, nombre: str, valor: Any) -> Callable[..., AbstractContextManager]:
@@ -119,7 +173,6 @@ def _parche(objetivo: Any, nombre: str, valor: Any) -> Callable[..., AbstractCon
 # =============================================================================
 # Registro: id -> (cómo romper, test real, mensaje con el que debe caer)
 # =============================================================================
-Aplicar = Callable[[Any, pytest.MonkeyPatch], AbstractContextManager]
 TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[Any], None], str]] = {
     "A1": (_parche(auth_router, "profile_to_schema", _perfil_con_hash),
            seg.test_a1_auth_me_no_expone_pin_hash, "el hash del PIN sale"),
@@ -135,12 +188,10 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[Any], None], str]] = {
            seg.test_a6_rol_del_perfil_no_da_permisos, "/challenges/all -> 200"),
     "A7": (_parche(challenges_mod, "get_challenge", _get_challenge_sin_tenant),
            seg.test_a7_otro_colegio_no_se_ve, "200 == 404"),
-    "D1": (lambda i, _mp: _politica(i, "profiles", "trampa_d1",
-                                    "for select to anon using (true)"),
-           seg.test_d1_anon_no_lee_ni_escribe, "anon SELECT profiles: el ataque PASA"),
-    "D4": (lambda i, _mp: _politica(i, "coin_ledger", "trampa_d4",
-                                    "for insert to authenticated with check (true)"),
-           seg.test_d4_nadie_escribe_el_ledger, "INSERT coin_ledger: el ataque PASA"),
+    "D1": (_grant("select", "profiles", "authenticated"), seg.test_d1_anon_no_lee_ni_escribe,
+           r"\[authenticated\] SELECT profiles: se esperaba 42501"),
+    "D4": (_grant("insert", "coin_ledger", "authenticated"), seg.test_d4_nadie_escribe_el_ledger,
+           r"\[authenticated\] alumno INSERT coin_ledger: se esperaba 42501"),
     "D10": (lambda i, _mp: _politica(i, "badges", "trampa_d10",
                                      "for select to authenticated using (true)"),
             seg.test_d10_ninguna_politica_abierta, "políticas abiertas: badges.trampa_d10"),
@@ -151,6 +202,6 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[Any], None], str]] = {
 def test_tramposo_pone_rojo_su_test(integ, monkeypatch, clave: str) -> None:
     aplicar, test_real, motivo = TRAMPOSOS[clave]
     # El humo lo escribe la corrida real; un tramposo no debe ensuciarlo.
-    monkeypatch.setattr(seg, "registrar_humo", lambda *_a, **_k: None)
+    monkeypatch.setattr(veredictos, "registrar_humo", lambda *_a, **_k: None)
     with aplicar(integ, monkeypatch), pytest.raises(AssertionError, match=motivo):
         test_real(integ)

@@ -10,7 +10,7 @@
     "filas": 0,
     "id": "D1-select",
     "rol": "anon",
-    "sqlstate": null,
+    "sqlstate": "42501",
     "veredicto": "rechaza"
   },
   "D4": {
@@ -21,10 +21,10 @@
     "veredicto": "rechaza"
   },
   "D7": {
-    "filas": 1,
+    "filas": 0,
     "id": "D7",
     "rol": "authenticated",
-    "sqlstate": null,
-    "veredicto": "pasa"
+    "sqlstate": "42501",
+    "veredicto": "rechaza"
   }
 }
