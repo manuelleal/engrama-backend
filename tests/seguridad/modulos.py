@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID, uuid4
 
-from tests.integ_db import Integ
+from tests.integ_ayudante import Integ
 from tests.seguridad.veredictos import sembrar
 
 INSERTS_MODULOS: dict[str, str] = {

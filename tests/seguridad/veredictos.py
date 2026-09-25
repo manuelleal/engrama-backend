@@ -19,7 +19,9 @@ import os
 from typing import Any
 from uuid import UUID
 
-from tests.integ_db import RAIZ_BACKEND, Integ, Resultado
+from tests.integ_ayudante import Integ
+from tests.integ_db import RAIZ_BACKEND
+from tests.seguridad.como import Resultado
 
 RECHAZO = "42501"   # insufficient_privilege: la RLS (o un GRANT) dijo que no
 RLS_ROTA = "42P17"  # infinite_recursion: la política se consulta a sí misma

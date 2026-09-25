@@ -1,0 +1,142 @@
+PASSED tests/auth/test_auth_endpoints.py::test_health_is_public
+PASSED tests/auth/test_auth_endpoints.py::test_logout_without_header_returns_401
+PASSED tests/auth/test_auth_endpoints.py::test_me_with_empty_bearer_returns_401
+PASSED tests/auth/test_auth_endpoints.py::test_me_with_expired_token_returns_401
+PASSED tests/auth/test_auth_endpoints.py::test_me_with_invalid_signature_returns_401
+PASSED tests/auth/test_auth_endpoints.py::test_me_with_malformed_header_returns_401
+PASSED tests/auth/test_auth_endpoints.py::test_me_without_header_returns_401
+PASSED tests/auth/test_auth_endpoints.py::test_session_without_header_returns_401
+PASSED tests/auth/test_validate_jwt.py::test_expired_jwt_raises_401
+PASSED tests/auth/test_validate_jwt.py::test_invalid_signature_raises_401
+PASSED tests/auth/test_validate_jwt.py::test_malformed_jwt_raises_401
+PASSED tests/auth/test_validate_jwt.py::test_missing_sub_claim_raises_401
+PASSED tests/auth/test_validate_jwt.py::test_valid_jwt_returns_payload
+PASSED tests/challenge_engine/test_attempts.py::TestBuildPrompt::test_extra_instructions_included
+PASSED tests/challenge_engine/test_attempts.py::TestBuildPrompt::test_includes_topic_and_level
+PASSED tests/challenge_engine/test_attempts.py::TestGradeAnswers::test_all_correct_returns_100
+PASSED tests/challenge_engine/test_attempts.py::TestGradeAnswers::test_all_wrong_returns_0
+PASSED tests/challenge_engine/test_attempts.py::TestGradeAnswers::test_case_insensitive_and_strip
+PASSED tests/challenge_engine/test_attempts.py::TestGradeAnswers::test_empty_questions_returns_zero
+PASSED tests/challenge_engine/test_attempts.py::TestGradeAnswers::test_missing_answer_counts_as_wrong
+PASSED tests/challenge_engine/test_attempts.py::TestGradeAnswers::test_partial_correct
+PASSED tests/challenge_engine/test_attempts.py::TestIsAttemptCorrect::test_exact_types_require_100[listening]
+PASSED tests/challenge_engine/test_attempts.py::TestIsAttemptCorrect::test_exact_types_require_100[multiple_choice]
+PASSED tests/challenge_engine/test_attempts.py::TestIsAttemptCorrect::test_partial_types_accept_70[fill_blank]
+PASSED tests/challenge_engine/test_attempts.py::TestIsAttemptCorrect::test_partial_types_accept_70[open]
+PASSED tests/challenge_engine/test_attempts.py::TestParseModelOutput::test_direct_json
+PASSED tests/challenge_engine/test_attempts.py::TestParseModelOutput::test_extra_prose_around
+PASSED tests/challenge_engine/test_attempts.py::TestParseModelOutput::test_malformed_json_raises_502
+PASSED tests/challenge_engine/test_attempts.py::TestParseModelOutput::test_no_json_raises_502
+PASSED tests/challenge_engine/test_attempts.py::TestParseModelOutput::test_wrapped_in_markdown
+PASSED tests/challenge_engine/test_attempts.py::test_get_challenge_detail_without_auth_returns_401
+PASSED tests/challenge_engine/test_attempts.py::test_start_attempt_creates_in_progress
+PASSED tests/challenge_engine/test_attempts.py::test_start_attempt_max_attempts_exceeded_returns_429
+PASSED tests/challenge_engine/test_attempts.py::test_start_attempt_without_auth_returns_401
+PASSED tests/challenge_engine/test_attempts.py::test_submit_all_correct_awards_coins_and_xp
+PASSED tests/challenge_engine/test_attempts.py::test_submit_all_wrong_awards_nothing
+PASSED tests/challenge_engine/test_attempts.py::test_submit_increments_current_winners_only_if_correct
+PASSED tests/challenge_engine/test_attempts.py::test_submit_partial_correct_computes_score
+PASSED tests/challenge_engine/test_attempts.py::test_submit_twice_returns_409
+PASSED tests/challenge_engine/test_attempts.py::test_submit_without_auth_returns_401
+PASSED tests/challenge_engine/test_challenges.py::test_attempts_history_without_auth_returns_401
+PASSED tests/challenge_engine/test_challenges.py::test_challenge_out_questions_do_not_leak_correct_answer
+PASSED tests/challenge_engine/test_challenges.py::test_challenge_question_out_omits_correct_answer
+PASSED tests/challenge_engine/test_challenges.py::test_create_challenge_teacher_returns_201
+PASSED tests/challenge_engine/test_challenges.py::test_create_challenge_with_student_role_returns_403
+PASSED tests/challenge_engine/test_challenges.py::test_create_challenge_without_auth_returns_401
+PASSED tests/challenge_engine/test_challenges.py::test_generate_with_student_role_returns_403
+PASSED tests/challenge_engine/test_challenges.py::test_generate_without_auth_returns_401
+PASSED tests/challenge_engine/test_challenges.py::test_get_all_with_student_role_returns_403
+PASSED tests/challenge_engine/test_challenges.py::test_get_all_without_auth_returns_401
+PASSED tests/challenge_engine/test_challenges.py::test_list_challenges_hides_correct_answer_at_http
+PASSED tests/challenge_engine/test_challenges.py::test_list_challenges_student_filters_by_group
+PASSED tests/challenge_engine/test_challenges.py::test_list_challenges_without_auth_returns_401
+PASSED tests/challenge_engine/test_challenges.py::test_list_excludes_full_capacity
+PASSED tests/challenge_engine/test_challenges.py::test_patch_status_updates_row
+PASSED tests/challenge_engine/test_schemas_entrada.py::test_uuid_in_acepta_texto_rechaza_formato_y_extra[AnswerSubmit]
+PASSED tests/challenge_engine/test_schemas_entrada.py::test_uuid_in_acepta_texto_rechaza_formato_y_extra[ChallengeCreate]
+PASSED tests/challenge_engine/test_schemas_entrada.py::test_uuid_in_acepta_texto_rechaza_formato_y_extra[ChallengeGenerateRequest]
+PASSED tests/engrama_core/test_attendance.py::TestComputeNextStreak::test_a_week_ago_resets_to_1
+PASSED tests/engrama_core/test_attendance.py::TestComputeNextStreak::test_first_time_student_starts_at_1
+PASSED tests/engrama_core/test_attendance.py::TestComputeNextStreak::test_two_days_ago_resets_to_1
+PASSED tests/engrama_core/test_attendance.py::TestComputeNextStreak::test_yesterday_returns_sentinel_to_increment
+PASSED tests/engrama_core/test_attendance.py::TestHaversineDistance::test_far_points_continental
+PASSED tests/engrama_core/test_attendance.py::TestHaversineDistance::test_near_points_bogota
+PASSED tests/engrama_core/test_attendance.py::TestHaversineDistance::test_same_point_is_zero
+PASSED tests/engrama_core/test_attendance.py::TestSessionCodeGenerator::test_custom_length
+PASSED tests/engrama_core/test_attendance.py::TestSessionCodeGenerator::test_default_length_is_6
+PASSED tests/engrama_core/test_attendance.py::TestSessionCodeGenerator::test_randomness_across_calls
+PASSED tests/engrama_core/test_attendance.py::TestSessionCodeGenerator::test_uppercase_alphanumeric
+PASSED tests/engrama_core/test_attendance.py::TestStreakMultiplier::test_returns_1_5x_between_7_and_13[10]
+PASSED tests/engrama_core/test_attendance.py::TestStreakMultiplier::test_returns_1_5x_between_7_and_13[13]
+PASSED tests/engrama_core/test_attendance.py::TestStreakMultiplier::test_returns_1_5x_between_7_and_13[7]
+PASSED tests/engrama_core/test_attendance.py::TestStreakMultiplier::test_returns_1x_below_7[0]
+PASSED tests/engrama_core/test_attendance.py::TestStreakMultiplier::test_returns_1x_below_7[1]
+PASSED tests/engrama_core/test_attendance.py::TestStreakMultiplier::test_returns_1x_below_7[3]
+PASSED tests/engrama_core/test_attendance.py::TestStreakMultiplier::test_returns_1x_below_7[6]
+PASSED tests/engrama_core/test_attendance.py::TestStreakMultiplier::test_returns_2x_from_14[14]
+PASSED tests/engrama_core/test_attendance.py::TestStreakMultiplier::test_returns_2x_from_14[30]
+PASSED tests/engrama_core/test_attendance.py::TestStreakMultiplier::test_returns_2x_from_14[365]
+PASSED tests/engrama_core/test_attendance.py::test_attendance_history_without_auth_returns_401
+PASSED tests/engrama_core/test_attendance.py::test_checkin_duplicate_returns_409
+PASSED tests/engrama_core/test_attendance.py::test_checkin_expired_session_returns_410
+PASSED tests/engrama_core/test_attendance.py::test_checkin_geo_out_of_range_still_succeeds
+PASSED tests/engrama_core/test_attendance.py::test_checkin_invalid_session_code_returns_404
+PASSED tests/engrama_core/test_attendance.py::test_checkin_streak_14_awards_100
+PASSED tests/engrama_core/test_attendance.py::test_checkin_streak_7_awards_75
+PASSED tests/engrama_core/test_attendance.py::test_checkin_valid_awards_50_and_streak_1
+PASSED tests/engrama_core/test_attendance.py::test_checkin_without_auth_returns_401
+PASSED tests/engrama_core/test_attendance.py::test_create_session_as_student_returns_403
+PASSED tests/engrama_core/test_attendance.py::test_create_session_without_auth_returns_401
+PASSED tests/engrama_core/test_attendance.py::test_list_active_sessions_without_auth_returns_401
+PASSED tests/engrama_core/test_coins.py::test_award_coins_basic
+PASSED tests/engrama_core/test_coins.py::test_award_coins_double_entry
+PASSED tests/engrama_core/test_coins.py::test_award_coins_insufficient_balance
+PASSED tests/engrama_core/test_coins.py::test_balance_without_auth_returns_401
+PASSED tests/engrama_core/test_coins.py::test_get_balance_no_wallet
+PASSED tests/engrama_core/test_coins.py::test_history_invalid_limit_returns_422
+PASSED tests/engrama_core/test_coins.py::test_history_without_auth_returns_401
+PASSED tests/integ/test_humo_integ.py::test_humo_escribe_archivo_con_la_base_migrada
+PASSED tests/seguridad/test_aceptacion.py::test_a1_auth_me_no_expone_pin_hash
+PASSED tests/seguridad/test_aceptacion.py::test_a2_core_coins_es_solo_lectura
+PASSED tests/seguridad/test_aceptacion.py::test_a3_reto_no_revela_correct_answer
+PASSED tests/seguridad/test_aceptacion.py::test_a4_submit_no_acepta_premios_del_cliente
+PASSED tests/seguridad/test_aceptacion.py::test_a5_no_se_envia_el_intento_ajeno
+PASSED tests/seguridad/test_aceptacion.py::test_a6_rol_del_perfil_no_da_permisos
+PASSED tests/seguridad/test_aceptacion.py::test_a7_otro_colegio_no_se_ve
+PASSED tests/seguridad/test_aceptacion.py::test_d10_ninguna_politica_abierta
+PASSED tests/seguridad/test_aceptacion.py::test_d1_anon_no_lee_ni_escribe
+PASSED tests/seguridad/test_aceptacion.py::test_d3_alumno_no_edita_saldos
+PASSED tests/seguridad/test_aceptacion.py::test_d4_nadie_escribe_el_ledger
+PASSED tests/seguridad/test_bug2_funcion.py::test_bug2_funcion_blindada
+PASSED tests/seguridad/test_bug2_funcion.py::test_bug2_funcion_no_filtra
+PASSED tests/tramposos/test_tramposos_bug2.py::test_tramposo_bug2_pone_rojo_su_test[fuga]
+PASSED tests/tramposos/test_tramposos_bug2.py::test_tramposo_bug2_pone_rojo_su_test[recursiva]
+PASSED tests/tramposos/test_tramposos_bug2.py::test_tramposo_bug2_pone_rojo_su_test[sin_search_path]
+PASSED tests/tramposos/test_tramposos_integ.py::test_t1_ledger_descuadrado_rompe_double_entry
+PASSED tests/tramposos/test_tramposos_integ.py::test_t2_racha_sin_multiplicador_rompe_streak_7
+PASSED tests/tramposos/test_tramposos_integ.py::test_t3_base_sin_migrar_hace_fallar_el_humo
+PASSED tests/tramposos/test_tramposos_seguridad.py::test_tramposo_pone_rojo_su_test[A1]
+PASSED tests/tramposos/test_tramposos_seguridad.py::test_tramposo_pone_rojo_su_test[A2]
+PASSED tests/tramposos/test_tramposos_seguridad.py::test_tramposo_pone_rojo_su_test[A3]
+PASSED tests/tramposos/test_tramposos_seguridad.py::test_tramposo_pone_rojo_su_test[A4]
+PASSED tests/tramposos/test_tramposos_seguridad.py::test_tramposo_pone_rojo_su_test[A5]
+PASSED tests/tramposos/test_tramposos_seguridad.py::test_tramposo_pone_rojo_su_test[A6]
+PASSED tests/tramposos/test_tramposos_seguridad.py::test_tramposo_pone_rojo_su_test[A7]
+PASSED tests/tramposos/test_tramposos_seguridad.py::test_tramposo_pone_rojo_su_test[D10]
+PASSED tests/tramposos/test_tramposos_seguridad.py::test_tramposo_pone_rojo_su_test[D1]
+PASSED tests/tramposos/test_tramposos_seguridad.py::test_tramposo_pone_rojo_su_test[D4]
+XFAIL tests/seguridad/test_aceptacion.py::test_d11_alumno_no_escribe_tablas_de_modulos[announcements] - BUG-9: el ataque PASA (sin SQLSTATE, 1 fila): el alumno escribe en tablas de módulos sin código
+XFAIL tests/seguridad/test_aceptacion.py::test_d11_alumno_no_escribe_tablas_de_modulos[auction_bids] - BUG-9: el ataque PASA (sin SQLSTATE, 1 fila): el alumno escribe en tablas de módulos sin código
+XFAIL tests/seguridad/test_aceptacion.py::test_d11_alumno_no_escribe_tablas_de_modulos[badge_unlocks] - BUG-9: el ataque PASA (sin SQLSTATE, 1 fila): el alumno escribe en tablas de módulos sin código
+XFAIL tests/seguridad/test_aceptacion.py::test_d11_alumno_no_escribe_tablas_de_modulos[bets] - BUG-9: el ataque PASA (sin SQLSTATE, 1 fila): el alumno escribe en tablas de módulos sin código
+XFAIL tests/seguridad/test_aceptacion.py::test_d11_alumno_no_escribe_tablas_de_modulos[groups] - BUG-9: el ataque PASA (sin SQLSTATE, 1 fila): el alumno escribe en tablas de módulos sin código
+XFAIL tests/seguridad/test_aceptacion.py::test_d11_alumno_no_escribe_tablas_de_modulos[inventory] - BUG-9: el ataque PASA (sin SQLSTATE, 1 fila): el alumno escribe en tablas de módulos sin código
+XFAIL tests/seguridad/test_aceptacion.py::test_d11_alumno_no_escribe_tablas_de_modulos[shop_items] - BUG-9: el ataque PASA (sin SQLSTATE, 1 fila): el alumno escribe en tablas de módulos sin código
+XFAIL tests/seguridad/test_aceptacion.py::test_d11_alumno_no_escribe_tablas_de_modulos[teacher_groups] - BUG-9: el ataque PASA (sin SQLSTATE, 1 fila): el alumno escribe en tablas de módulos sin código
+XFAIL tests/seguridad/test_aceptacion.py::test_d2_pin_hash_ajeno_invisible - BUG-8: el ataque PASA (sin SQLSTATE, 1 fila): profiles_select_admin no filtra tenant y el admin de otro colegio lee pin_hash
+XFAIL tests/seguridad/test_aceptacion.py::test_d5_alumno_no_lee_correct_answer - BUG-3: el ataque PASA (sin SQLSTATE, 2 filas): tenant_isolation_select deja leer correct_answer
+XFAIL tests/seguridad/test_aceptacion.py::test_d6_alumno_no_inserta_intentos - BUG-4: el ataque PASA (sin SQLSTATE, 1 fila): tenant_isolation_insert solo mira el tenant y el alumno inserta un intento ganado
+XFAIL tests/seguridad/test_aceptacion.py::test_d7_alumno_no_crea_membresia_admin - BUG-5: el ataque PASA (sin SQLSTATE, 1 fila): un alumno da membresía admin a otro perfil
+XFAIL tests/seguridad/test_aceptacion.py::test_d8_alumno_no_edita_racha_xp_ni_rol - BUG-6: el ataque PASA (sin SQLSTATE, 1 fila): profiles_update_own deja editar current_streak, xp y role
+XFAIL tests/seguridad/test_aceptacion.py::test_d9_alumno_no_crea_sesion_ni_marca_asistencia - BUG-7: el ataque PASA (sin SQLSTATE, 1 fila): el alumno crea su sesión y marca su asistencia
