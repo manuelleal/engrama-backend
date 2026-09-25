@@ -19,7 +19,7 @@ cualquier cosa. Si el test real pasara con el tramposo, este queda en rojo.
 Los tramposos de base CREAN una política real (confirmada) y la BORRAN en el
 `finally`: `como` usa su propia conexión y solo ve lo confirmado. El contenedor
 es desechable (tmpfs); si el proceso muriera a mitad, la política no sobrevive
-a la siguiente sesión. Los xfail (D2, D3, D5-D9, D11) llevan su tramposo en la
+a la siguiente sesión. Los xfail (D2, D5-D9, D11) llevan su tramposo en la
 espec de su BUG (§3), no aquí.
 """
 from __future__ import annotations
