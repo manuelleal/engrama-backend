@@ -1,0 +1,30 @@
+{
+  "D1-insert": {
+    "filas": 0,
+    "id": "D1-insert",
+    "rol": "anon",
+    "sqlstate": "42501",
+    "veredicto": "rechaza"
+  },
+  "D1-select": {
+    "filas": 0,
+    "id": "D1-select",
+    "rol": "anon",
+    "sqlstate": null,
+    "veredicto": "rechaza"
+  },
+  "D4": {
+    "filas": 0,
+    "id": "D4",
+    "rol": "authenticated",
+    "sqlstate": "42501",
+    "veredicto": "rechaza"
+  },
+  "D7": {
+    "filas": 0,
+    "id": "D7",
+    "rol": "authenticated",
+    "sqlstate": "42P17",
+    "veredicto": "rota (42P17)"
+  }
+}
