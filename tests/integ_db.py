@@ -160,7 +160,7 @@ def levantar_contenedor() -> None:
 
 def _base_responde() -> bool:
     """True si el host puede conectarse y la imagen ya trae auth.uid()."""
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]
 
     async def _probar() -> bool:
         conn = await asyncpg.connect(url_asyncpg(), timeout=5)

@@ -27,6 +27,7 @@ pytest-asyncio = "^0.24.0"
 ruff = "^0.6.9"
 mypy = "^1.11.2"
 import-linter = "^2.0"
+types-python-jose = "^3.5.0.20260408"
 
 [build-system]
 requires = ["poetry-core"]
