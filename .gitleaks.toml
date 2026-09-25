@@ -1,0 +1,18 @@
+# Config de gitleaks para engrama-backend (docs/ESPEC_ci_y_deudas.md, C5).
+#
+# Extiende la config por defecto de gitleaks (sus reglas siguen activas) y
+# solo agrega una lista de permitidos MUY acotada para hallazgos sintéticos
+# ya revisados a mano. Un hallazgo nuevo detiene todo y se avisa a Christiam:
+# esta lista no crece sin que alguien la justifique aquí mismo.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ejemplos truncados en documentación, no credenciales reales"
+regexes = [
+  # docs/AUTH.md:121 (commit 45619dbc): "Authorization: Bearer eyJhbGci..."
+  # es un ejemplo de curl en la documentación, truncado a propósito con
+  # "...". Un JWT real nunca termina en esos tres puntos literales, así que
+  # esta regex no puede coincidir con un secreto verdadero.
+  '''eyJhbGci\.\.\.''',
+]
