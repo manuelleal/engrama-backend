@@ -4,6 +4,8 @@ F4 · Creador · 2026-09-25 · preregistro. Rama `test/fixture-integ`, base `d77
 
 **Corregido por ERR-16 (2026-09-25)** sobre `f4d930b`, con la validación del pedagogo (`investigacion/pedagogia/01-panel-docente.md`). Cambian §0 (hechos nuevos), §1, T2, T5, la ruta nueva T7, §2.1-§2.4, §3, §4, §5, §6, §7 y §8. **T5 y T7 no se implementan hasta que el coordinador anote en §2.4 la respuesta del pedagogo.** El resto (T1-T4, T6, M1-M4) sigue su curso.
 
+**Corregido por ERR-19 (2026-09-25)** con lo MEDIDO (regla 8): la matriz de `tests/_salida/matriz_tramposos_grupos.json` y los hallazgos H-1, H-2, H-3 y H-5 del auditor. Cambian §2 (nota en M3), §3 (la diagonal pasa a tener una columna medida), §4 (cuentas), §6 (BUG-11, **bloqueante para producción**) y §8. Ninguna regla de negocio cambia; lo que se corrige es la predicción y la cuenta.
+
 ## 0. Medido (contenedor propio desechable, puerto 55499, `.venv` oficial)
 - **163 passed**, **76** no-integ, ruff 0, mypy 0; **20** rutas APIRoute.
 - Ningún router usa `require_admin` (`src/shared/deps.py:98`); `src/teachers/*.py` tienen 0 líneas.
@@ -42,7 +44,7 @@ Toda la autorización pasa por **un solo punto**, `visible_groups(auth, only_ass
 | T7 | `GET …/{gid}/item-errors` | *Nueva, por ERR-16 (2026-09-25).* Indicador n.º 1 del pedagogo: los ítems con más error del grupo y su distractor más elegido, en agregado (§2.3). Usa `only_assigned=True` |
 | M1 | `POST /admin/groups` | `{group_code, max_capacity?}` → 201; código repetido → 409 |
 | M2 | `POST /admin/groups/{gid}/teachers` | `{documento_id}` con membresía `teacher` activa en el colegio → 201 (200 si ya estaba); si no, 404 |
-| M3 | `POST …/{gid}/students` | `{documento_id, nombre_completo}`. Crea el perfil si falta (uuid4, `pin_hash=''`); si existe, lo reusa sin pisar el nombre. 201 inscrito · 200 ya estaba · 409 si está en otro grupo, con otro rol o inactivo. Solo devuelve profile_id, documento_id y resultado |
+| M3 | `POST …/{gid}/students` | `{documento_id, nombre_completo}`. Crea el perfil si falta (uuid4, `pin_hash=''`); si existe, lo reusa sin pisar el nombre (*ERR-19: esto, con `documento_id` UNIQUE global, es BUG-11, §6*). 201 inscrito · 200 ya estaba · 409 si está en otro grupo, con otro rol o inactivo. Solo devuelve profile_id, documento_id y resultado |
 | M4 | `POST …/{gid}/students/import` | cuerpo `text/csv` UTF-8, BOM opcional, separador `,` o `;`. Cabecera `documento_id,nombre_completo` (`coins-mvp/app.js:3538`); el resto se ignora y `pin` nunca se guarda. ≤ 500 filas. **Todo o nada:** documento fuera de `^[A-Za-z0-9_-]{3,32}$` (`app.js:300-305`), nombre vacío, fila repetida o en otro grupo → 422 `[{fila, motivo}]` y 0 escrituras. Reimportar da `creados 0` |
 
 T usa `require_teacher` más `authorize_group`; M usa `require_admin` más `authorize_group`. Rol equivocado → **403 exacto**; recurso de otro grupo o colegio → **404 exacto**.
@@ -161,35 +163,56 @@ Actores:
 
 Son **48 prohibidas** (5 + 5×4 + 6×2 + 2 + 3×3 = 5 + 20 + 12 + 2 + 9 = 48) y **12 controles** (T1 1 + T2 2 + T3, T4, T5, T6 y T7 1 cada una + M1 1 + M2-M4 3 = 1 + 2 + 5 + 1 + 3 = 12). Cada escritura prohibida afirma además que no escribió nada.
 
+**Cómo quedaron escritos (medido; corregido por ERR-19, 2026-09-25).** Las 48 prohibidas son 48 funciones. De los 12 controles, **10 se fusionaron** dentro del test F de su ruta (D en F1, F2, F3, F4, F5 y F13; AA en F7, F8, F9 y F10) y **2 quedaron aparte** (`test_t2_control_aa` y `test_t6_control_d_reasigna_reto_sin_grupo`). Además nació **1 test fuera de la espec**, `test_m2_documento_sin_membresia_docente_404` (la rama "si no, 404" de M2). Cuenta: `grep "def test_" tests/teachers tests/integ/test_humo_grupos.py`. *El auditor (H-5) habló de 8 controles fusionados; con 8 la suma da 78 integ y no los 77 medidos. Con 10 + 1 extra cierra exacto (§4).*
+
 **Tramposos y diagonal PREDICHA** (ERR-15). Al escribir esta corrección, el implementador iba en el paso 2 de §7: `service/access.py` y `service/panel.py`, sin `only_assigned` y sin T2, T5 ni T7. Ninguna celda de las reglas nuevas se pudo medir. *Corregido por ERR-16 (2026-09-25): X9 se redefine, se agregan X10-X21 y cambia el rojo de X1 y X2.*
 
-| Tramposo | Rojo esperado | Archivo |
-|---|---|---|
-| X1 `visible_groups` sin colegio | DM×T1-T7; AB×{T1, T2, T3, T4, T6}; AB×M2-M4; F1. **No** AB×T5 ni AB×T7: `only_assigned` los sigue protegiendo | integ |
-| X2 sin `teacher_groups` (también anula `only_assigned`) | DO×T1-T7, AA×T5, AA×T7, F1 | integ |
-| X3 `/teachers` con `get_current_user` | E×T1-T7, U4 | integ |
-| X4 `/admin` con `require_teacher` | D×M1-M4, U4 | integ |
-| X5 `close` no cambia el status | F4, F12 | integ |
-| X6 T5 sin filtro de grupo | F5 | integ |
-| X7 T6 no revisa el grupo actual | F6 | integ |
-| X8 CSV escribe antes de fallar | F11 | integ |
-| X9 T2 incluye `balance` | F2 | integ |
-| X10 T5 y T7 con `only_assigned=False` | AA×T5, AA×T7 | integ |
-| X11 usa el último intento, no el primero | U3a, F5 | no-integ |
-| X12 aplica la ventana antes de elegir el primer intento | U3b · F5? | no-integ |
-| X13 mínimo sin la condición de 3 retos | U3c · F5? | no-integ |
-| X14 umbral de 80 exclusivo (`>`) | U3d · F5? | no-integ |
-| X15 una skill desconocida cae en Accuracy | U3e · F5? | no-integ |
-| X16 incluye los retos `open` | U3g · F5? · F13? | no-integ |
-| X17 T5 serializa `weak_skills` | F5, U3f | integ |
-| X18 T5 ordena por logro | F5 | integ |
-| X19 el distractor cuenta la opción correcta | U5 · F13? | no-integ |
-| X20 T7 sin la supresión de menos de 5 | U6, F13 | no-integ |
-| X21 T7 sin filtro de grupo | F13 | integ |
+*Corregido por ERR-19 (2026-09-25): la columna "Rojo predicho" se conserva tal cual se escribió antes de medir (no se mueve el criterio); solo se tachan las celdas **inalcanzables** por mecanismo. La columna "Rojo medido" copia `tests/_salida/matriz_tramposos_grupos.json`. En **negrita**, lo que difiere de la predicción.*
+
+| Tramposo | Rojo predicho | Rojo medido (ERR-19) | Archivo |
+|---|---|---|---|
+| X1 `visible_groups` sin colegio | DM×T1-T7; AB×{T1, T2, T3, T4, T6}; AB×M2-M4; F1. **No** AB×T5 ni AB×T7: `only_assigned` los sigue protegiendo | DM×{T1, T2, T5, T7}; AB×{T1, T2, M3, M4}. **No se ponen rojos: DM y AB × {T3, T4, T6}** (defensa en profundidad, nota 1); **AB×M2** (test defectuoso, H-1; se re-mide, nota 2); **F1** (nota 3) | integ |
+| X2 sin `teacher_groups` (también anula `only_assigned`) | DO×T1-T7, AA×T5, AA×T7, F1 | DO×T1-T7, AA×T5, AA×T7, **F6** (no previsto, nota 4). **F1 no** (nota 3) | integ |
+| X3 `/teachers` con `get_current_user` | E×T1-T7, ~~U4~~ (inalcanzable, nota 5) | E×T1-T7 | integ |
+| X4 `/admin` con `require_teacher` | D×M1-M4, ~~U4~~ (inalcanzable, nota 5) | D×M1-M4 | integ |
+| X5 `close` no cambia el status | F4, F12 | F4, F12 | integ |
+| X6 T5 sin filtro de grupo | F5 | F5, **F13** (no previsto, nota 6) | integ |
+| X7 T6 no revisa el grupo actual | F6 | F6 | integ |
+| X8 CSV escribe antes de fallar | F11 | F11 | integ |
+| X9 T2 incluye `balance` | F2 | F2 | integ |
+| X10 T5 y T7 con `only_assigned=False` | AA×T5, AA×T7 | AA×T5, AA×T7 | integ |
+| X11 usa el último intento, no el primero | U3a, F5 | U3a, **U3b** (no previsto, nota 7). F5: **no medido** (nota 8) | no-integ |
+| X12 aplica la ventana antes de elegir el primer intento | U3b · F5? | U3b. F5: no medido (nota 8) | no-integ |
+| X13 mínimo sin la condición de 3 retos | U3c · F5? | U3c. F5: no medido | no-integ |
+| X14 umbral de 80 exclusivo (`>`) | U3d · F5? | U3d. F5: no medido | no-integ |
+| X15 una skill desconocida cae en Accuracy | U3e · F5? | U3e. F5: no medido | no-integ |
+| X16 incluye los retos `open` | U3g · F5? · F13? | U3g. F5 y F13: no medidos | no-integ |
+| X17 T5 serializa `weak_skills` | F5, ~~U3f~~ (inalcanzable, nota 5) | F5 | integ |
+| X18 T5 ordena por logro | F5 | F5 | integ |
+| X19 el distractor cuenta la opción correcta | U5 · F13? | U5. F13: no medido | no-integ |
+| X20 T7 sin la supresión de menos de 5 | U6, F13 | U6. F13: **no medido** (nota 8) | no-integ |
+| X21 T7 sin filtro de grupo | F13 | F13, **F5** (no previsto, nota 6) | integ |
 
 `F5?` y `F13?` marcan un cruce **posible**: X12-X16, X19 y X20 alteran funciones que F5 o F13 comparten, y según ERR-15 se dan por cruzados hasta que la matriz demuestre lo contrario. Que crucen depende de la siembra de F5 y F13 (§4).
 
+**Notas de la medición (ERR-19, 2026-09-25):**
+1. **X1 en T3, T4 y T6 es defensa en profundidad, no un hueco.** Aunque `visible_groups` pierda el filtro de colegio y `authorize_group` deje pasar GA a DM o a AB, cada una de esas rutas tiene una verificación de tenant **independiente y redundante** que devuelve 404:
+   - T3: `create_session` recibe `tenant_id=auth.tenant_id` (`router.py:89-92`, `panel.py:103-107`) y resuelve el grupo por `(tenant_id, group_code)` (`attendance.py:132-141`); no encuentra "GA" en B. **Ojo:** esta segunda barrera es por *código*, no por id. Si B tuviera un grupo con el mismo código que GA (el caso de la réplica), con X1 el POST daría 201 y abriría la sesión en el grupo homónimo de B: no filtra datos de A, pero tampoco es un 404. Solo ocurre con `visible_groups` roto;
+   - T4: la sesión se busca con `AttendanceSession.tenant_id == auth.tenant_id` (`panel.py:124-127`) **antes** de `authorize_group`;
+   - T6: `get_challenge(db, cid, auth.tenant_id)` (`panel.py:154`) no encuentra en B un reto de A.
+
+   Los tests de esas celdas están bien; lo que estaba mal era la predicción. T2, T5 y T7 sí se ponen rojos porque, pasado `authorize_group`, leen con `group.tenant_id`, que es el de A. Así, `visible_groups` es la única barrera de tenant en T1, T2, T5, T7 y M2-M4, y una de dos en T3, T4 y T6.
+2. **AB×M2:** el test de la espec original mandaba `documento_id: "x"`, que da 404 en la búsqueda de `assign_teacher` sin llegar a probar el aislamiento. H-1 lo cambia por el `documento_id` real de DT. La celda X1 × AB×M2 **se re-mide** tras H-1: `<pendiente>`.
+3. **F1 no puede ponerse rojo con X1 ni con X2 dada su siembra.** `armar` (`tests/teachers/_actores.py`) crea un solo grupo por colegio y asigna a D solo a GA. Con X1, el filtro de `teacher_groups` sigue dejando a D solo con GA; con X2, el colegio A no tiene otro grupo que ver. Lo que F1 iba a vigilar lo vigilan ya las celdas DM×T1, AB×T1 (X1) y DO×T1 (X2), que sí se pusieron rojas. Candidato para después: sembrar un segundo grupo en A si se quiere que F1 discrimine.
+4. **X2 → F6:** F6 siembra un reto en GC, un grupo de A que D no tiene asignado. Sin `teacher_groups`, GC pasa a ser visible para D y el PUT reasigna el reto (200 en vez de 404). Es la misma regla que X7 ataca desde otro punto.
+5. **Celdas inalcanzables:** U4 (`test_u4_*`) y U3f son introspección **estática** (la tabla de guardas de `app.routes` y los `model_fields` de los esquemas). X3 y X4 rompen con `app.dependency_overrides`, y X17 reemplaza el endpoint con `_reemplazar_ruta`: ninguno de los dos mecanismos cambia lo que U4 o U3f inspeccionan. En lugar de U4, H-3 agrega `test_h3_sin_overrides_de_dependencias_filtrados` (`tests/teachers/test_access.py`), no-integ, que afirma `app.dependency_overrides == {}`: vigila que un tramposo no deje una guarda anulada para el resto de la suite. No es una celda de X3 ni de X4: es la condición para que su matriz sea válida.
+6. **X6 y X21 son el mismo parche** (`achievement_mod.intentos_del_grupo` sin filtro de `group_id`). `item_errors.build_response` llama a esa función, así que el hueco se ve por T5 (F5) y por T7 (F13). Los dos tramposos tienen la misma diagonal medida; se conservan porque cada uno declara un test real distinto.
+7. **X11 → U3b:** la segunda mitad de U3b siembra un primer intento fuera de la ventana y un reintento dentro. Con el último intento, entra el reintento: U3b se pone rojo por la misma razón que U3a.
+8. **No medido no es "no cruza".** La sección `no_integ` del JSON solo registra tests no-integ. F5 afirma `correct == 0` para el estudiante con el primer intento fallado y el reintento acertado, así que con X11 **tendría** que ponerse rojo; que el JSON no lo registre indica que F5 y F13 no se corrieron bajo X11-X20. Esas celdas quedan como **no medidas**, y las `?` de ERR-15 siguen dándose por cruzadas.
+
 Los 163 previos no importan código nuevo. **Antes de aceptar** se mide la matriz completa y se escribe aquí: 21 tramposos × 85 tests nuevos (12 U + 13 F + 48 prohibidas + 12 controles) = **1.785 celdas**. Un cruce no previsto se corrige por ERR (regla 8).
+
+*Corregido por ERR-19 (2026-09-25):* los tests nuevos no tramposos son **77 hoy** (13 no-integ: U1, U2, U3a-U3g, U4 en 2 funciones, U5 y U6; 64 integ: 13 F, 48 prohibidas, 2 controles aparte y 1 extra), más 1 de H-3. La matriz completa es **21 × <tests nuevos no tramposos tras H-1 y H-3>** = `<pendiente>` celdas, y **no está medida entera**: faltan las celdas de la nota 8 y la de la nota 2.
 
 ## 4. Tests y cuentas (Corregido por ERR-16, 2026-09-25)
 - **no-integ (12 tests):**
@@ -226,6 +249,22 @@ Los 163 previos no importan código nuevo. **Antes de aceptar** se mide la matri
 
 Cuentas: **163 + 12 + 8 + (13 + 48 + 12 + 13) = 163 + 12 + 8 + 86 = 269 passed**, 0 failed, 0 xfail. No-integ: **76 + 12 + 8 = 96**. ruff 0, mypy 0, ningún archivo pasa de 400 líneas. *(Antes: 240 y 80.)*
 
+**Cuentas medidas (corregido por ERR-19, 2026-09-25).** Las de arriba quedan como predicción. Lo medido antes de H-1 y H-3 fue **261 passed + 6 skipped** y **97 no-integ**. Las diferencias:
+- U4 quedó en **2 funciones** (`test_u4_guardas_de_las_rutas_existentes` y `test_u4_al_final_estan_las_11`): +1 no-integ.
+- **10 de los 12 controles** se fusionaron en el test F de su ruta (§3): −10 integ.
+- **1 test fuera de la espec** (`test_m2_documento_sin_membresia_docente_404`): +1 integ.
+- Los **6 skipped** son la réplica (`tests/teachers/test_replica_grupos.py`), que solo corre con `ENGRAMA_REPLICA_GRUPOS=1`. No cuentan como passed.
+
+Fórmula a la vista:
+- no-integ: 76 + (2 U1-U2 + 7 U3a-U3g + **2** U4 + 2 U5-U6) + 8 tramposos = 76 + 13 + 8 = **97** ✓ medido.
+- integ nuevos: 13 F + 48 prohibidas + **2** controles aparte + **1** extra + 13 tramposos = **77**.
+- passed: 163 + 21 + 77 = **261** ✓ medido; skipped: **6**.
+
+H-3 agrega `test_h3_sin_overrides_de_dependencias_filtrados`, no-integ (+1 predicho). H-1 reescribe `test_m2_ab_404` sin cambiar la cuenta (predicho).
+- **Cuentas finales tras H-1 y H-3: `<N passed>` + `<N skipped>`; no-integ: `<N>`.** Predicción: 262 + 6 y 98. Las completa el implementador con la salida real; si no coinciden, se corrige aquí antes de aceptar.
+
+**Regla desde ERR-19:** fusionar un control dentro de un test F, partir un test en dos o agregar uno fuera de la espec **actualiza esta cuenta en el mismo commit**.
+
 Ubicación: `tests/teachers/`, `tests/integ/test_humo_grupos.py`, `tests/tramposos/test_tramposos_grupos.py` (integ) y `tests/tramposos/test_tramposos_logro.py` (no-integ).
 
 En `integ_ayudante.py` se agregan:
@@ -248,6 +287,9 @@ Los valores por defecto dejan idéntico el comportamiento actual, así que los 1
 - `alembic/` (`git diff d77dcb4 -- alembic/` vacío), los 163 tests, `integ_db.py`, `models.py`, `/auth`, `/core`, `/challenges` y sus servicios, `pyproject.toml`, `poetry.lock` y `.venv` (ERR-11). La columna `challenge_attempts.weak_skills` no se lee, no se escribe y no se renombra.
 - **Fuera de alcance:** tienda, apuestas, anuncios, badges, panel web, IA, super admin, monedas manuales, mover o borrar grupos y `max_capacity`.
 - **Para después:**
+  - **BUG-11 · BLOQUEANTE PARA PRODUCCIÓN** *(Corregido por ERR-19, 2026-09-25; confirmado por el auditor)*. `profiles.documento_id` es UNIQUE **global** (`models.py:101`), y M3 y M4 (`roster.py:101-124`, `get_profile_by_documento` + `enroll_student`) reutilizan el perfil que ya creó otro colegio y **descartan en silencio** el `nombre_completo` que envía el segundo. Resultado: T2, T5 y T7 le muestran a un colegio el nombre que escribió otro, y el segundo colegio no recibe ningún aviso de que su dato no se guardó.
+    - **Dirección decidida por el coordinador:** el nombre se guarda **por membresía o por colegio** (cada colegio ve lo que escribió) y la **identidad sigue siendo global** (`documento_id` único, un solo `profile_id`).
+    - Exige migración, así que va en **su propia espec**, no en esta. Ningún grupo real se matricula en producción mientras BUG-11 siga abierto.
   - BUG-10: el hueco de §0, más `/challenges/all` y `/core/attendance/sessions/active`, que muestran todo el colegio;
   - **la cuenta de acceso** (Supabase Auth con `id = profile_id`). Sin ella, un inscrito no entra: esta espec **no basta sola** para usar el sistema en clase;
   - *(Corregido por ERR-16, 2026-09-25; lo que sigue reemplaza a "que el pedagogo valide la regla de `weak_skills`")*
@@ -280,11 +322,12 @@ Si el paso 10 o el 11 no llega en esta tanda, las cuentas intermedias se escribe
 
 ## 8. Verificación y veredicto
 ```
-poetry run pytest -m "not integ"   # 96 passed
-poetry run pytest                  # 269 passed
+poetry run pytest -m "not integ"   # 96 passed  (predicho; medido 97, final tras H-1/H-3: <N>)
+poetry run pytest                  # 269 passed (predicho; medido 261 + 6 skipped, final tras H-1/H-3: <N> + <N> skipped)
 ENGRAMA_REPLICA_GRUPOS=1 poetry run pytest tests/teachers tests/integ/test_humo_grupos.py
 poetry run ruff check . ; poetry run mypy .
 ```
+*Corregido por ERR-19 (2026-09-25):* las cuentas que valen son las de §4, "Cuentas medidas". "Matriz medida = §3" se lee contra la columna "Rojo medido", y **las celdas no medidas (notas 2 y 8 de §3) se miden antes de aceptar**.
 - **FUNCIONA:** cuentas exactas, matriz medida = §3, réplica y humo en verde, `alembic/` y los 163 intactos, §2.4 respondida antes de T5 y T7.
 - **HAY ALGO MODESTO:** la réplica falla solo en tests F.
 - **NO:**
