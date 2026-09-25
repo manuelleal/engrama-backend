@@ -119,10 +119,24 @@ Reemplaza a `weak_skills = [skill] si el intento completo falló`. Aquel campo n
   - No hay campos de posición, ranking ni percentil.
 - **Bloqueo de T5 y T7.** Son recortes del Creador y, por la regla de ERR-16, el pedagogo los valida antes de implementar. El coordinador anota aquí cada respuesta (sí / no + nota):
   - **P1:** sin nivel asignado, ¿se da el estado por eje sin el filtro MCER y con `cefr_levels` a la vista? Si la respuesta es no, T5 devuelve `items`, `correct` y `cefr_levels` sin `status` ni `label` hasta la migración.
+    → **Pedagogo (2026-09-25): SÍ CON CAMBIO.**
+      - T5 agrega `method.status_scope = "desempeño en los retos asignados al grupo; no es nivel MCER del estudiante"`, constante; F5 lo afirma.
+      - Ninguna vista muestra `status` ni `label` de un eje sin su `cefr_levels` al lado.
   - **P2:** ¿el mínimo de 8 ítems y 3 retos se aplica por eje?
+    → **Pedagogo: SÍ.** Es una señal formativa, no una nota: con n = 8 el intervalo de Wilson al 95 % es de ±26 puntos. La banda de confianza, o subir el mínimo a 12, va a "para después".
   - **P3:** ¿se excluyen los retos `open`?
+    → **Pedagogo: SÍ.** El acierto es texto exacto. `fill_blank` entra, pero con el mismo sesgo hacia "a reforzar"; va a "para después".
   - **P4:** ¿basta un mínimo de 5 respondientes por ítem en T7?
+    → **Pedagogo: SÍ CON CAMBIO.**
+      - T7 agrega por ítem `blank_answers` (primeros intentos con `given_answer` vacía). `errors` los sigue incluyendo.
+      - La interfaz muestra `errors - blank_answers` como "errores con respuesta".
+      - U6 o F13 afirman el conteo.
   - **P5:** ¿quedan fuera los retos de todo el colegio (`group_id NULL`)?
+    → **Pedagogo: SÍ.** Que el reto esté asignado al grupo es la única señal de calibración mientras no exista el nivel MCER asignado. Se reabre junto con P1.
+
+  **Resultado:** T5 y T7 quedan **DESBLOQUEADOS** con los cambios de P1 y P4. No requieren migración ni cambian la matriz de tramposos.
+
+  **Condición antes del primer grupo real, no bloqueante hoy:** la mezcla de *label* y *value* en `correct_answer` contamina `is_correct` en T5 y `errors` en T7. Hay que fijar el contrato de envío por *label* o recalcular el acierto por opción al leer.
 
   Si una respuesta cambia la regla, se corrige esta espec **antes** de implementar (regla 8), no después.
 
