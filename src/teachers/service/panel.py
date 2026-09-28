@@ -13,8 +13,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.schemas import AuthContext
+from src.challenge_engine.service import challenges as challenges_service
 from src.engrama_core.service import attendance as attendance_service
-from src.shared.models import Attendance, AttendanceSession, Group, Membership, Profile
+from src.shared.models import Attendance, AttendanceSession, Challenge, Group, Membership, Profile
 from src.teachers.schemas import ConsistencyOut, GroupSummaryOut, StudentRosterOut
 from src.teachers.service import access as access_service
 
@@ -88,7 +89,7 @@ async def roster(db: AsyncSession, group: Group) -> list[StudentRosterOut]:
 
 __all__ = [
     "student_count", "group_to_summary", "roster",
-    "open_session", "close_session",
+    "open_session", "close_session", "assign_challenge",
 ]
 
 
@@ -135,3 +136,28 @@ async def close_session(
     session.expires_at = datetime.now(UTC)
     await db.flush()
     return session
+
+
+# =============================================================================
+# T6 — PUT /teachers/groups/{gid}/challenges/{cid}
+# =============================================================================
+async def assign_challenge(
+    db: AsyncSession, auth: AuthContext, group: Group, challenge_id: UUID
+) -> Challenge:
+    """Fija `challenge.group_id = group.id` — ESPEC T6.
+
+    El reto debe ser del colegio (`get_challenge` ya filtra por tenant) y
+    estar sin grupo o en un grupo VISIBLE para `auth`; si está en un grupo
+    que `auth` no ve, 404 — sin este chequeo (X7), un docente podría
+    "robarle" a otro un reto ya asignado a un grupo que no puede ver.
+    """
+    challenge = await challenges_service.get_challenge(db, challenge_id, auth.tenant_id)
+    if challenge.group_id is not None:
+        visibles = await access_service.visible_groups(db, auth)
+        if challenge.group_id not in {g.id for g in visibles}:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Challenge not found"
+            )
+    challenge.group_id = group.id
+    await db.flush()
+    return challenge

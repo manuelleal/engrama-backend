@@ -43,6 +43,7 @@ from src.teachers.service import panel as panel_mod
 from tests.teachers import test_t1_groups as t1
 from tests.teachers import test_t2_roster as t2
 from tests.teachers import test_t3_t4_attendance as t34
+from tests.teachers import test_t6_assign as t6
 
 pytestmark = pytest.mark.integ
 
@@ -108,6 +109,19 @@ async def _close_sin_expirar(db: AsyncSession, auth: AuthContext, session_id: UU
     return session
 
 
+async def _assign_sin_revisar_grupo_actual(
+    db: AsyncSession, auth: AuthContext, group: Any, challenge_id: UUID
+) -> Any:
+    """X7: fija `group_id` sin mirar si el actual es visible para `auth`."""
+    challenge = await panel_mod.challenges_service.get_challenge(
+        db, challenge_id, auth.tenant_id
+    )
+    # BUG a propósito: se salta el chequeo de "sin grupo o en un grupo visible".
+    challenge.group_id = group.id
+    await db.flush()
+    return challenge
+
+
 @contextmanager
 def _reemplazar_ruta(path: str, metodos: set[str], endpoint: Any) -> Iterator[None]:
     """Reemplaza en sitio el `endpoint`/`dependant.call` de una APIRoute ya
@@ -156,6 +170,11 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[Any], None], str]] = {
         lambda _i, mp: mp.setattr(panel_mod, "close_session", _close_sin_expirar),
         t34.test_f4_cerrar_expira_y_bloquea_checkin,
         r"active.*expired",
+    ),
+    "X7": (
+        lambda _i, mp: mp.setattr(panel_mod, "assign_challenge", _assign_sin_revisar_grupo_actual),
+        t6.test_f6_no_reasigna_reto_de_grupo_no_visible,
+        r"404",
     ),
 }
 

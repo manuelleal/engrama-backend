@@ -13,6 +13,8 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.schemas import AuthContext
+from src.challenge_engine.schemas import ChallengeOut
+from src.challenge_engine.service import challenges as challenges_service
 from src.engrama_core.schemas import AttendanceSessionOut
 from src.engrama_core.service.attendance import session_to_schema
 from src.shared.db import get_db
@@ -100,3 +102,24 @@ async def close_attendance_session(
     session = await panel_service.close_session(db, auth, sid)
     await db.commit()
     return session_to_schema(session)
+
+
+# =============================================================================
+# T6 — PUT /teachers/groups/{gid}/challenges/{cid}
+# =============================================================================
+@router.put(
+    "/groups/{gid}/challenges/{cid}",
+    response_model=ChallengeOut,
+    status_code=status.HTTP_200_OK,
+)
+async def assign_challenge_to_group(
+    gid: UUID,
+    cid: UUID,
+    auth: AuthContext = Depends(require_teacher),
+    db: AsyncSession = Depends(get_db),
+) -> ChallengeOut:
+    """Fija el `group_id` del reto (§2, T6). Reto de un grupo no visible -> 404."""
+    group = await access_service.authorize_group(db, auth, gid)
+    challenge = await panel_service.assign_challenge(db, auth, group, cid)
+    await db.commit()
+    return await challenges_service.hydrate(db, challenge)
