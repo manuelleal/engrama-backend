@@ -134,3 +134,27 @@ def test_u4_al_final_estan_las_11() -> None:
     assert actuales == set(EXPECTED_GUARDS), (
         f"faltan: {set(EXPECTED_GUARDS) - actuales}; sobran: {actuales - set(EXPECTED_GUARDS)}"
     )
+
+
+def test_h3_sin_overrides_de_dependencias_filtrados() -> None:
+    """H-3 (auditor): ninguna guarda queda anulada en runtime al terminar la suite.
+
+    `app.dependency_overrides` es un dict GLOBAL, compartido por todo el
+    proceso de pytest. Los tramposos X3/X4 (`tests/tramposos/
+    test_tramposos_grupos.py`, `_override`) lo usan para reemplazar
+    `require_teacher`/`require_admin` y siempre lo deshacen en un `finally` —
+    pero si algún test (presente o futuro) olvidara ese `finally`, TODAS las
+    rutas que dependen de esa guarda quedarían abiertas para el resto de la
+    suite (y para cualquiera que reimporte `src.main.app`), sin que ningún
+    otro test lo note. Este test es el canario: falla si queda CUALQUIER
+    override puesto, sea cual sea.
+
+    Verificado en rojo/verde a mano (no queda como tramposo permanente,
+    ERR-12/§4 no lo cuenta como test nuevo de la matriz): con
+    `app.dependency_overrides[get_current_user] = lambda: None` puesto,
+    este test falla con el mensaje de abajo; al hacer
+    `app.dependency_overrides.clear()`, vuelve a pasar.
+    """
+    assert app.dependency_overrides == {}, (
+        f"quedaron overrides de Depends sin deshacer: {list(app.dependency_overrides)}"
+    )

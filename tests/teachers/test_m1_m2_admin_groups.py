@@ -91,7 +91,19 @@ def test_m2_d_403(integ) -> None:
 
 
 def test_m2_ab_404(integ) -> None:
+    """H-1 (auditor): `documento_id` REAL (DT, docente legítimo de B) — así la
+    celda ejercita de verdad `authorize_group` (grupo de A, admin de B) y no
+    solo la búsqueda de `assign_teacher`, que con un documento inventado
+    ("x") daría 404 igual sin probar nada sobre el aislamiento de tenant."""
     esc = armar(integ)
+    doc_dt = integ.fila("select documento_id from profiles where id = :p", p=esc.dt)["documento_id"]
     r = client.post(f"/admin/groups/{esc.grupo_a}/teachers", headers=esc.h(integ, esc.ab),
-                     json={"documento_id": "x"})
+                     json={"documento_id": doc_dt})
     assert r.status_code == 404, r.text
+    # Control: sin la celda prohibida, AB SÍ podría asignar a DT en SU propio
+    # grupo (GB) — prueba que "x" no habría distinguido esto: DT es un
+    # docente real y válido, solo que no en el grupo de A.
+    assert integ.valor(
+        "select count(*) from teacher_groups where teacher_id = :p and group_id = :g",
+        p=esc.dt, g=esc.grupo_a,
+    ) == 0
