@@ -45,6 +45,8 @@ from tests.teachers import test_t2_roster as t2
 from tests.teachers import test_t3_t4_attendance as t34
 from tests.teachers import test_t6_assign as t6
 from tests.teachers import test_m1_m2_admin_groups as m12
+from tests.teachers import test_m4_import as m4
+from src.teachers.service import roster as roster_mod
 
 pytestmark = pytest.mark.integ
 
@@ -123,6 +125,30 @@ async def _assign_sin_revisar_grupo_actual(
     return challenge
 
 
+async def _import_csv_escribe_antes_de_fallar(
+    db: AsyncSession, tenant_id: UUID, group: Any, contenido: bytes
+) -> dict[str, int]:
+    """X8: comitea fila por fila, antes de terminar de validar el archivo."""
+    crudas = roster_mod.parse_csv(contenido)
+    creados = ya_estaban = 0
+    for i, cruda in enumerate(crudas, start=1):
+        doc = (cruda.get("documento_id") or "").strip()
+        nombre = (cruda.get("nombre_completo") or "").strip()
+        if not roster_mod.DOC_ID_RE.match(doc):
+            raise roster_mod.CSVImportError(
+                [roster_mod.ErrorFila(fila=i, motivo=f"documento_id inválido: {doc!r}")]
+            )
+        if not nombre:
+            raise roster_mod.CSVImportError(
+                [roster_mod.ErrorFila(fila=i, motivo="nombre_completo vacío")]
+            )
+        _profile, resultado = await roster_mod.enroll_student(db, tenant_id, group, doc, nombre)
+        await db.commit()  # BUG a propósito: persiste antes de validar el resto del archivo
+        creados += resultado == "inscrito"
+        ya_estaban += resultado == "ya_estaba"
+    return {"creados": creados, "ya_estaban": ya_estaban, "total": len(crudas)}
+
+
 @contextmanager
 def _reemplazar_ruta(path: str, metodos: set[str], endpoint: Any) -> Iterator[None]:
     """Reemplaza en sitio el `endpoint`/`dependant.call` de una APIRoute ya
@@ -181,6 +207,11 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[Any], None], str]] = {
         lambda _i, _mp: _override(require_admin, require_teacher),
         m12.test_m1_d_403,
         r"403",
+    ),
+    "X8": (
+        lambda _i, mp: mp.setattr(roster_mod, "import_csv", _import_csv_escribe_antes_de_fallar),
+        m4.test_f11_import_invalido_no_escribe_nada,
+        r"la fila v.lida se escribi",
     ),
 }
 

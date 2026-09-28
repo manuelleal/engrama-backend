@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.schemas import AuthContext
@@ -17,6 +18,7 @@ from src.shared.deps import require_admin
 from src.teachers.schemas import (
     GroupCreateIn,
     GroupOut,
+    ImportResultOut,
     StudentEnrollIn,
     StudentEnrollOut,
     TeacherAssignIn,
@@ -97,3 +99,32 @@ async def enroll_student(
     return StudentEnrollOut(
         profile_id=profile.id, documento_id=profile.documento_id, resultado=resultado
     )
+
+
+# =============================================================================
+# M4 — POST /admin/groups/{gid}/students/import
+# =============================================================================
+@router.post(
+    "/groups/{gid}/students/import",
+    response_model=ImportResultOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_students(
+    gid: UUID,
+    request: Request,
+    auth: AuthContext = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> ImportResultOut | JSONResponse:
+    """Importa un CSV `text/csv` (§2, M4). "Todo o nada": 422 con
+    `[{fila, motivo}]` y 0 escrituras si cualquier fila falla."""
+    group = await access_service.authorize_group(db, auth, gid)
+    contenido = await request.body()
+    try:
+        resultado = await roster_service.import_csv(db, auth.tenant_id, group, contenido)
+    except roster_service.CSVImportError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content=[{"fila": e.fila, "motivo": e.motivo} for e in exc.errores],
+        )
+    await db.commit()
+    return ImportResultOut(**resultado)

@@ -128,3 +128,25 @@ class StudentEnrollOut(BaseModel):
     profile_id: UUID
     documento_id: str
     resultado: str
+
+
+# =============================================================================
+# M4 — POST /admin/groups/{gid}/students/import
+# =============================================================================
+class ImportResultOut(BaseModel):
+    """Éxito de M4 (todas las filas del CSV, "todo o nada")."""
+
+    model_config = _STRICT
+
+    creados: int
+    ya_estaban: int
+    total: int
+
+
+class ImportRowErrorOut(BaseModel):
+    """Una fila rechazada — el cuerpo del 422 es `list[ImportRowErrorOut]`."""
+
+    model_config = _STRICT
+
+    fila: int
+    motivo: str
