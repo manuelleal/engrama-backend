@@ -355,6 +355,7 @@ Lo que el cliente ya hace (ocultar "Jugar" en un reto ganado y bloquear el doble
 6. **El personal ve cualquier reto del colegio** por `GET /challenges/{id}` y `/challenges/all`. Es el resto de BUG-10 (el docstring de `access.py`); el encargo pide que el personal no cambie aquí.
 7. **Cambio de grupo:** `submit` usa `get_challenge` (solo tenant), así que un `in_progress` de un reto que ya no es visible se sigue pudiendo cobrar.
 8. **`create_session` y `/attendance/sessions/active`** no pasan por `visible_groups` (BUG-10).
+9. **Doble check-in simultáneo** (auditor H-1): `attendance.py:254-264` hace un `SELECT` de duplicado sin `FOR UPDATE` antes del `INSERT`, con `autoflush=False` (`src/shared/db.py:50`). Dos check-ins simultáneos del mismo estudiante a la misma sesión chocan con `UNIQUE(session_id, student_id)` en el flush de `coins.py:149`: **500 sin manejar** en vez de 409. No hay pérdida de plata (la transacción aborta entera). Se aplica el mismo razonamiento de BUG-13 ("un chequeo en la app no basta"); el arreglo candidato es capturar el 23505 o usar `ON CONFLICT`. Fuera del alcance de esta espec.
 
 ## 10. Orden de commits (cada uno con 0 failed; solo después de que BUG-11 esté commiteado)
 1. **`test`:** A13-1..3, A14-1..3 y A15-1..2 con `xfail(strict=True, raises=AssertionError)`; S13 (con el snapshot generado aquí), S14 y S15 en verde. Esperado: 280 + 3 = **283 passed + 8 xfailed + 9 skipped**; 100 no-integ. **Aquí se ven los tres huecos en rojo por la API.**
