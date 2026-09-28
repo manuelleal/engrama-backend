@@ -71,8 +71,11 @@
   },
   "integ_re_medido_tras_h1": {
     "X1_m1_m2": [
-      "tests/teachers/test_m1_m2_admin_groups.py::test_m2_ab_404 - AssertionE..."
+      "tests/teachers/test_m1_m2_admin_groups.py::test_m2_ab_404 - AssertionError: {\"teacher_id\":\"...\",\"documento_id\":\"doc-...\",\"resultado\":\"asignado\"} assert 201 == 404"
     ]
+  },
+  "_reverificado_2026_09_28": {
+    "nota": "Re-medido en una sesion nueva, suite completa en verde (262 passed, 6 skipped), sin tocar el ciclo de vida de Docker. X1_m1_m2 y no_integ_contra_f5_f13 se corrieron de nuevo con tests temporales (test_tramposos_grupos._base_stmt_sin_tenant contra test_m2_ab_404; TRAMPOSOS de test_tramposos_logro contra F5 y F13) y coinciden EXACTO con lo que ya estaba en este archivo: X1xABxM2 en rojo (201 en vez de 404); de X11-X20 solo X11 cruza, y solo contra F5 (F13 no). No se encontro ninguna diferencia con la espec en estas celdas."
   },
   "no_integ": {
     "X11": [
@@ -102,15 +105,16 @@
     ]
   },
   "no_integ_contra_f5_f13": {
-    "X11": [
-      "tests/teachers/test_t5_achievement.py::test_f5_orden_alfabetico_method_y_sin_weak"
-    ],
-    "X12": [],
-    "X13": [],
-    "X14": [],
-    "X15": [],
-    "X16": [],
-    "X19": [],
-    "X20": []
+    "X11": {
+      "F5": "ROJO: assert 1 == 0 (test_f5_orden_alfabetico_method_y_sin_weak)",
+      "F13": "no_cruza"
+    },
+    "X12": { "F5": "no_cruza", "F13": "no_cruza" },
+    "X13": { "F5": "no_cruza", "F13": "no_cruza" },
+    "X14": { "F5": "no_cruza", "F13": "no_cruza" },
+    "X15": { "F5": "no_cruza", "F13": "no_cruza" },
+    "X16": { "F5": "no_cruza", "F13": "no_cruza" },
+    "X19": { "F5": "no_cruza", "F13": "no_cruza" },
+    "X20": { "F5": "no_cruza", "F13": "no_cruza" }
   }
 }
