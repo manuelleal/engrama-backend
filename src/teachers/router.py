@@ -23,11 +23,13 @@ from src.shared.deps import require_teacher
 from src.teachers.schemas import (
     AchievementOut,
     GroupSummaryOut,
+    ItemErrorsOut,
     SessionDurationIn,
     StudentRosterOut,
 )
 from src.teachers.service import access as access_service
 from src.teachers.service import achievement as achievement_service
+from src.teachers.service import item_errors as item_errors_service
 from src.teachers.service import panel as panel_service
 
 router = APIRouter()
@@ -149,3 +151,21 @@ async def read_achievement(
     el aprendizaje de un grupo que no tiene asignado (§1, pedagogo P5)."""
     group = await access_service.authorize_group(db, auth, gid, only_assigned=True)
     return await achievement_service.build_response(db, group, now=datetime.now(UTC))
+
+
+# =============================================================================
+# T7 — GET /teachers/groups/{gid}/item-errors
+# =============================================================================
+@router.get(
+    "/groups/{gid}/item-errors",
+    response_model=ItemErrorsOut,
+    status_code=status.HTTP_200_OK,
+)
+async def read_item_errors(
+    gid: UUID,
+    auth: AuthContext = Depends(require_teacher),
+    db: AsyncSession = Depends(get_db),
+) -> ItemErrorsOut:
+    """Indicador n.º 1 del pedagogo (§2.3). `only_assigned=True`, igual que T5."""
+    group = await access_service.authorize_group(db, auth, gid, only_assigned=True)
+    return await item_errors_service.build_response(db, group, now=datetime.now(UTC))

@@ -128,6 +128,9 @@ def test_u4_guardas_de_las_rutas_existentes() -> None:
     assert not faltan_previas, f"rutas previas que desaparecieron: {faltan_previas}"
 
 
-# NOTA (paso 10, T5): "test_u4_al_final_estan_las_11" se agrega en el paso 11
-# (T7, el último que crea una ruta nueva) — antes de eso falta `/item-errors`
-# a propósito y ese test daría rojo (§7: "cada commit con 0 failed").
+def test_u4_al_final_estan_las_11() -> None:
+    """Cuando el módulo está completo (§2.4 respondida, T5 y T7 nacidas)."""
+    actuales = {(r.path, frozenset(r.methods)) for r in app.routes if isinstance(r, APIRoute)}
+    assert actuales == set(EXPECTED_GUARDS), (
+        f"faltan: {set(EXPECTED_GUARDS) - actuales}; sobran: {actuales - set(EXPECTED_GUARDS)}"
+    )

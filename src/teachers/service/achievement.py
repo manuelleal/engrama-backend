@@ -116,7 +116,7 @@ def _primeros_intentos(intentos: list[AttemptRow]) -> dict[UUID, AttemptRow]:
 
 def primeros_en_ventana(intentos: list[AttemptRow], now: datetime) -> list[AttemptRow]:
     """El PRIMER intento de cada challenge, sin `open`, dentro de la ventana de
-    28 días (§2.1, puntos 1-3).
+    28 días — el alcance compartido de T5 (§2.1, puntos 1-3) y T7 (§2.3).
 
     Cada `AttemptRow` devuelto ES el que aporta ítems (uno por challenge).
     """

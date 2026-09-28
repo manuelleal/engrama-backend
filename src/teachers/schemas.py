@@ -230,3 +230,55 @@ class AchievementOut(BaseModel):
 
     method: AchievementMethodOut
     students: list[StudentAchievementOut]
+
+
+# =============================================================================
+# T7 — GET /teachers/groups/{gid}/item-errors (ESPEC §2.3, nueva por ERR-16)
+# =============================================================================
+class ItemErrorsMethodOut(BaseModel):
+    """Constante de T7."""
+
+    model_config = _STRICT
+
+    window_days: int
+    first_attempt_only: bool
+    min_respondents: int
+    excluded_types: list[str]
+
+
+class DistractorOut(BaseModel):
+    """La opción incorrecta más elegida de un ítem (§2.3)."""
+
+    model_config = _STRICT
+
+    label: str
+    value: str
+    count: int
+
+
+class ItemErrorOut(BaseModel):
+    """Un ítem agregado — nunca trae `profile_id` ni una respuesta individual."""
+
+    model_config = _STRICT
+
+    challenge_id: UUID
+    title: str
+    question_id: UUID
+    order_index: int
+    question_text: str
+    skill: str | None
+    axis: str | None
+    respondents: int
+    errors: int
+    blank_answers: int  # Pedagogo P4.
+    top_distractor: DistractorOut | None = None
+
+
+class ItemErrorsOut(BaseModel):
+    """Respuesta completa de T7."""
+
+    model_config = _STRICT
+
+    method: ItemErrorsMethodOut
+    items: list[ItemErrorOut]
+    suppressed_items: int

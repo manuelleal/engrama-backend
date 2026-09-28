@@ -48,6 +48,7 @@ from tests.teachers import test_t2_roster as t2
 from tests.teachers import test_t3_t4_attendance as t34
 from tests.teachers import test_t5_achievement as t5
 from tests.teachers import test_t6_assign as t6
+from tests.teachers import test_t7_item_errors as t7
 from tests.teachers import test_m1_m2_admin_groups as m12
 from tests.teachers import test_m4_import as m4
 
@@ -152,7 +153,7 @@ async def _import_csv_escribe_antes_de_fallar(
     return {"creados": creados, "ya_estaban": ya_estaban, "total": len(crudas)}
 
 
-async def _intentos_del_grupo_sin_filtro(
+async def intentos_del_grupo_sin_filtro(
     db: AsyncSession, group: Any, student_ids: list[UUID]
 ) -> Any:
     """X6: intentos de TODOS los retos del tenant, no solo `group.id` (T5)."""
@@ -291,7 +292,7 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[Any], None], str]] = {
     ),
     "X6": (
         lambda _i, mp: mp.setattr(
-            achievement_mod, "_intentos_del_grupo", _intentos_del_grupo_sin_filtro
+            achievement_mod, "intentos_del_grupo", intentos_del_grupo_sin_filtro
         ),
         t5.test_f5_orden_alfabetico_method_y_sin_weak,
         r"(?i)otro grupo se col",
@@ -315,6 +316,16 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[Any], None], str]] = {
                                   _build_response_ordena_por_logro),
         t5.test_f5_orden_alfabetico_method_y_sin_weak,
         r"orden.*alfab|debe ser alfab",
+    ),
+    "X21": (
+        # Mismo bug de fondo que X6 (falta el filtro de `group_id`), pero
+        # observado a través de T7: `item_errors.build_response` también
+        # llama `achievement_mod.intentos_del_grupo`.
+        lambda _i, mp: mp.setattr(
+            achievement_mod, "intentos_del_grupo", intentos_del_grupo_sin_filtro
+        ),
+        t7.test_f13_agregado_supresion_y_sin_filtracion_de_otro_grupo,
+        r"(?i)otro grupo se col",
     ),
 }
 
