@@ -17,6 +17,8 @@ from src.shared.deps import require_admin
 from src.teachers.schemas import (
     GroupCreateIn,
     GroupOut,
+    StudentEnrollIn,
+    StudentEnrollOut,
     TeacherAssignIn,
     TeacherAssignOut,
 )
@@ -66,4 +68,32 @@ async def assign_teacher(
         response.status_code = status.HTTP_200_OK
     return TeacherAssignOut(
         teacher_id=profile.id, documento_id=profile.documento_id, resultado=resultado
+    )
+
+
+# =============================================================================
+# M3 — POST /admin/groups/{gid}/students
+# =============================================================================
+@router.post(
+    "/groups/{gid}/students",
+    response_model=StudentEnrollOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def enroll_student(
+    gid: UUID,
+    payload: StudentEnrollIn,
+    response: Response,
+    auth: AuthContext = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> StudentEnrollOut:
+    """Matricula un estudiante. 201 si se inscribe, 200 si ya estaba."""
+    group = await access_service.authorize_group(db, auth, gid)
+    profile, resultado = await roster_service.enroll_student(
+        db, auth.tenant_id, group, payload.documento_id, payload.nombre_completo
+    )
+    await db.commit()
+    if resultado == "ya_estaba":
+        response.status_code = status.HTTP_200_OK
+    return StudentEnrollOut(
+        profile_id=profile.id, documento_id=profile.documento_id, resultado=resultado
     )

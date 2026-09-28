@@ -102,3 +102,29 @@ class TeacherAssignOut(BaseModel):
     teacher_id: UUID
     documento_id: str
     resultado: str
+
+
+# =============================================================================
+# M3 — POST /admin/groups/{gid}/students
+# =============================================================================
+class StudentEnrollIn(BaseModel):
+    """Body de M3/M4: identidad mínima del estudiante (`app.js:3538`)."""
+
+    model_config = _STRICT
+
+    documento_id: str
+    nombre_completo: str
+
+
+class StudentEnrollOut(BaseModel):
+    """Respuesta de M3. `resultado`: 'inscrito' (201) o 'ya_estaba' (200).
+
+    Solo `profile_id`, `documento_id` y `resultado` — nada de `pin_hash`
+    (ESPEC M3, "solo devuelve...").
+    """
+
+    model_config = _STRICT
+
+    profile_id: UUID
+    documento_id: str
+    resultado: str
