@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from src.auth.router import router as auth_router
 from src.challenge_engine.router import router as challenges_router
 from src.engrama_core.router import router as core_router
+from src.teachers.admin_router import router as admin_router
 from src.teachers.router import router as teachers_router
 
 app = FastAPI(
@@ -11,6 +12,7 @@ app = FastAPI(
 )
 
 # Módulos de dominio — orden alfabético para evitar drift.
+app.include_router(admin_router, prefix="/admin", tags=["admin"])
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(challenges_router, prefix="/challenges", tags=["challenges"])
 app.include_router(core_router, prefix="/core", tags=["engrama-core"])

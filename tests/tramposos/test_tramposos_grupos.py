@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.schemas import AuthContext
 from src.main import app
 from src.shared.db import get_db
-from src.shared.deps import get_current_user, require_teacher
+from src.shared.deps import get_current_user, require_admin, require_teacher
 from src.shared.models import AttendanceSession
 from src.teachers.service import access as access_mod
 from src.teachers.service import panel as panel_mod
@@ -44,6 +44,7 @@ from tests.teachers import test_t1_groups as t1
 from tests.teachers import test_t2_roster as t2
 from tests.teachers import test_t3_t4_attendance as t34
 from tests.teachers import test_t6_assign as t6
+from tests.teachers import test_m1_m2_admin_groups as m12
 
 pytestmark = pytest.mark.integ
 
@@ -175,6 +176,11 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[Any], None], str]] = {
         lambda _i, mp: mp.setattr(panel_mod, "assign_challenge", _assign_sin_revisar_grupo_actual),
         t6.test_f6_no_reasigna_reto_de_grupo_no_visible,
         r"404",
+    ),
+    "X4": (
+        lambda _i, _mp: _override(require_admin, require_teacher),
+        m12.test_m1_d_403,
+        r"403",
     ),
 }
 

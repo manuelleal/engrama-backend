@@ -59,3 +59,46 @@ class SessionDurationIn(BaseModel):
     model_config = _STRICT
 
     duration_minutes: int = Field(default=15, ge=1, le=180)
+
+
+# =============================================================================
+# M1 — POST /admin/groups
+# =============================================================================
+class GroupCreateIn(BaseModel):
+    """Body de M1. `max_capacity` fuera de alcance más allá de guardarlo (§6)."""
+
+    model_config = _STRICT
+
+    group_code: str
+    max_capacity: int | None = Field(default=None, ge=1)
+
+
+class GroupOut(BaseModel):
+    """Respuesta de M1: el grupo recién creado."""
+
+    model_config = _STRICT
+
+    id: UUID
+    group_code: str
+    max_capacity: int | None = None
+
+
+# =============================================================================
+# M2 — POST /admin/groups/{gid}/teachers
+# =============================================================================
+class TeacherAssignIn(BaseModel):
+    """Body de M2: el docente se identifica por `documento_id`, como M3/M4."""
+
+    model_config = _STRICT
+
+    documento_id: str
+
+
+class TeacherAssignOut(BaseModel):
+    """Respuesta de M2. `resultado`: 'asignado' (201) o 'ya_estaba' (200)."""
+
+    model_config = _STRICT
+
+    teacher_id: UUID
+    documento_id: str
+    resultado: str
