@@ -13,9 +13,11 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.schemas import AuthContext
+from src.engrama_core.schemas import AttendanceSessionOut
+from src.engrama_core.service.attendance import session_to_schema
 from src.shared.db import get_db
 from src.shared.deps import require_teacher
-from src.teachers.schemas import GroupSummaryOut, StudentRosterOut
+from src.teachers.schemas import GroupSummaryOut, SessionDurationIn, StudentRosterOut
 from src.teachers.service import access as access_service
 from src.teachers.service import panel as panel_service
 
@@ -55,3 +57,46 @@ async def list_students(
     """Roster del grupo (`access.authorize_group` + `panel.roster`, §2.2)."""
     group = await access_service.authorize_group(db, auth, gid)
     return await panel_service.roster(db, group)
+
+
+# =============================================================================
+# T3 — POST /teachers/groups/{gid}/attendance-sessions
+# =============================================================================
+@router.post(
+    "/groups/{gid}/attendance-sessions",
+    response_model=AttendanceSessionOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def open_attendance_session(
+    gid: UUID,
+    payload: SessionDurationIn,
+    auth: AuthContext = Depends(require_teacher),
+    db: AsyncSession = Depends(get_db),
+) -> AttendanceSessionOut:
+    """Abre una sesión QR para el grupo (reusa `attendance.create_session`)."""
+    group = await access_service.authorize_group(db, auth, gid)
+    session = await panel_service.open_session(
+        db, teacher_id=auth.profile_id, tenant_id=auth.tenant_id,
+        group=group, duration_minutes=payload.duration_minutes,
+    )
+    await db.commit()
+    return session_to_schema(session)
+
+
+# =============================================================================
+# T4 — POST /teachers/attendance-sessions/{sid}/close
+# =============================================================================
+@router.post(
+    "/attendance-sessions/{sid}/close",
+    response_model=AttendanceSessionOut,
+    status_code=status.HTTP_200_OK,
+)
+async def close_attendance_session(
+    sid: UUID,
+    auth: AuthContext = Depends(require_teacher),
+    db: AsyncSession = Depends(get_db),
+) -> AttendanceSessionOut:
+    """Cierra la sesión: `status='expired'` (§2, T4). Sesión de otro grupo -> 404."""
+    session = await panel_service.close_session(db, auth, sid)
+    await db.commit()
+    return session_to_schema(session)

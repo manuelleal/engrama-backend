@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 _STRICT = ConfigDict(strict=True, extra="forbid")
 
@@ -48,3 +48,14 @@ class StudentRosterOut(BaseModel):
     full_name: str
     consistency: ConsistencyOut
     last_attendance_date: date | None = None
+
+
+# =============================================================================
+# T3 — POST /teachers/groups/{gid}/attendance-sessions
+# =============================================================================
+class SessionDurationIn(BaseModel):
+    """Body de T3. El `group_code` NO viaja: sale de `{gid}`, ya autorizado."""
+
+    model_config = _STRICT
+
+    duration_minutes: int = Field(default=15, ge=1, le=180)

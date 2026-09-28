@@ -37,10 +37,12 @@ from src.auth.schemas import AuthContext
 from src.main import app
 from src.shared.db import get_db
 from src.shared.deps import get_current_user, require_teacher
+from src.shared.models import AttendanceSession
 from src.teachers.service import access as access_mod
 from src.teachers.service import panel as panel_mod
 from tests.teachers import test_t1_groups as t1
 from tests.teachers import test_t2_roster as t2
+from tests.teachers import test_t3_t4_attendance as t34
 
 pytestmark = pytest.mark.integ
 
@@ -89,6 +91,23 @@ async def _t2_con_balance(
     return JSONResponse(payload)
 
 
+async def _close_sin_expirar(db: AsyncSession, auth: AuthContext, session_id: UUID) -> Any:
+    """X5: cierra sin cambiar `status` ni `expires_at` (ESPEC T4, §3)."""
+    from sqlalchemy import select
+
+    stmt = select(AttendanceSession).where(
+        AttendanceSession.id == session_id, AttendanceSession.tenant_id == auth.tenant_id
+    )
+    session = (await db.execute(stmt)).scalar_one_or_none()
+    if session is None:
+        from fastapi import HTTPException, status as st
+        raise HTTPException(status_code=st.HTTP_404_NOT_FOUND, detail="not found")
+    await access_mod.authorize_group(db, auth, session.group_id)
+    # BUG a propósito: no toca session.status ni session.expires_at.
+    await db.flush()
+    return session
+
+
 @contextmanager
 def _reemplazar_ruta(path: str, metodos: set[str], endpoint: Any) -> Iterator[None]:
     """Reemplaza en sitio el `endpoint`/`dependant.call` de una APIRoute ya
@@ -132,6 +151,11 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[Any], None], str]] = {
         ),
         t2.test_f2_roster_sin_balance,
         r"balance",
+    ),
+    "X5": (
+        lambda _i, mp: mp.setattr(panel_mod, "close_session", _close_sin_expirar),
+        t34.test_f4_cerrar_expira_y_bloquea_checkin,
+        r"active.*expired",
     ),
 }
 

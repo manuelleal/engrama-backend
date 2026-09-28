@@ -5,13 +5,18 @@ respuesta de cada ruta T1-T6, en el orden de los commits de la espec (§7).
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.schemas import AuthContext
+from src.engrama_core.service import attendance as attendance_service
 from src.shared.models import Attendance, AttendanceSession, Group, Membership, Profile
 from src.teachers.schemas import ConsistencyOut, GroupSummaryOut, StudentRosterOut
+from src.teachers.service import access as access_service
 
 
 # =============================================================================
@@ -81,4 +86,52 @@ async def roster(db: AsyncSession, group: Group) -> list[StudentRosterOut]:
     ]
 
 
-__all__ = ["student_count", "group_to_summary", "roster"]
+__all__ = [
+    "student_count", "group_to_summary", "roster",
+    "open_session", "close_session",
+]
+
+
+# =============================================================================
+# T3 — POST /teachers/groups/{gid}/attendance-sessions
+# =============================================================================
+async def open_session(
+    db: AsyncSession, *, teacher_id: UUID, tenant_id: UUID, group: Group, duration_minutes: int
+) -> AttendanceSession:
+    """T3: reusa `attendance.create_session` SIN tocarla (ESPEC §2, "sin tocarla")."""
+    return await attendance_service.create_session(
+        db,
+        teacher_id=teacher_id,
+        tenant_id=tenant_id,
+        group_code=group.group_code,
+        duration_minutes=duration_minutes,
+    )
+
+
+# =============================================================================
+# T4 — POST /teachers/attendance-sessions/{sid}/close
+# =============================================================================
+async def close_session(
+    db: AsyncSession, auth: AuthContext, session_id: UUID
+) -> AttendanceSession:
+    """Cierra una sesión: `status='expired'`, `expires_at=now()` (ESPEC T4).
+
+    Doble 404: la sesión debe existir en el tenant de `auth`, Y su grupo
+    debe estar entre los visibles para `auth` (`access.authorize_group`) —
+    así "sesión de otro grupo" da 404 aunque el `session_id` sea real.
+    """
+    stmt = select(AttendanceSession).where(
+        AttendanceSession.id == session_id,
+        AttendanceSession.tenant_id == auth.tenant_id,
+    )
+    session = (await db.execute(stmt)).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Attendance session not found"
+        )
+    await access_service.authorize_group(db, auth, session.group_id)
+
+    session.status = "expired"
+    session.expires_at = datetime.now(UTC)
+    await db.flush()
+    return session
