@@ -21,10 +21,17 @@ Datos sintéticos (ESPEC §3): documentos `SINT-B11-0001`, `-0101`, `-0102`,
 `-0201`. Los nombres de un colegio llevan `Alfa` y los del otro `Beta`;
 ninguno es subcadena de otro. Cada test arranca con la base truncada
 (fixture `integ`), así que S1 puede reusar documentos de A1 y A4.
+
+Réplica (ESPEC §5, `ENGRAMA_REPLICA_BUG11=1`; sin la bandera se saltan), con
+entradas que no se usaron al desarrollar:
+  R1  el mismo documento en 3 colegios, nombres Unicode; cada T2, el suyo.
+  R2  un docente de A se matricula como estudiante en B: A no cambia.
+  R3  A importa 20; B importa 40 (CSV con `;` y BOM), 20 ya en A.
 """
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -233,3 +240,92 @@ def test_s1_un_colegio_identico_al_snapshot(integ) -> None:
     actual = capturar_s1(integ)
     assert actual["t2"] == congelado["t2"], "T2 cambió en el caso sin cruce (regresión)"
     assert actual["t5"] == congelado["t5"], "T5 cambió en el caso sin cruce (regresión)"
+
+
+# =============================================================================
+# R1-R3 — réplica (ESPEC §5)
+# =============================================================================
+REPLICA = os.environ.get("ENGRAMA_REPLICA_BUG11") == "1"
+replica = pytest.mark.skipif(not REPLICA, reason="réplica de BUG-11: ENGRAMA_REPLICA_BUG11=1")
+
+
+@replica
+def test_r1_mismo_documento_en_tres_colegios_unicode(integ) -> None:
+    """R1: 3 colegios, 3 nombres Unicode; cada T2 devuelve el suyo tal cual.
+
+    No se afirma un orden con tildes: depende del *collation*.
+    """
+    esc = _sembrar(integ)
+    tenant_c = integ.crear_tenant()
+    grupo_c = integ.crear_grupo(tenant_c, "GC")
+    ac = integ.crear_perfil(tenant_c, rol="admin")
+    dc = integ.crear_perfil(tenant_c, rol="teacher")
+    integ._insertar(TeacherGroup(tenant_id=tenant_c, teacher_id=dc, group_id=grupo_c))
+    doc = "SINT-R11-0001"
+    nombres = ("José Ñúñez O'Neil", "María-José D'Alessandro", "Zoë Ünal")
+    colegios = ((esc.aa, esc.grupo_a, esc.d), (esc.ab, esc.grupo_b, esc.dt), (ac, grupo_c, dc))
+
+    pids = {_m3(integ, esc, admin, grupo, doc, nombre)
+            for (admin, grupo, _d), nombre in zip(colegios, nombres, strict=True)}
+    assert len(pids) == 1, f"el mismo documento dio {len(pids)} profile_id"
+    pid = pids.pop()
+    for i, ((_a, grupo, docente), propio) in enumerate(zip(colegios, nombres, strict=True)):
+        filas, texto = _t2(integ, esc, docente, grupo)
+        ajenos = tuple(n for n in nombres if n != propio)
+        _aislado(filas, texto, pid, propio, ajenos, f"T2 del colegio {i + 1}")
+        vistos = {f["full_name"] for f in filas}
+        assert not vistos & set(ajenos), f"T2 del colegio {i + 1}: nombres ajenos {vistos}"
+
+
+@replica
+def test_r2_docente_de_a_estudiante_en_b(integ) -> None:
+    """R2: DO (docente de A) se matricula en B con N2 -> 201. En A nada cambia."""
+    esc = _sembrar(integ)
+    doc_do = integ.valor("select documento_id from profiles where id = :p", p=esc.do)
+    nombre_perfil = integ.valor("select full_name from profiles where id = :p", p=esc.do)
+    n2 = "Olga Prueba Beta"
+
+    assert _m3(integ, esc, esc.ab, esc.grupo_b, doc_do, n2) == str(esc.do)
+    filas_b, texto_b = _t2(integ, esc, esc.dt, esc.grupo_b)
+    _aislado(filas_b, texto_b, str(esc.do), n2, (nombre_perfil,), "T2 de GB")
+
+    # En A: M2 sigue resolviendo por la membresía `teacher`, y su nombre en A sigue NULL.
+    r = client.post(f"/admin/groups/{esc.grupo_a}/teachers", headers=esc.h(integ, esc.aa),
+                    json={"documento_id": doc_do})
+    _exigir(r, 201, "M2 de DO en GA")
+    assert r.json()["teacher_id"] == str(esc.do) and r.json()["resultado"] == "asignado", r.text
+    fila_a = integ.fila("select role, full_name from memberships "
+                        "where tenant_id = :t and profile_id = :p", t=esc.tenant_a, p=esc.do)
+    assert fila_a == {"role": "teacher", "full_name": None}, f"la membresía en A cambió: {fila_a}"
+    assert integ.valor("select full_name from profiles where id = :p", p=esc.do) == nombre_perfil
+    filas_a, texto_a = _t2(integ, esc, esc.d, esc.grupo_a)
+    assert str(esc.do) not in texto_a and n2 not in texto_a, "DO salió en el roster de GA"
+
+
+@replica
+def test_r3_csv_grande_con_punto_y_coma_y_bom(integ) -> None:
+    """R3: A importa 20; B importa 40 (`;` + BOM), 20 ya en A -> `creados 40`."""
+    esc = _sembrar(integ)
+    docs = [f"SINT-R11-{i:04d}" for i in range(1, 41)]
+    alfa = [f"Alumno {i:02d} Alfa" for i in range(1, 41)]
+    beta = [f"Alumno {i:02d} Beta" for i in range(1, 41)]
+
+    assert _m4(integ, esc, esc.aa, esc.grupo_a, list(zip(docs[:20], alfa[:20], strict=True))) == {
+        "creados": 20, "ya_estaban": 0, "total": 20}
+    csv_b = "documento_id;nombre_completo\n" + "".join(
+        f"{d};{n}\n" for d, n in zip(docs, beta, strict=True))
+    r = client.post(f"/admin/groups/{esc.grupo_b}/students/import",
+                    headers={**esc.h(integ, esc.ab), "Content-Type": "text/csv"},
+                    content=csv_b.encode("utf-8-sig"))
+    _exigir(r, 201, "M4 de B con ; y BOM")
+    assert r.json() == {"creados": 40, "ya_estaban": 0, "total": 40}, r.text
+
+    filas_b, texto_b = _t2(integ, esc, esc.dt, esc.grupo_b)
+    vistos_b = {f["full_name"] for f in filas_b}
+    assert sum(n in vistos_b for n in beta) == 40, "T2 de GB no muestra los 40 nombres de B"
+    assert [n for n in alfa if n in texto_b] == [], "T2 de GB muestra nombres de A"
+    filas_a, texto_a = _t2(integ, esc, esc.d, esc.grupo_a)
+    vistos_a = {f["full_name"] for f in filas_a}
+    assert sum(n in vistos_a for n in alfa[:20]) == 20, "T2 de GA no muestra los 20 de A"
+    assert [n for n in beta if n in texto_a] == [], "T2 de GA muestra nombres de B"
+    assert integ.valor("select count(*) from profiles where documento_id like 'SINT-R11-%'") == 40
