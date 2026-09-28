@@ -127,9 +127,24 @@ def test_u4_guardas_de_las_rutas_existentes() -> None:
     faltan_previas = set(_PREVIAS) - set(actuales)
     assert not faltan_previas, f"rutas previas que desaparecieron: {faltan_previas}"
 
-# NOTA (commit 1, §7): un test "al final están las 11" no se agrega en esta
-# tanda — T5 y T7 (`/achievement`, `/item-errors`) quedan BLOQUEADAS hasta que
-# el pedagogo responda §2.4 (pasos 10-11), así que "las 11 completas" nunca es
-# cierto en los pasos 1-9. Al terminar el paso 9 se agrega, en su lugar, un
-# test que exige las 9 rutas EN ALCANCE (T1-T4, T6, M1-M4) — ver el commit de
-# F12/.gitignore.
+
+# Las 9 rutas de los pasos 1-9 (T1-T4, T6, M1-M4). T5 y T7 llegan en los pasos
+# 10-11 (commit F12/.gitignore, §7): se agregan aquí, no antes, porque hasta
+# entonces "las 9" es la meta real — un test "ya están las 11" habría dado
+# rojo en todos los commits intermedios (§7: "cada uno con 0 failed").
+_EN_ALCANCE_PASOS_1_9 = {
+    clave for clave in _NUEVAS
+    if "/achievement" not in clave[0] and "/item-errors" not in clave[0]
+}
+
+
+def test_u4_al_terminar_el_paso_9_estan_las_9_en_alcance() -> None:
+    """T1-T4, T6 y M1-M4 completas; T5/T7 siguen sin nacer (bloqueadas)."""
+    actuales = {(r.path, frozenset(r.methods)) for r in app.routes if isinstance(r, APIRoute)}
+    assert _EN_ALCANCE_PASOS_1_9 <= actuales, (
+        f"faltan de los pasos 1-9: {_EN_ALCANCE_PASOS_1_9 - actuales}"
+    )
+    bloqueadas = {clave for clave in _NUEVAS if clave not in _EN_ALCANCE_PASOS_1_9}
+    assert bloqueadas.isdisjoint(actuales), (
+        f"T5/T7 no deberían existir todavía (§2.4): {bloqueadas & actuales}"
+    )
