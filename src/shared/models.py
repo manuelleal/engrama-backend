@@ -156,11 +156,20 @@ class Membership(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # 032 (BUG-11): el nombre que puso ESTE colegio. Vive aquí y no en
+    # `profiles` porque el perfil es global: si dos colegios matriculan el
+    # mismo documento, cada uno ve el nombre que escribió. Obligatorio solo
+    # para `student` (CHECK abajo); docentes y admins lo tienen NULL.
+    full_name: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "profile_id", name="memberships_tenant_profile_key"),
         CheckConstraint(
             "role IN ('admin','teacher','student')", name="memberships_role_check"
+        ),
+        CheckConstraint(
+            "role <> 'student' OR full_name IS NOT NULL",
+            name="memberships_student_full_name_check",
         ),
         Index("idx_memberships_tenant_profile", "tenant_id", "profile_id"),
         Index("idx_memberships_profile", "profile_id"),

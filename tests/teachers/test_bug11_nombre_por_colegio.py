@@ -13,9 +13,9 @@ escribió OTRO colegio) en T2 y en T5.
                T2 y T5 byte a byte contra el snapshot congelado en `84ce99a`.
 
 A1-A4 afirman por la API (solo A1 mira además `profiles`) y NUNCA nombran
-`memberships.full_name`: por eso corren sobre el código viejo con
-`xfail(strict=True, raises=AssertionError)` — el hueco se ve en rojo. Si el
-hueco se cerrara sin quitar el xfail, el estricto se pone rojo (XPASS).
+`memberships.full_name`: por eso corrieron sobre el código viejo (commit
+587fc67) con `xfail(strict=True, raises=AssertionError)` y el hueco se vio
+en rojo. Con la 032 y el código nuevo el xfail se quitó: pasan en verde.
 
 Datos sintéticos (ESPEC §3): documentos `SINT-B11-0001`, `-0101`, `-0102`,
 `-0201`. Los nombres de un colegio llevan `Alfa` y los del otro `Beta`;
@@ -40,9 +40,6 @@ from tests.teachers._actores import Escuela, armar
 pytestmark = pytest.mark.integ
 client = TestClient(app)
 
-# Se quita en el commit 2 de ESPEC §10 (el `fix`): ahí A1-A4 pasan a verde.
-XFAIL_BUG11 = pytest.mark.xfail(strict=True, raises=AssertionError, reason="BUG-11")
-
 RUTA_SNAPSHOT = Path(__file__).with_name("snapshot_bug11_un_colegio.json")
 
 
@@ -60,8 +57,9 @@ def _sembrar(integ: Any) -> Escuela:
 def _exigir(r: Any, status: int, que: str) -> None:
     """Arnés: otro status es `PruebaRota`, NO AssertionError.
 
-    Así, con el xfail estricto de A1-A4, una siembra rota sale en rojo y no
-    se confunde con el hueco (mismo criterio que `tests/seguridad/veredictos.py`).
+    Así, una siembra rota no se confunde con el hueco: ni con el xfail
+    estricto del commit 1, ni con el `AssertionError` que exigen los
+    tramposos Y1-Y4 (mismo criterio que `tests/seguridad/veredictos.py`).
     """
     if r.status_code != status:
         raise PruebaRota(f"{que}: se esperaba {status} y llegó {r.status_code}: {r.text}")
@@ -133,7 +131,6 @@ def _mismo_doc_en_dos_colegios(integ: Any, esc: Escuela) -> str:
     return pid_a
 
 
-@XFAIL_BUG11
 def test_a1_t2_cada_colegio_ve_su_nombre(integ) -> None:
     """A1 (C1 + C5): T2 de GA muestra N1 y no N2; T2 de GB, N2 y no N1; `profiles` = ''."""
     esc = _sembrar(integ)
@@ -151,7 +148,6 @@ def test_a1_t2_cada_colegio_ve_su_nombre(integ) -> None:
     )
 
 
-@XFAIL_BUG11
 def test_a2_t5_cada_colegio_ve_su_nombre(integ) -> None:
     """A2 (C2): lo mismo que A1 en T5 (`students[].full_name`)."""
     esc = _sembrar(integ)
@@ -163,7 +159,6 @@ def test_a2_t5_cada_colegio_ve_su_nombre(integ) -> None:
     _aislado(filas_b, texto_b, pid, N2, (N1,), "T5 de GB")
 
 
-@XFAIL_BUG11
 def test_a3_csv_cada_colegio_ve_su_nombre_y_reimportar_no_pisa(integ) -> None:
     """A3 (C3): M4 en A (Alfa) y en B (Beta); reimportar en B con Gamma no pisa Beta."""
     esc = _sembrar(integ)
@@ -184,7 +179,6 @@ def test_a3_csv_cada_colegio_ve_su_nombre_y_reimportar_no_pisa(integ) -> None:
     _aislado(filas_b, texto_b, pid, beta, (alfa, gamma), "T2 de GB")
 
 
-@XFAIL_BUG11
 def test_a4_orden_alfabetico_con_el_nombre_de_cada_colegio(integ) -> None:
     """A4 (C4): P y Q en los dos colegios con órdenes opuestos; cada uno ve el suyo.
 

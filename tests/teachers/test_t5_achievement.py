@@ -41,11 +41,14 @@ def _sembrar_logro(integ, esc) -> tuple[str, str]:
     from sqlalchemy import text
 
     async def _renombrar() -> None:
+        # BUG-11: el nombre (y el orden) que ve el colegio A sale de SU membresía.
         async with integ.Session() as db:
-            await db.execute(text("update profiles set full_name = 'AAA Estudiante' "
-                                  "where id = :p"), {"p": aaa})
-            await db.execute(text("update profiles set full_name = 'ZZZ Estudiante' "
-                                  "where id = :p"), {"p": zzz})
+            await db.execute(text("update memberships set full_name = 'AAA Estudiante' "
+                                  "where profile_id = :p and tenant_id = :t"),
+                             {"p": aaa, "t": esc.tenant_a})
+            await db.execute(text("update memberships set full_name = 'ZZZ Estudiante' "
+                                  "where profile_id = :p and tenant_id = :t"),
+                             {"p": zzz, "t": esc.tenant_a})
             await db.commit()
 
     integ.run(_renombrar())

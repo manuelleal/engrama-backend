@@ -27,8 +27,10 @@ def test_f2_roster_sin_balance(integ) -> None:
     assert body == [
         {
             "profile_id": str(esc.e),
-            "full_name": integ.fila("select full_name from profiles where id = :p",
-                                    p=esc.e)["full_name"],
+            # BUG-11: el nombre que ve el colegio A sale de SU membresía.
+            "full_name": integ.fila("select full_name from memberships "
+                                    "where tenant_id = :t and profile_id = :p",
+                                    t=esc.tenant_a, p=esc.e)["full_name"],
             "consistency": {"label": "constancia", "current_streak": 0},
             "last_attendance_date": None,
         }

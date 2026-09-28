@@ -25,7 +25,13 @@ def test_f9_aa_matricula_idempotente_y_detecta_conflictos(integ) -> None:
     assert otra_vez.status_code == 200, otra_vez.text
     assert otra_vez.json() == {"profile_id": pid, "documento_id": "doc-nuevo-1",
                                 "resultado": "ya_estaba"}
-    assert integ.valor("select full_name from profiles where id = :p", p=pid) == "Ana Nueva"
+    # BUG-11: el nombre vive en la membresía (A, P), no en `profiles`; y el
+    # segundo POST ("OTRO NOMBRE") no lo pisa.
+    assert integ.valor("select full_name from profiles where id = :p", p=pid) == ""
+    assert integ.valor(
+        "select full_name from memberships where tenant_id = :t and profile_id = :p",
+        t=esc.tenant_a, p=pid,
+    ) == "Ana Nueva"
     assert integ.valor(
         "select count(*) from memberships where tenant_id = :t and profile_id = :p",
         t=esc.tenant_a, p=pid,

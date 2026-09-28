@@ -64,7 +64,9 @@ async def roster(db: AsyncSession, group: Group) -> list[StudentRosterOut]:
         .scalar_subquery()
     )
     stmt = (
-        select(Profile.id, Profile.full_name, Profile.current_streak, ultima_asistencia)
+        # El nombre sale de la membresía de ESTE colegio, no de `profiles`
+        # (BUG-11): el perfil es global y otro colegio pudo matricularlo.
+        select(Profile.id, Membership.full_name, Profile.current_streak, ultima_asistencia)
         .select_from(Membership)
         .join(Profile, Profile.id == Membership.profile_id)
         .where(
@@ -73,7 +75,7 @@ async def roster(db: AsyncSession, group: Group) -> list[StudentRosterOut]:
             Membership.role == "student",
             Membership.is_active.is_(True),
         )
-        .order_by(Profile.full_name, Profile.id)
+        .order_by(Membership.full_name, Profile.id)
     )
     rows = (await db.execute(stmt)).all()
     return [

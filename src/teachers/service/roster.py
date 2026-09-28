@@ -110,14 +110,24 @@ async def enroll_student(
 ) -> tuple[Profile, str]:
     """Matricula un estudiante en `group`. Devuelve (perfil, 'inscrito' | 'ya_estaba').
 
-    Crea el `Profile` si falta (`uuid4`, `pin_hash=''`, ESPEC M3); si ya
-    existe, lo REUSA sin pisar `full_name`. 409 si la membresía existente en
-    este tenant tiene otro rol, está inactiva o es de otro grupo.
+    Crea el `Profile` si falta (`uuid4`, `pin_hash=''`, `full_name=''`,
+    ESPEC M3); si ya existe (quizá lo creó OTRO colegio), lo REUSA: la
+    identidad es global por `documento_id`.
+
+    El nombre que escribe el colegio va en SU membresía, nunca en el perfil
+    (BUG-11, `docs/ESPEC_bug11.md`): así dos colegios que matriculan el mismo
+    documento ven cada uno el nombre que escribieron. Si la membresía ya
+    existía (`ya_estaba`), NO se pisa su nombre.
+
+    409 si la membresía existente en este tenant tiene otro rol, está
+    inactiva o es de otro grupo.
     """
     profile = await get_profile_by_documento(db, documento_id)
     if profile is None:
+        # `full_name=''`: el perfil no guarda datos de un colegio (BUG-11).
+        # Mismo precedente que `pin_hash=''`.
         profile = Profile(
-            id=uuid4(), documento_id=documento_id, full_name=nombre_completo,
+            id=uuid4(), documento_id=documento_id, full_name="",
             pin_hash="", role="student",
         )
         db.add(profile)
@@ -136,6 +146,7 @@ async def enroll_student(
             Membership(
                 tenant_id=tenant_id, profile_id=profile.id, role="student",
                 group_code=group.group_code, is_active=True,
+                full_name=nombre_completo,  # el nombre de ESTE colegio
             )
         )
         await db.flush()

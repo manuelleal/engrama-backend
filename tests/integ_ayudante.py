@@ -139,19 +139,24 @@ class Integ(ComoMixin):
         from src.shared.models import CoinWallet, Membership, Profile
 
         pid = uuid4()
+        nombre = f"Persona {pid.hex[:6]}"
         objs: list[Any] = [
             Profile(
                 id=pid,
                 documento_id=f"doc-{pid.hex[:12]}",
-                full_name=f"Persona {pid.hex[:6]}",
+                full_name=nombre,
                 pin_hash="sintetico",
                 role=rol,
                 current_streak=racha,
                 longest_streak=racha,
                 last_attendance_date=ultima_asistencia,
             ),
+            # 032 (BUG-11): el estudiante lleva su nombre en la membresía (el
+            # CHECK lo exige); el mismo que el perfil, para que los tests
+            # existentes vean lo mismo que antes. Docente y admin: NULL.
             Membership(tenant_id=tenant_id, profile_id=pid, role=rol,
-                       group_code=group_code, is_active=True),
+                       group_code=group_code, is_active=True,
+                       full_name=nombre if rol == "student" else None),
         ]
         if saldo is not None:
             objs.append(CoinWallet(tenant_id=tenant_id, owner_type="profile",
