@@ -159,6 +159,27 @@ class Integ(ComoMixin):
         self._insertar(*objs)
         return pid
 
+    def afiliar(
+        self,
+        perfil: UUID,
+        tenant_id: UUID,
+        rol: str = "teacher",
+        *,
+        group_code: str | None = None,
+    ) -> None:
+        """Agrega una membership MÁS a un perfil ya existente, en otro tenant.
+
+        Para el actor DM de docs/ESPEC_grupos_y_panel_docente.md §3: un docente
+        con membresía también en un segundo colegio. `Membership` solo exige
+        UNIQUE (tenant_id, profile_id) — nada impide una fila por tenant.
+        """
+        from src.shared.models import Membership
+
+        self._insertar(
+            Membership(tenant_id=tenant_id, profile_id=perfil, role=rol,
+                       group_code=group_code, is_active=True)
+        )
+
     def crear_grupo(
         self,
         tenant_id: UUID,
@@ -221,8 +242,14 @@ class Integ(ComoMixin):
         status: str = "active",
         tipo: str = "multiple_choice",
         titulo: str | None = None,
+        skill: str | None = None,
+        cefr_level: str | None = None,
     ) -> tuple[UUID, list[UUID]]:
-        """Challenge + una pregunta por respuesta correcta. Devuelve (id, [ids preguntas])."""
+        """Challenge + una pregunta por respuesta correcta. Devuelve (id, [ids preguntas]).
+
+        `skill` y `cefr_level` son opcionales (ERR-16, §4): sin ellos el
+        challenge nace igual que antes de esta espec (ambos NULL).
+        """
         from src.shared.models import Challenge, ChallengeQuestion
 
         cid = uuid4()
@@ -234,6 +261,7 @@ class Integ(ComoMixin):
                 challenge_type=tipo, coins_reward=coins, xp_reward=xp,
                 max_attempts=max_attempts, max_winners=max_winners,
                 current_winners=current_winners, status=status,
+                skill=skill, cefr_level=cefr_level,
             )
         ]
         for i, (qid, resp) in enumerate(zip(qids, respuestas, strict=True), start=1):
@@ -259,17 +287,27 @@ class Integ(ComoMixin):
         alumno_id: UUID,
         *,
         status: str = "completed",
+        answers: list[Any] | None = None,
+        completed_at: datetime | None = None,
     ) -> UUID:
-        """Intento ya registrado (por defecto 'completed', sin premio)."""
+        """Intento ya registrado (por defecto 'completed', sin premio).
+
+        `answers` y `completed_at` son opcionales (ERR-16, §4, para T5/T7):
+        sin ellos, `answers=[]` y `completed_at=now()` — idéntico a antes.
+        """
         from src.shared.models import ChallengeAttempt
 
         aid = uuid4()
+        resuelto_completed_at = completed_at
+        if resuelto_completed_at is None and status == "completed":
+            resuelto_completed_at = datetime.now(UTC)
         self._insertar(
             ChallengeAttempt(
                 id=aid, tenant_id=tenant_id, challenge_id=challenge_id,
                 student_id=alumno_id, status=status, score_percent=0,
                 is_correct=False if status == "completed" else None,
-                completed_at=datetime.now(UTC) if status == "completed" else None,
+                answers=answers if answers is not None else [],
+                completed_at=resuelto_completed_at,
             )
         )
         return aid
