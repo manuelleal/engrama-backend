@@ -133,8 +133,8 @@ ALTER TABLE memberships DROP COLUMN IF EXISTS full_name;
 | Y2 | `enroll_student` viejo trasplantado: el perfil nuevo guarda el nombre y la membresía copia `profile.full_name` | **A1**, A2, A3, A4, H1, F9 | B hereda N1. F9 ve el nombre en `profiles`. **No** S1: con un solo colegio el nombre coincide |
 | Y3 | El perfil nuevo guarda `nombre_completo` y la membresía queda bien | **A1** (parte de base), F9, H1 (`nombre_en_profiles`) | T2 y T5 se ven bien: solo lo detecta mirar `profiles` (C5) |
 | Y4 | `ya_estaba` pisa el nombre de la membresía | **F9**, A3 | Contrato de M3 "sin pisar el nombre" |
-| Y5 | `_subir()` sin el UPDATE del backfill | **B1**, B2 | B2 vuelve a subir y afirma el backfill |
-| Y6 | `DROP CONSTRAINT memberships_student_full_name_check` en la base de la sesión, restaurado en `finally` (patrón `_privilegios`) | **C9** | Nadie más inserta un estudiante sin nombre. **No** D7: inserta `admin` |
+| Y5 | `_subir()` sin el UPDATE del backfill | **B1**, B2 | ~~B2 vuelve a subir y afirma el backfill~~ **Corregido tras la medición (ERR-23):** el rojo no sale de la aserción del backfill, sino de que el CHECK impide aplicar la 032 sin backfill (23514 en `SQL_SUBIR`). Celdas iguales, otro mecanismo |
+| Y6 | `DROP CONSTRAINT memberships_student_full_name_check` en la base de la sesión, restaurado en `finally` (patrón `_privilegios`) | **C9**, **B1** | ~~Nadie más inserta un estudiante sin nombre.~~ **Corregido tras la medición (ERR-23):** B1 también cae (`UndefinedObjectError`), porque su preparación hace `DROP CONSTRAINT` sin `IF EXISTS` para volver al esquema previo a la 032. Es un cruce de la preparación, no del criterio de B1; se anota y no se toca el test (ERR-9). **No** D7: inserta `admin` |
 | Y7 | `_bajar()` sin el UPDATE de `profiles` | **B2** | El perfil queda con `''` |
 | Y8 | `_fuentes()` agrega un `falso.py` sintético con `select(Profile.id, Profile.full_name)` | **U1** | Tramposo de validador (ERR-17) |
 
