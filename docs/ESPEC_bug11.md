@@ -13,7 +13,7 @@ F4 · Creador · 2026-09-28 · preregistro. Rama `test/fixture-integ`, base `84c
 |---|---|
 | `documento_id` es UNIQUE **global** | `alembic/versions/002_create_profiles.py:24`, `src/shared/models.py:101` |
 | El nombre es una sola columna global | `002_create_profiles.py:25`, `models.py:102` (`profiles.full_name TEXT NOT NULL`) |
-| `memberships` no tiene nombre | `003_create_memberships.py:22-78`, `models.py:137-167`. UNIQUE `(tenant_id, profile_id)` en `:161` |
+| `memberships` no tiene nombre | `003_create_memberships.py:22-34`, `models.py:137-167`. UNIQUE `(tenant_id, profile_id)` en `:161` |
 | **Escritura del nombre (M3 y M4)** | `src/teachers/service/roster.py:117` busca el perfil por documento **en todo el sistema**. `:118-124` solo crea el perfil si falta, con `full_name=nombre_completo` (`:120`). Si el perfil ya existe (lo creó **otro** colegio), `nombre_completo` se **descarta en silencio**. `:134-142` crea la membresía sin nombre |
 | M4 pasa por el mismo camino | `roster.py:281-282` (`import_csv` → `enroll_student`). La validación contra la base (`:234-260`) solo mira la membresía del **mismo** colegio |
 | Entrada de M3 | `src/teachers/admin_router.py:92-95`; `src/teachers/schemas.py:116` (`nombre_completo: str`, **sin** `min_length`) |
@@ -33,7 +33,7 @@ F4 · Creador · 2026-09-28 · preregistro. Rama `test/fixture-integ`, base `84c
   - `tests/teachers/test_m3_students.py:28` afirma que M3 lo escribe allí;
   - `tests/teachers/test_t2_roster.py:30-31` saca de allí el valor esperado;
   - `tests/teachers/test_t5_achievement.py:45-48` siembra el orden de F5 con `update profiles set full_name`.
-- `tests/integ_ayudante.py:128-158` (`crear_perfil`) pone `full_name = "Persona <hex>"` en el perfil y crea la membresía sin nombre. `afiliar` (`:160-181`) solo se usa con `rol="teacher"` (`tests/teachers/_actores.py:66`).
+- `tests/integ_ayudante.py:128-160` (`crear_perfil`) pone `full_name = "Persona <hex>"` en el perfil y crea la membresía sin nombre. `afiliar` (`:162-181`) solo se usa con `rol="teacher"` (`tests/teachers/_actores.py:66`).
 - Los INSERT crudos en `memberships` de `tests/seguridad/test_aceptacion.py:311` (D7) y `test_bug2_funcion.py:72` usan `role='admin'`. Un CHECK solo para estudiantes no los toca.
 - Una base nueva **dentro** del contenedor de pruebas no tiene el esquema `auth`, y `029_rls_policies.py` usa `auth.uid()`. Por eso los tests de migración de §3 no migran una base aparte: corren el SQL de la 032 dentro de una transacción que se deshace (no medido; ver §10).
 - La siguiente migración libre es la **032**: no existe `alembic/versions/032*` en ninguna rama (`git log --all -- 'alembic/versions/032*'` está vacío). `ESPEC_login_vendible.md` §1 **tiene reservada** la 032 sin haberla escrito, y pasa a 033 (§6).
