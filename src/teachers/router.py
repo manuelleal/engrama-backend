@@ -7,13 +7,15 @@ grupo. Rol equivocado -> 403 exacto; grupo ajeno o inexistente -> 404 exacto
 """
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.schemas import AuthContext
 from src.shared.db import get_db
 from src.shared.deps import require_teacher
-from src.teachers.schemas import GroupSummaryOut
+from src.teachers.schemas import GroupSummaryOut, StudentRosterOut
 from src.teachers.service import access as access_service
 from src.teachers.service import panel as panel_service
 
@@ -35,3 +37,21 @@ async def list_groups(
     """Grupos visibles para `auth` (`access.visible_groups`), con su conteo."""
     groups = await access_service.visible_groups(db, auth)
     return [await panel_service.group_to_summary(db, g) for g in groups]
+
+
+# =============================================================================
+# T2 — GET /teachers/groups/{gid}/students
+# =============================================================================
+@router.get(
+    "/groups/{gid}/students",
+    response_model=list[StudentRosterOut],
+    status_code=status.HTTP_200_OK,
+)
+async def list_students(
+    gid: UUID,
+    auth: AuthContext = Depends(require_teacher),
+    db: AsyncSession = Depends(get_db),
+) -> list[StudentRosterOut]:
+    """Roster del grupo (`access.authorize_group` + `panel.roster`, §2.2)."""
+    group = await access_service.authorize_group(db, auth, gid)
+    return await panel_service.roster(db, group)

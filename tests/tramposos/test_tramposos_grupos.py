@@ -25,13 +25,22 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
+from uuid import UUID
 
 import pytest
+from fastapi import Depends
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.schemas import AuthContext
 from src.main import app
+from src.shared.db import get_db
 from src.shared.deps import get_current_user, require_teacher
 from src.teachers.service import access as access_mod
+from src.teachers.service import panel as panel_mod
 from tests.teachers import test_t1_groups as t1
+from tests.teachers import test_t2_roster as t2
 
 pytestmark = pytest.mark.integ
 
@@ -57,12 +66,45 @@ def _nunca_exige_asignacion(_auth: Any, *, only_assigned: bool) -> bool:  # noqa
 
 @contextmanager
 def _override(original: Any, reemplazo: Any) -> Iterator[None]:
-    """X3: cambia la Depends para TODAS las rutas que la usan."""
+    """X3/X4: cambia la Depends para TODAS las rutas que la usan."""
     app.dependency_overrides[original] = reemplazo
     try:
         yield
     finally:
         app.dependency_overrides.pop(original, None)
+
+
+async def _t2_con_balance(
+    gid: UUID,
+    auth: AuthContext = Depends(require_teacher),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """X9: T2 con `balance` — bypassa `response_model` (que lo bloquearía de
+    todas formas: `extra='forbid'` no filtra atributos que el propio código
+    nunca declaró) devolviendo un JSONResponse crudo, para probar el
+    contrato incluso si alguien reescribiera el endpoint entero."""
+    group = await access_mod.authorize_group(db, auth, gid)
+    filas = await panel_mod.roster(db, group)
+    payload = [{**f.model_dump(mode="json"), "balance": 999999} for f in filas]
+    return JSONResponse(payload)
+
+
+@contextmanager
+def _reemplazar_ruta(path: str, metodos: set[str], endpoint: Any) -> Iterator[None]:
+    """Reemplaza en sitio el `endpoint`/`dependant.call` de una APIRoute ya
+    montada — la única forma de saltarse su `response_model` (§2.2, X9)."""
+    objetivo = next(
+        r for r in app.routes
+        if isinstance(r, APIRoute) and r.path == path and set(r.methods) == metodos
+    )
+    original_endpoint, original_call = objetivo.endpoint, objetivo.dependant.call
+    objetivo.endpoint = endpoint
+    objetivo.dependant.call = endpoint
+    try:
+        yield
+    finally:
+        objetivo.endpoint = original_endpoint
+        objetivo.dependant.call = original_call
 
 
 # =============================================================================
@@ -83,6 +125,13 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[Any], None], str]] = {
         lambda _i, _mp: _override(require_teacher, get_current_user),
         t1.test_t1_e_403,
         r"403",
+    ),
+    "X9": (
+        lambda _i, _mp: _reemplazar_ruta(
+            "/teachers/groups/{gid}/students", {"GET"}, _t2_con_balance
+        ),
+        t2.test_f2_roster_sin_balance,
+        r"balance",
     ),
 }
 
