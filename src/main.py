@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from src.auth.router import router as auth_router
 from src.challenge_engine.router import router as challenges_router
 from src.engrama_core.router import router as core_router
+from src.teachers.router import router as teachers_router
 
 app = FastAPI(
     title="Engrama 2.0 API",
@@ -13,6 +14,7 @@ app = FastAPI(
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(challenges_router, prefix="/challenges", tags=["challenges"])
 app.include_router(core_router, prefix="/core", tags=["engrama-core"])
+app.include_router(teachers_router, prefix="/teachers", tags=["teachers"])
 
 
 @app.get("/health")
