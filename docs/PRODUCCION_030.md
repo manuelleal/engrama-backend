@@ -50,3 +50,33 @@ La 031 quita a `anon` y `authenticated` todo privilegio sobre las tablas, secuen
   Si la segunda da algo, es una función con el EXECUTE de PUBLIC: hay que hacerle `REVOKE ALL ON FUNCTION … FROM PUBLIC` en una migración aparte, como la 030. La 031 no puede quitar eso por esquema.
 - [ ] **Aparte:** quitar `public` de los esquemas expuestos de la Data API (`db-schemas` en el panel). Con la 031 ya no hay nada que exponer, y así la API de datos de Supabase no publica ni la lista de tablas.
 - [ ] **El downgrade de la 031 reabre todo** (devuelve GRANT ALL a `anon` y `authenticated`). No es un rollback seguro en producción: si hay que volver atrás, se decide aparte.
+
+# Antes de aplicar la 032 (nombre del estudiante por membresía, BUG-11)
+
+Origen: `docs/ESPEC_bug11.md` §7, 2026-09-28. Medido solo en la imagen local (`supabase/postgres:17.6.1.167`); **nada de esto se probó contra el remoto**. engrama-2.0 está pausado. **Nada de esto se corre contra un Supabase real sin el sí de Christiam en esa sesión** (REGLAS §2).
+
+La 032 agrega `memberships.full_name` (nullable), le copia a cada membresía `student` el nombre de su perfil (backfill) y agrega el CHECK `memberships_student_full_name_check`: un `student` no puede quedar sin nombre. No toca `profiles`, las políticas, los privilegios de la 031 ni `app_private`.
+
+- [ ] **Respaldo restaurado en local** y, sobre él, cuántos estudiantes comparten perfil entre colegios:
+  ```sql
+  select count(*) from (select profile_id from memberships where role = 'student'
+    group by profile_id having count(distinct tenant_id) > 1) s;
+  ```
+  - Si da más de 0, el backfill le copia a cada colegio el nombre del **primero**: el que quedó en `profiles.full_name`. El nombre que escribió cada uno de los otros colegios (N2) nunca se guardó y **no se puede recuperar**. Christiam decide si esos colegios vuelven a escribir los nombres.
+  - Se espera 0, porque ningún grupo real se matriculó mientras BUG-11 seguía abierto (`ESPEC_grupos_y_panel_docente.md` §6), pero **no está verificado**.
+- [ ] **La migración y el código van juntos**, en el mismo despliegue:
+  - el código viejo con la 032 aplicada da 23514 (500) en M3 y M4, porque crea la membresía sin nombre;
+  - el código nuevo sin la 032 falla porque la columna no existe;
+  - M3 y M4 no se usan en producción hoy.
+- [ ] **Bloqueos.** `ADD COLUMN` sin default es solo metadato. El UPDATE del backfill y el `ADD CONSTRAINT` recorren `memberships` con bloqueo exclusivo. Con el tamaño actual no importa; si la tabla crece, se usa `ADD CONSTRAINT … NOT VALID` y después `VALIDATE CONSTRAINT`.
+- [ ] **Sin downgrade en producción.** El downgrade de la 032 pierde datos: se queda solo con el nombre del colegio más antiguo de cada perfil y descarta el de los demás (`ESPEC_bug11.md` §1). Si hay que volver atrás, **se restaura el respaldo**; no se corre `alembic downgrade`.
+- [ ] **Después de aplicar:**
+  - la consulta de D12 (sección de la 031, arriba) da 0 y 0 (las dos devuelven NULL);
+  - `select count(*) from pg_policies where schemaname = 'public'` da 51;
+  - `memberships_student_full_name_check` existe:
+    ```sql
+    select pg_get_constraintdef(oid) from pg_constraint
+    where conname = 'memberships_student_full_name_check';
+    -- esperado: CHECK (((role <> 'student'::text) OR (full_name IS NOT NULL)))
+    ```
+- **Medido en local** (contenedor desechable del fixture, 2026-09-28): `alembic upgrade head` → `downgrade 031_sin_acceso_directo` → `upgrade head` corre sin errores. En las dos subidas, las columnas de `memberships` (nombre, tipo, nulabilidad y default) y sus restricciones coinciden. D12 da 0 y 0 y hay 51 políticas en las tres etapas. La posición física de `full_name` cambia de 8 a 9 tras bajar y volver a subir: PostgreSQL no reutiliza la ranura de una columna borrada. La prueba se hizo con `memberships` vacía; el backfill con datos lo cubren B1 y B2 (`tests/integ/test_migracion_032.py`).

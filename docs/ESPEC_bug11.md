@@ -140,6 +140,63 @@ ALTER TABLE memberships DROP COLUMN IF EXISTS full_name;
 
 Negrita = la diagonal que automatiza la suite. Lo demás son cruces predichos. **Antes de aceptar se mide la matriz completa** y se escribe aquí, con una columna "Rojo medido", igual que en grupos §3. Son 8 tramposos × 17 tests (los 10 nuevos no tramposos; F2, F5, F9, F10, F11 y F12; y D12) = **136 celdas**. Lo no medido no es "no cruza" (ERR-19). Un cruce no previsto se corrige por ERR antes de aceptar (regla 8).
 
+### Matriz medida: 136 celdas, con el origen de cada rojo (paso 5, ERR-19 y ERR-23)
+Esta sección **registra** lo medido. No cambia las predicciones de arriba ni los criterios ni las cuentas.
+
+**Cómo se midió:**
+- Se aplicó cada tramposo con el mismo `aplicar` que usa la suite (`TRAMPOSOS` de `test_tramposos_bug11.py`; Y8 = `_fuentes_con_falso`).
+- Luego se corrió el cuerpo del test real y se anotó verde o rojo, con el tipo de excepción, el mensaje y, desde el paso 4, la línea que falla.
+- Cada celda corre sobre la base truncada por el fixture `integ`. El arnés fue temporal y **no se versiona**.
+
+| Celdas | Código medido |
+|---|---|
+| Y1-Y7 × {A1-A4, S1, B1, B2, C9, F2, F5, F9, F10, F11, F12, D12} (105) | `632546e` |
+| Y1-Y7 × U1 y Y8 × los otros 16 (23) | `566ae0c` |
+| Y1-Y8 × H1 (8) | `9642d07` |
+
+**Leyenda:**
+- `·` = verde.
+- `a` = rojo por la **aserción** del test.
+- `a†` = rojo porque falla el SQL bajo prueba. `_correr` lo reporta como AssertionError, porque C7 y C8 exigen que "no falla".
+- `p` = rojo por la **preparación**.
+
+| Test | Y1 | Y2 | Y3 | Y4 | Y5 | Y6 | Y7 | Y8 |
+|---|---|---|---|---|---|---|---|---|
+| A1 | a | a | a | · | · | · | · | · |
+| A2 | a | a | · | · | · | · | · | · |
+| A3 | a | a | · | a | · | · | · | · |
+| A4 | a | a | · | · | · | · | · | · |
+| S1 | a | · | · | · | · | · | · | · |
+| B1 | · | · | · | · | a† | **p** | · | · |
+| B2 | · | · | · | · | a† | · | a | · |
+| C9 | · | · | · | · | · | a | · | · |
+| H1 | a | a | a | · | · | · | · | · |
+| U1 | · | · | · | · | · | · | · | a |
+| F2 | · | · | · | · | · | · | · | · |
+| F5 | a (ValueError) | · | · | · | · | · | · | · |
+| F9 | · | a | a | a | · | · | · | · |
+| F10 | · | · | · | · | · | · | · | · |
+| F11 | · | · | · | · | · | · | · | · |
+| F12 | · | · | · | · | · | · | · | · |
+| D12 | · | · | · | · | · | · | · | · |
+
+**Totales:** 24 rojos y 112 verdes. Solo 1 rojo es de la preparación (Y6 × B1); los otros 23 salen del test (21 `a` y 2 `a†`).
+
+| Id | Rojo medido (origen) | ¿Igual a lo predicho? |
+|---|---|---|
+| Y1 | A1, A2, A3, A4, S1, H1 (a); F5 (a: `ValueError` de `.index` en la línea del `assert`, `test_t5_achievement.py:93`) | Sí |
+| Y2 | A1, A2, A3, A4, F9, H1 (a) | Sí |
+| Y3 | A1 (a, parte de base: `profiles.full_name`), F9 (a), H1 (a) | Sí |
+| Y4 | F9 (a: `'OTRO NOMBRE' == 'Ana Nueva'`), A3 (a: B ve `Beto Prueba Gamma`) | Sí |
+| Y5 | B1, B2 (a†: 23514 `memberships_student_full_name_check` en `SQL_SUBIR`) | Celdas sí. El mecanismo difiere: corregido en `86efcd2` (ERR-23) |
+| Y6 | C9 (a: el INSERT sin nombre entra), B1 (**p**: `UndefinedObjectError` en `test_migracion_032.py:135`, el `DROP CONSTRAINT` sin `IF EXISTS`) | La celda B1 no estaba predicha: corregida en `86efcd2` (ERR-23) |
+| Y7 | B2 (a: el perfil queda con `''`) | Sí |
+| Y8 | U1 (a: `['falso.py:3']`) | Sí |
+
+- **F2, F10, F11, F12 y D12 quedan verdes con los 8 tramposos.**
+- **Fuera de las 136**, con `ENGRAMA_REPLICA_BUG11=1`: R1, R2 y R3 dan rojo por la aserción con Y1 y con Y2, y verde con Y3-Y8. La celda de Y2 está corregida en `c7a8b89` (reincidencia de ERR-23).
+- Al armar la matriz no apareció ninguna diferencia nueva con la predicción ya corregida.
+
 ## 4. Cuentas (ERR-10: la suma a la vista)
 Base en `84ce99a`: **262 passed + 6 skipped**, **98 no-integ** (el 98 medido hoy; el 262 es del TABLERO).
 
