@@ -6,7 +6,7 @@ commits de la espec (§7); no se reordena entre commits.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -150,3 +150,83 @@ class ImportRowErrorOut(BaseModel):
 
     fila: int
     motivo: str
+
+
+# =============================================================================
+# T5 — GET /teachers/groups/{gid}/achievement (ESPEC §2.1, corregida ERR-16)
+# =============================================================================
+class AchievementMethodOut(BaseModel):
+    """Constante: los mismos valores en toda respuesta de T5 (§2.1)."""
+
+    model_config = _STRICT
+
+    window_days: int
+    first_attempt_only: bool
+    min_items: int
+    min_challenges: int
+    thresholds: dict[str, int]
+    excluded_types: list[str]
+    axis_mapping: str
+    cefr_filter: str
+    status_scope: str  # Pedagogo P1: nunca es nivel MCER del estudiante.
+
+
+class AxisOut(BaseModel):
+    """Un eje (Comprehension/Expression/Accuracy) para un estudiante."""
+
+    model_config = _STRICT
+
+    axis: str
+    status: str
+    label: str
+    items: int
+    correct: int
+    challenges: int
+    cefr_levels: dict[str, int]
+
+
+class SkillDetailOut(BaseModel):
+    """Una fila del detalle por skill (§2.1.4)."""
+
+    model_config = _STRICT
+
+    skill: str | None
+    axis: str | None
+    items: int
+    correct: int
+
+
+class AttemptDetailOut(BaseModel):
+    """Un intento `completed` en el alcance, dentro de la ventana (§2.1)."""
+
+    model_config = _STRICT
+
+    challenge_id: UUID
+    title: str
+    skill: str | None
+    score_percent: float
+    is_correct: bool
+    completed_at: datetime
+    first_attempt: bool
+
+
+class StudentAchievementOut(BaseModel):
+    """Un estudiante del roster (mismo orden que T2) con su logro."""
+
+    model_config = _STRICT
+
+    profile_id: UUID
+    full_name: str
+    axes: list[AxisOut]
+    skills: list[SkillDetailOut]
+    unmapped_items: int
+    attempts: list[AttemptDetailOut]
+
+
+class AchievementOut(BaseModel):
+    """Respuesta completa de T5."""
+
+    model_config = _STRICT
+
+    method: AchievementMethodOut
+    students: list[StudentAchievementOut]

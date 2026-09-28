@@ -128,23 +128,6 @@ def test_u4_guardas_de_las_rutas_existentes() -> None:
     assert not faltan_previas, f"rutas previas que desaparecieron: {faltan_previas}"
 
 
-# Las 9 rutas de los pasos 1-9 (T1-T4, T6, M1-M4). T5 y T7 llegan en los pasos
-# 10-11 (commit F12/.gitignore, §7): se agregan aquí, no antes, porque hasta
-# entonces "las 9" es la meta real — un test "ya están las 11" habría dado
-# rojo en todos los commits intermedios (§7: "cada uno con 0 failed").
-_EN_ALCANCE_PASOS_1_9 = {
-    clave for clave in _NUEVAS
-    if "/achievement" not in clave[0] and "/item-errors" not in clave[0]
-}
-
-
-def test_u4_al_terminar_el_paso_9_estan_las_9_en_alcance() -> None:
-    """T1-T4, T6 y M1-M4 completas; T5/T7 siguen sin nacer (bloqueadas)."""
-    actuales = {(r.path, frozenset(r.methods)) for r in app.routes if isinstance(r, APIRoute)}
-    assert _EN_ALCANCE_PASOS_1_9 <= actuales, (
-        f"faltan de los pasos 1-9: {_EN_ALCANCE_PASOS_1_9 - actuales}"
-    )
-    bloqueadas = {clave for clave in _NUEVAS if clave not in _EN_ALCANCE_PASOS_1_9}
-    assert bloqueadas.isdisjoint(actuales), (
-        f"T5/T7 no deberían existir todavía (§2.4): {bloqueadas & actuales}"
-    )
+# NOTA (paso 10, T5): "test_u4_al_final_estan_las_11" se agrega en el paso 11
+# (T7, el último que crea una ruta nueva) — antes de eso falta `/item-errors`
+# a propósito y ese test daría rojo (§7: "cada commit con 0 failed").

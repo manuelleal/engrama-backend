@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -37,16 +38,18 @@ from src.auth.schemas import AuthContext
 from src.main import app
 from src.shared.db import get_db
 from src.shared.deps import get_current_user, require_admin, require_teacher
-from src.shared.models import AttendanceSession
+from src.shared.models import AttendanceSession, Challenge, ChallengeAttempt
 from src.teachers.service import access as access_mod
+from src.teachers.service import achievement as achievement_mod
 from src.teachers.service import panel as panel_mod
+from src.teachers.service import roster as roster_mod
 from tests.teachers import test_t1_groups as t1
 from tests.teachers import test_t2_roster as t2
 from tests.teachers import test_t3_t4_attendance as t34
+from tests.teachers import test_t5_achievement as t5
 from tests.teachers import test_t6_assign as t6
 from tests.teachers import test_m1_m2_admin_groups as m12
 from tests.teachers import test_m4_import as m4
-from src.teachers.service import roster as roster_mod
 
 pytestmark = pytest.mark.integ
 
@@ -149,6 +152,79 @@ async def _import_csv_escribe_antes_de_fallar(
     return {"creados": creados, "ya_estaban": ya_estaban, "total": len(crudas)}
 
 
+async def _intentos_del_grupo_sin_filtro(
+    db: AsyncSession, group: Any, student_ids: list[UUID]
+) -> Any:
+    """X6: intentos de TODOS los retos del tenant, no solo `group.id` (T5)."""
+    from sqlalchemy import select as _select
+
+    if not student_ids:
+        return {}
+    stmt = (
+        _select(ChallengeAttempt, Challenge)
+        .join(Challenge, Challenge.id == ChallengeAttempt.challenge_id)
+        .where(
+            ChallengeAttempt.student_id.in_(student_ids),
+            ChallengeAttempt.status == "completed",
+        )
+    )
+    from collections import defaultdict as _dd
+
+    rows = (await db.execute(stmt)).all()
+    por_estudiante: dict[UUID, list[Any]] = _dd(list)
+    for intento, challenge in rows:
+        por_estudiante[intento.student_id].append(
+            achievement_mod.AttemptRow(
+                attempt_id=intento.id, challenge_id=challenge.id, title=challenge.title,
+                skill=challenge.skill, cefr_level=challenge.cefr_level,
+                challenge_type=challenge.challenge_type,
+                answers=list(intento.answers or []),
+                score_percent=float(intento.score_percent), is_correct=bool(intento.is_correct),
+                started_at=intento.started_at, completed_at=intento.completed_at,
+            )
+        )
+    return por_estudiante
+
+
+_AUTHORIZE_GROUP_ORIGINAL = access_mod.authorize_group
+
+
+async def _authorize_group_ignora_only_assigned(
+    db: AsyncSession, auth: AuthContext, group_id: UUID, *, only_assigned: bool = False
+) -> Any:
+    """X10: T5/T7 llaman como si `only_assigned` SIEMPRE fuera False."""
+    return await _AUTHORIZE_GROUP_ORIGINAL(db, auth, group_id, only_assigned=False)
+
+
+_BUILD_RESPONSE_ORIGINAL = achievement_mod.build_response
+
+
+async def _t5_con_weak_skills(
+    gid: UUID,
+    auth: AuthContext = Depends(require_teacher),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """X17: T5 serializa `weak_skills` — bypassa `response_model` (§2.4)."""
+    group = await access_mod.authorize_group(db, auth, gid, only_assigned=True)
+    resultado = await _BUILD_RESPONSE_ORIGINAL(db, group, now=datetime.now(UTC))
+    payload = resultado.model_dump(mode="json")
+    for estudiante in payload["students"]:
+        estudiante["weak_skills"] = []
+    return JSONResponse(payload)
+
+
+async def _build_response_ordena_por_logro(db: AsyncSession, group: Any, *, now: Any) -> Any:
+    """X18: reordena por logro (peor primero) en vez de dejar el orden de T2."""
+    resultado = await _BUILD_RESPONSE_ORIGINAL(db, group, now=now)
+
+    def _mejor_primero(est: Any) -> int:
+        eje = next(a for a in est.axes if a.axis == "Accuracy")
+        return -eje.correct  # BUG: ordena por logro (mejor primero), no alfabético
+
+    resultado.students.sort(key=_mejor_primero)
+    return resultado
+
+
 @contextmanager
 def _reemplazar_ruta(path: str, metodos: set[str], endpoint: Any) -> Iterator[None]:
     """Reemplaza en sitio el `endpoint`/`dependant.call` de una APIRoute ya
@@ -212,6 +288,33 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[Any], None], str]] = {
         lambda _i, mp: mp.setattr(roster_mod, "import_csv", _import_csv_escribe_antes_de_fallar),
         m4.test_f11_import_invalido_no_escribe_nada,
         r"la fila v.lida se escribi",
+    ),
+    "X6": (
+        lambda _i, mp: mp.setattr(
+            achievement_mod, "_intentos_del_grupo", _intentos_del_grupo_sin_filtro
+        ),
+        t5.test_f5_orden_alfabetico_method_y_sin_weak,
+        r"(?i)otro grupo se col",
+    ),
+    "X10": (
+        lambda _i, mp: mp.setattr(
+            access_mod, "authorize_group", _authorize_group_ignora_only_assigned
+        ),
+        t5.test_t5_aa_404,
+        r"404",
+    ),
+    "X17": (
+        lambda _i, _mp: _reemplazar_ruta(
+            "/teachers/groups/{gid}/achievement", {"GET"}, _t5_con_weak_skills
+        ),
+        t5.test_f5_orden_alfabetico_method_y_sin_weak,
+        r"weak",
+    ),
+    "X18": (
+        lambda _i, mp: mp.setattr(achievement_mod, "build_response",
+                                  _build_response_ordena_por_logro),
+        t5.test_f5_orden_alfabetico_method_y_sin_weak,
+        r"orden.*alfab|debe ser alfab",
     ),
 }
 

@@ -7,6 +7,7 @@ grupo. Rol equivocado -> 403 exacto; grupo ajeno o inexistente -> 404 exacto
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
@@ -19,8 +20,14 @@ from src.engrama_core.schemas import AttendanceSessionOut
 from src.engrama_core.service.attendance import session_to_schema
 from src.shared.db import get_db
 from src.shared.deps import require_teacher
-from src.teachers.schemas import GroupSummaryOut, SessionDurationIn, StudentRosterOut
+from src.teachers.schemas import (
+    AchievementOut,
+    GroupSummaryOut,
+    SessionDurationIn,
+    StudentRosterOut,
+)
 from src.teachers.service import access as access_service
+from src.teachers.service import achievement as achievement_service
 from src.teachers.service import panel as panel_service
 
 router = APIRouter()
@@ -123,3 +130,22 @@ async def assign_challenge_to_group(
     challenge = await panel_service.assign_challenge(db, auth, group, cid)
     await db.commit()
     return await challenges_service.hydrate(db, challenge)
+
+
+# =============================================================================
+# T5 — GET /teachers/groups/{gid}/achievement
+# =============================================================================
+@router.get(
+    "/groups/{gid}/achievement",
+    response_model=AchievementOut,
+    status_code=status.HTTP_200_OK,
+)
+async def read_achievement(
+    gid: UUID,
+    auth: AuthContext = Depends(require_teacher),
+    db: AsyncSession = Depends(get_db),
+) -> AchievementOut:
+    """Logro por eje del grupo (§2.1). `only_assigned=True`: ni el admin ve
+    el aprendizaje de un grupo que no tiene asignado (§1, pedagogo P5)."""
+    group = await access_service.authorize_group(db, auth, gid, only_assigned=True)
+    return await achievement_service.build_response(db, group, now=datetime.now(UTC))
