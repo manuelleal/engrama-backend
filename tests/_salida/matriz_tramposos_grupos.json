@@ -1,0 +1,116 @@
+{
+  "integ": {
+    "X1": [
+      "tests/teachers/test_m3_students.py::test_m3_ab_404 - AssertionError: {...",
+      "tests/teachers/test_m4_import.py::test_m4_ab_404 - AssertionError: {\"c...",
+      "tests/teachers/test_t1_groups.py::test_t1_ab_200_sin_ga - AssertionError",
+      "tests/teachers/test_t1_groups.py::test_t1_dm_200_sin_ga - AssertionError",
+      "tests/teachers/test_t2_roster.py::test_t2_ab_404 - AssertionError: [{\"...",
+      "tests/teachers/test_t2_roster.py::test_t2_dm_404 - AssertionError: [{\"...",
+      "tests/teachers/test_t5_achievement.py::test_t5_dm_404 - AssertionError...",
+      "tests/teachers/test_t7_item_errors.py::test_t7_dm_404 - AssertionError..."
+    ],
+    "X10": [
+      "tests/teachers/test_t5_achievement.py::test_t5_aa_404 - AssertionError...",
+      "tests/teachers/test_t7_item_errors.py::test_t7_aa_404 - AssertionError..."
+    ],
+    "X17": [
+      "tests/teachers/test_t5_achievement.py::test_f5_orden_alfabetico_method_y_sin_weak"
+    ],
+    "X18": [
+      "tests/teachers/test_t5_achievement.py::test_f5_orden_alfabetico_method_y_sin_weak"
+    ],
+    "X2": [
+      "tests/teachers/test_t1_groups.py::test_t1_do_200_sin_ga - AssertionError",
+      "tests/teachers/test_t2_roster.py::test_t2_do_404 - AssertionError: [{\"...",
+      "tests/teachers/test_t3_t4_attendance.py::test_t3_do_404 - AssertionErr...",
+      "tests/teachers/test_t3_t4_attendance.py::test_t4_do_404 - AssertionErr...",
+      "tests/teachers/test_t5_achievement.py::test_t5_aa_404 - AssertionError...",
+      "tests/teachers/test_t5_achievement.py::test_t5_do_404 - AssertionError...",
+      "tests/teachers/test_t6_assign.py::test_f6_no_reasigna_reto_de_grupo_no_visible",
+      "tests/teachers/test_t6_assign.py::test_t6_do_404 - AssertionError: {\"i...",
+      "tests/teachers/test_t7_item_errors.py::test_t7_aa_404 - AssertionError...",
+      "tests/teachers/test_t7_item_errors.py::test_t7_do_404 - AssertionError..."
+    ],
+    "X21": [
+      "tests/teachers/test_t5_achievement.py::test_f5_orden_alfabetico_method_y_sin_weak",
+      "tests/teachers/test_t7_item_errors.py::test_f13_agregado_supresion_y_sin_filtracion_de_otro_grupo"
+    ],
+    "X3": [
+      "tests/teachers/test_t1_groups.py::test_t1_e_403 - AssertionError: []",
+      "tests/teachers/test_t2_roster.py::test_t2_e_403 - AssertionError: {\"de...",
+      "tests/teachers/test_t3_t4_attendance.py::test_t3_e_403 - AssertionErro...",
+      "tests/teachers/test_t3_t4_attendance.py::test_t4_e_403 - AssertionErro...",
+      "tests/teachers/test_t5_achievement.py::test_t5_e_403 - AssertionError:...",
+      "tests/teachers/test_t6_assign.py::test_t6_e_403 - AssertionError: {\"de...",
+      "tests/teachers/test_t7_item_errors.py::test_t7_e_403 - AssertionError:..."
+    ],
+    "X4": [
+      "tests/teachers/test_m1_m2_admin_groups.py::test_m1_d_403 - AssertionEr...",
+      "tests/teachers/test_m1_m2_admin_groups.py::test_m2_d_403 - AssertionEr...",
+      "tests/teachers/test_m3_students.py::test_m3_d_403 - AssertionError: {\"...",
+      "tests/teachers/test_m4_import.py::test_m4_d_403 - AssertionError: {\"cr..."
+    ],
+    "X5": [
+      "tests/integ/test_humo_grupos.py::test_f12_humo_grupos_de_punta_a_punta",
+      "tests/teachers/test_t3_t4_attendance.py::test_f4_cerrar_expira_y_bloquea_checkin"
+    ],
+    "X6": [
+      "tests/teachers/test_t5_achievement.py::test_f5_orden_alfabetico_method_y_sin_weak",
+      "tests/teachers/test_t7_item_errors.py::test_f13_agregado_supresion_y_sin_filtracion_de_otro_grupo"
+    ],
+    "X7": [
+      "tests/teachers/test_t6_assign.py::test_f6_no_reasigna_reto_de_grupo_no_visible"
+    ],
+    "X8": [
+      "tests/teachers/test_m4_import.py::test_f11_import_invalido_no_escribe_nada"
+    ],
+    "X9": [
+      "tests/teachers/test_t2_roster.py::test_f2_roster_sin_balance - Asserti..."
+    ]
+  },
+  "integ_re_medido_tras_h1": {
+    "X1_m1_m2": [
+      "tests/teachers/test_m1_m2_admin_groups.py::test_m2_ab_404 - AssertionE..."
+    ]
+  },
+  "no_integ": {
+    "X11": [
+      "tests/teachers/test_achievement_unit.py::test_u3a_primer_intento_manda_no_el_reintento",
+      "tests/teachers/test_achievement_unit.py::test_u3b_ventana_de_28_dias"
+    ],
+    "X12": [
+      "tests/teachers/test_achievement_unit.py::test_u3b_ventana_de_28_dias"
+    ],
+    "X13": [
+      "tests/teachers/test_achievement_unit.py::test_u3c_minimo_8_items_3_retos"
+    ],
+    "X14": [
+      "tests/teachers/test_achievement_unit.py::test_u3d_umbrales_n_10 - Asse..."
+    ],
+    "X15": [
+      "tests/teachers/test_achievement_unit.py::test_u3e_mapeo_normaliza_y_desconocidas_van_a_unmapped"
+    ],
+    "X16": [
+      "tests/teachers/test_achievement_unit.py::test_u3g_reto_open_no_aporta_items"
+    ],
+    "X19": [
+      "tests/teachers/test_item_errors_unit.py::test_u5_distractor - Assertio..."
+    ],
+    "X20": [
+      "tests/teachers/test_item_errors_unit.py::test_u6_supresion_4_suprime_5_visible"
+    ]
+  },
+  "no_integ_contra_f5_f13": {
+    "X11": [
+      "tests/teachers/test_t5_achievement.py::test_f5_orden_alfabetico_method_y_sin_weak"
+    ],
+    "X12": [],
+    "X13": [],
+    "X14": [],
+    "X15": [],
+    "X16": [],
+    "X19": [],
+    "X20": []
+  }
+}
