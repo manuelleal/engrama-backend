@@ -13,7 +13,7 @@ cualquier cosa. Si el test real pasara con el tramposo, este queda en rojo.
   A4  is_attempt_correct devuelve siempre True               -> test_a4
   A5  submit usa al dueño del intento, no al que envía       -> test_a5
   A6  build_auth_context toma profiles.role                  -> test_a6
-  A7  get_challenge sin filtro de tenant                     -> test_a7
+  A7  stmt_reto_del_tenant sin filtro de tenant              -> test_a7
   D1  GRANT SELECT ON profiles TO authenticated              -> test_d1
   D4  GRANT INSERT ON coin_ledger TO authenticated           -> test_d4
   D10 se crea una política `USING (true)`                    -> test_d10
@@ -47,7 +47,6 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy import select
 
 import tests.seguridad.test_aceptacion as seg
@@ -99,12 +98,12 @@ def _contexto_con_rol_del_perfil(profile: Any, memberships: list[Any],
                                   "is_admin": rol in {"admin", "super_admin"}})
 
 
-async def _get_challenge_sin_tenant(db: Any, challenge_id: UUID, tenant_id: UUID) -> Any:
-    reto = (await db.execute(select(Challenge).where(Challenge.id == challenge_id))
-            ).scalar_one_or_none()
-    if reto is None:
-        raise HTTPException(status_code=404, detail="Challenge not found")
-    return reto
+def _stmt_reto_sin_tenant(challenge_id: UUID, tenant_id: UUID) -> Any:
+    """A7: la barrera de tenant de fuente única (`stmt_reto_del_tenant`) sin el
+    filtro de tenant (ESPEC_bug13a15 §1.3, errata ERR-26: el defecto sigue a la
+    fuente única; antes se inyectaba en `get_challenge`)."""
+    del tenant_id
+    return select(Challenge).where(Challenge.id == challenge_id)
 
 
 @contextmanager
@@ -198,7 +197,7 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[Any], None], str]] = {
            seg.test_a5_no_se_envia_el_intento_ajeno, "200 == 404"),
     "A6": (_parche(deps, "build_auth_context", _contexto_con_rol_del_perfil),
            seg.test_a6_rol_del_perfil_no_da_permisos, "/challenges/all -> 200"),
-    "A7": (_parche(challenges_mod, "get_challenge", _get_challenge_sin_tenant),
+    "A7": (_parche(challenges_mod, "stmt_reto_del_tenant", _stmt_reto_sin_tenant),
            seg.test_a7_otro_colegio_no_se_ve, "200 == 404"),
     "D1": (_grant("select", "profiles", "authenticated"), seg.test_d1_anon_no_lee_ni_escribe,
            r"\[authenticated\] SELECT profiles: se esperaba 42501"),

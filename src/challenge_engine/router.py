@@ -222,8 +222,14 @@ async def get_challenge(
     db: AsyncSession = Depends(get_db),
 ) -> ChallengeOut:
     """Detalle del challenge (sin correct_answer en las preguntas)."""
-    challenge = await challenges_service.get_challenge(
-        db, challenge_id, auth.tenant_id
+    # BUG-15: un estudiante solo ve los globales y los de su grupo; el
+    # personal (docente o admin) no cambia.
+    challenge = await challenges_service.get_challenge_for(
+        db,
+        challenge_id,
+        tenant_id=auth.tenant_id,
+        group_code=auth.group_code,
+        es_personal=auth.is_teacher or auth.is_admin,
     )
     return await challenges_service.hydrate(db, challenge)
 
@@ -244,6 +250,9 @@ async def start_attempt(
         student_id=auth.profile_id,
         tenant_id=auth.tenant_id,
         challenge_id=challenge_id,
+        # BUG-15: visibilidad por grupo para el estudiante.
+        group_code=auth.group_code,
+        es_personal=auth.is_teacher or auth.is_admin,
     )
     await db.commit()
     return result

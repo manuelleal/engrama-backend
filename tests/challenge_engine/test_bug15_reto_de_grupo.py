@@ -13,9 +13,12 @@ en el feed. Así E1 (G1) abre y arranca el reto de G2 por su id.
               arranca el de G1; E0 abre el global; un docente sin asignación y
               un admin abren el de G2 (el personal no cambia); otro colegio -> 404.
 
-A15-1 y A15-2 afirman por la API: corren en el commit 1, sobre el código
-viejo, con `xfail(strict=True, raises=AssertionError)`. La referencia que no
-da 404 es `PruebaRota`, no AssertionError.
+A15-1 y A15-2 afirman por la API: corrieron en el commit 1 (508d568), sobre
+el código viejo, con `xfail(strict=True, raises=AssertionError)`, y el hueco
+se vio en rojo. Con `get_challenge_for` y `filtro_grupo_estudiante` el xfail
+se quitó. La referencia que no da 404 es `PruebaRota`, no AssertionError.
+
+Tramposos Y10-Y13: `tests/tramposos/test_tramposos_bug15.py`.
 """
 from __future__ import annotations
 
@@ -31,8 +34,6 @@ from tests.seguridad.veredictos import PruebaRota
 
 pytestmark = pytest.mark.integ
 client = TestClient(app)
-
-XFAIL_BUG15 = pytest.mark.xfail(strict=True, raises=AssertionError, reason="BUG-15")
 
 
 class Escena(NamedTuple):
@@ -87,7 +88,6 @@ def _referencia(r: httpx.Response, que: str) -> bytes:
 # =============================================================================
 # A15-1 — C14: detalle de un reto de otro grupo
 # =============================================================================
-@XFAIL_BUG15
 def test_a15_1_detalle_de_reto_de_otro_grupo_da_404(integ) -> None:
     """E1 (G1) abre el reto de G2 -> 404 idéntico; E0 abre el de G1 -> 404."""
     esc = _sembrar(integ)
@@ -105,7 +105,6 @@ def test_a15_1_detalle_de_reto_de_otro_grupo_da_404(integ) -> None:
 # =============================================================================
 # A15-2 — C15: arranque de un reto de otro grupo
 # =============================================================================
-@XFAIL_BUG15
 def test_a15_2_arrancar_reto_de_otro_grupo_da_404(integ) -> None:
     """E1 arranca el reto de G2 -> 404, mismo cuerpo, y ningún intento en la base."""
     esc = _sembrar(integ)

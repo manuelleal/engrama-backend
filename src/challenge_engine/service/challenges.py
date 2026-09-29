@@ -4,7 +4,9 @@ Cubre:
   - create_challenge           : crea Challenge + sus ChallengeQuestions.
   - list_challenges_for_student: feed visible al estudiante (con filtros).
   - list_challenges_for_teacher: todos los del tenant (vista docente).
-  - get_challenge              : detalle con preguntas.
+  - get_challenge              : detalle con preguntas (solo por tenant).
+  - get_challenge_for          : detalle para quien pide: un estudiante solo
+                                 ve los globales y los de su grupo (BUG-15).
   - update_challenge_status    : activate/inactivate/archive.
 
 Reglas de dominio aplicadas:
@@ -22,7 +24,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import ColumnElement, Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.challenge_engine.schemas import (
@@ -104,6 +106,31 @@ async def create_challenge(
 # =============================================================================
 # 3.2 list_challenges_for_student
 # =============================================================================
+def filtro_grupo_estudiante(tenant_id: UUID, group_code: str | None) -> ColumnElement[bool]:
+    """Qué retos ve un estudiante: los globales y los de SU grupo (BUG-15).
+
+    Es la ÚNICA fuente de esta regla: la usan el feed y el detalle/arranque
+    (`get_challenge_for`), para que no puedan divergir
+    (docs/ESPEC_bug13a15.md §1.3, C17). Extraído sin cambios del feed.
+    """
+    # Subquery: ids de grupos del estudiante (vía group_code).
+    # Si el estudiante no tiene group_code, solo ve challenges globales.
+    if group_code:
+        student_group_ids = (
+            select(Group.id)
+            .where(
+                Group.tenant_id == tenant_id,
+                Group.group_code == group_code,
+            )
+            .scalar_subquery()
+        )
+        return or_(
+            Challenge.group_id.is_(None),
+            Challenge.group_id.in_(student_group_ids),
+        )
+    return Challenge.group_id.is_(None)
+
+
 async def list_challenges_for_student(
     db: AsyncSession,
     *,
@@ -120,23 +147,7 @@ async def list_challenges_for_student(
       - con cupo disponible (current_winners < max_winners)
       - en los que el estudiante NO haya agotado max_attempts
     """
-    # Subquery: ids de grupos del estudiante (vía group_code).
-    # Si el estudiante no tiene group_code, solo ve challenges globales.
-    if group_code:
-        student_group_ids = (
-            select(Group.id)
-            .where(
-                Group.tenant_id == tenant_id,
-                Group.group_code == group_code,
-            )
-            .scalar_subquery()
-        )
-        group_filter = or_(
-            Challenge.group_id.is_(None),
-            Challenge.group_id.in_(student_group_ids),
-        )
-    else:
-        group_filter = Challenge.group_id.is_(None)
+    group_filter = filtro_grupo_estudiante(tenant_id, group_code)
 
     # Subquery: cantidad de intentos del estudiante por challenge_id.
     attempts_count = (
@@ -182,12 +193,55 @@ async def list_challenges_for_teacher(
 # =============================================================================
 # 3.3 get_challenge
 # =============================================================================
+def stmt_reto_del_tenant(challenge_id: UUID, tenant_id: UUID) -> Select[tuple[Challenge]]:
+    """El reto por id, SOLO dentro del tenant: la barrera de tenant del detalle.
+
+    Es su ÚNICA fuente (ESPEC_bug13a15 §1.3, errata ERR-26): la usan
+    `get_challenge` (personal, submit, T6, PATCH) y `get_challenge_for`
+    (estudiante, que le agrega el filtro de grupo). Ninguna otra consulta de
+    este camino repite `Challenge.tenant_id ==`.
+    """
+    return select(Challenge).where(
+        Challenge.id == challenge_id, Challenge.tenant_id == tenant_id
+    )
+
+
 async def get_challenge(
     db: AsyncSession, challenge_id: UUID, tenant_id: UUID
 ) -> Challenge:
     """Fetch un Challenge por id + tenant. 404 si no existe."""
-    stmt = select(Challenge).where(
-        Challenge.id == challenge_id, Challenge.tenant_id == tenant_id
+    stmt = stmt_reto_del_tenant(challenge_id, tenant_id)
+    challenge = (await db.execute(stmt)).scalar_one_or_none()
+    if challenge is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Challenge not found",
+        )
+    return challenge
+
+
+# =============================================================================
+# 3.3b get_challenge_for — el detalle según quién lo pide (BUG-15)
+# =============================================================================
+async def get_challenge_for(
+    db: AsyncSession,
+    challenge_id: UUID,
+    *,
+    tenant_id: UUID,
+    group_code: str | None,
+    es_personal: bool,
+) -> Challenge:
+    """El reto, solo si quien lo pide puede verlo. 404 si no (nunca 403).
+
+    - Personal (docente o admin): igual que `get_challenge`, solo por tenant
+      (el personal no cambia en BUG-15; ESPEC §1.3 y §9).
+    - Estudiante: además, `filtro_grupo_estudiante`: un reto de otro grupo
+      responde el MISMO 404 que un id que no existe, así no delata que existe.
+    """
+    if es_personal:
+        return await get_challenge(db, challenge_id, tenant_id)
+    stmt = stmt_reto_del_tenant(challenge_id, tenant_id).where(
+        filtro_grupo_estudiante(tenant_id, group_code)
     )
     challenge = (await db.execute(stmt)).scalar_one_or_none()
     if challenge is None:
@@ -290,6 +344,9 @@ __all__ = [
     "list_challenges_for_student",
     "list_challenges_for_teacher",
     "get_challenge",
+    "get_challenge_for",
+    "stmt_reto_del_tenant",
+    "filtro_grupo_estudiante",
     "get_questions",
     "update_challenge_status",
     "question_to_schema",

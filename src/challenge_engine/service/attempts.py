@@ -124,10 +124,17 @@ async def start_attempt(
     student_id: UUID,
     tenant_id: UUID,
     challenge_id: UUID,
+    group_code: str | None,
+    es_personal: bool,
 ) -> AttemptStartOut:
     """Crea un intento `in_progress` o retorna el existente del estudiante."""
-    # 1. Challenge existe + está activo + mismo tenant.
-    challenge = await challenges_service.get_challenge(db, challenge_id, tenant_id)
+    # 1. Challenge existe + está activo + mismo tenant + visible para quien
+    # lo arranca (BUG-15: un estudiante, solo globales o de su grupo; si no,
+    # el mismo 404 de un id inexistente).
+    challenge = await challenges_service.get_challenge_for(
+        db, challenge_id, tenant_id=tenant_id, group_code=group_code,
+        es_personal=es_personal,
+    )
     if challenge.status != "active":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
