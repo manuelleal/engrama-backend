@@ -1,0 +1,17 @@
+{
+  "ledger": [
+    {
+      "action": "challenge",
+      "amount": 20,
+      "metadata_claves": [
+        "attempt_id",
+        "challenge_id"
+      ]
+    }
+  ],
+  "respuesta": "{\"attempt_id\":\"I1\",\"is_correct\":true,\"score_percent\":100.0,\"coins_earned\":20,\"xp_earned\":15,\"streak_bonus\":0,\"correct_answers\":[{\"question_id\":\"Q1\",\"correct_answer\":\"A\"},{\"question_id\":\"Q2\",\"correct_answer\":\"B\"}],\"drako_feedback\":null,\"total_attempts_used\":1,\"attempts_remaining\":1}",
+  "saldos": {
+    "estudiante": 20,
+    "tenant": 980
+  }
+}
