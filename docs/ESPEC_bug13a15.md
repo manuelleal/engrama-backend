@@ -185,7 +185,7 @@ async def award_coins(db, *, student_id, tenant_id, amount, action, metadata=Non
 - **`tests/challenge_engine/test_bug15_reto_de_grupo.py`:** A15-1, A15-2 (xfail estricto en el commit 1) y S15.
   - Siembra: G1 y G2; retos global, de G1 y de G2; E1, E0, un docente sin `teacher_groups`, un admin y un estudiante de otro colegio.
 
-**Única edición a lo existente:** `tests/integ_db.py`, `HUMO_ESPERADO["alembic_version"] = "033_una_paga_por_reto"`. Las demás claves no cambian: la 033 no crea tablas ni toca la RLS.
+**Ediciones a lo existente** (corregido tras la medición del paso 2, ERR-25; `git grep -n alembic_version -- tests` en `508d568`): `tests/integ_db.py:66` y `tests/integ/test_humo_bug11.py:35`, los dos `HUMO_ESPERADO["alembic_version"] = "033_una_paga_por_reto"`. El humo de BUG-11 registra la versión de la cabeza; sus demás claves no cambian. Las demás claves no cambian: la 033 no crea tablas ni toca la RLS.
 
 **Tramposos:** `tests/tramposos/test_tramposos_bug13.py` (Y1-Y6), `test_tramposos_bug14.py` (Y7-Y9 y Y14) y `test_tramposos_bug15.py` (Y10-Y13). Todos integ, con el patrón de `test_tramposos_integ.py`: monkeypatch en el módulo donde se **usa** y `pytest.raises(AssertionError)` sobre el cuerpo del test real. Cada tramposo automatiza su **diagonal (negrita)**.
 
