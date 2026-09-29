@@ -29,10 +29,16 @@ class MembershipOut(BaseModel):
     role: str = Field(description="'student' | 'teacher' | 'admin' | 'super_admin'")
     group_code: str | None = None
     is_active: bool
+    # El nombre que escribió ESTA institución (BUG-11, 032). NULL en docentes
+    # y admins creados antes de la espec del login piloto.
+    full_name: str | None = None
 
 
 class ProfileOut(BaseModel):
-    """Respuesta de /auth/me y /auth/session: perfil + todas sus memberships."""
+    """Respuesta de /auth/me y /auth/session: perfil + todas sus memberships.
+
+    `full_name` es el de la membresía activa (ESPEC_login_piloto §1.4).
+    """
 
     model_config = _STRICT
 
@@ -47,6 +53,9 @@ class ProfileOut(BaseModel):
     is_active: bool
     last_attendance_date: date | None = None
     memberships: list[MembershipOut] = Field(default_factory=list)
+    # El colegio que resolvió `build_auth_context` para ESTA request. Con más
+    # de una membresía, el cliente manda `X-Tenant-ID` en toda llamada.
+    active_tenant_id: UUID
 
 
 class AuthContext(BaseModel):

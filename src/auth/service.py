@@ -18,6 +18,7 @@ Diseño:
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -116,13 +117,26 @@ def exigir_perfil(profile: Profile | None) -> Profile:
 # =============================================================================
 # 3.3 get_memberships
 # =============================================================================
+def orden_membresias() -> tuple[Any, ...]:
+    """El orden de las membresías: la más antigua primero (ESPEC_login_piloto §1.3).
+
+    Una sola fuente del ORDER BY (ERR-26). Importa porque, sin `X-Tenant-ID`,
+    `build_auth_context` toma la primera: sin orden, el docente de dos
+    instituciones caía en cualquiera de las dos (y un reto sin grupo podía
+    crearse en la institución equivocada). `Membership.id` desempata dos
+    membresías creadas en el mismo instante: así el orden es determinista.
+    """
+    return (Membership.created_at.asc(), Membership.id.asc())
+
+
 async def get_memberships(
     db: AsyncSession, profile_id: UUID
 ) -> list[tuple[Membership, Tenant]]:
     """Devuelve (Membership, Tenant) para cada membership activo del profile.
 
     Se hace JOIN explícito para traer `tenant.name` y `tenant.slug` en
-    una sola query. El llamador mapea a `MembershipOut`.
+    una sola query. El llamador mapea a `MembershipOut`. El orden es el de
+    `orden_membresias`: la primera es el colegio por defecto.
     """
     stmt = (
         select(Membership, Tenant)
@@ -131,6 +145,7 @@ async def get_memberships(
             Membership.profile_id == profile_id,
             Membership.is_active.is_(True),
         )
+        .order_by(*orden_membresias())
     )
     result = await db.execute(stmt)
     return [(m, t) for m, t in result.all()]
@@ -139,7 +154,11 @@ async def get_memberships(
 def memberships_to_schema(
     rows: list[tuple[Membership, Tenant]],
 ) -> list[MembershipOut]:
-    """Helper: convierte filas ORM a la respuesta Pydantic."""
+    """Helper: convierte filas ORM a la respuesta Pydantic.
+
+    `full_name` es el nombre que escribió ESA institución (BUG-11, 032): cada
+    colegio pone el suyo y el usuario ve el de cada una en su membresía.
+    """
     return [
         MembershipOut(
             tenant_id=m.tenant_id,
@@ -148,19 +167,49 @@ def memberships_to_schema(
             role=m.role,
             group_code=m.group_code,
             is_active=m.is_active,
+            full_name=m.full_name,
         )
         for m, t in rows
     ]
 
 
-def profile_to_schema(
-    profile: Profile, memberships: list[MembershipOut]
-) -> ProfileOut:
-    """Helper: arma el ProfileOut combinando perfil + memberships."""
+@dataclass(frozen=True)
+class Membresias:
+    """Las membresías del usuario y cuál quedó activa en ESTA request.
+
+    `activo` es el `tenant_id` que resolvió `build_auth_context` (con
+    `X-Tenant-ID` o, sin él, la membresía más antigua). Viajan juntas para
+    que `profile_to_schema` conserve su firma de dos argumentos.
+    """
+
+    todas: list[MembershipOut]
+    activo: UUID
+
+
+def nombre_visible(profile: Profile, membresias: Membresias) -> str:
+    """El nombre que ve el usuario: el de su membresía ACTIVA (§1.4).
+
+    Si esa membresía no tiene nombre (docentes y admins creados antes de la
+    espec del login piloto tienen NULL), se usa `profiles.full_name`, que
+    desde la 032 es el nombre propio de la cuenta. No reabre BUG-11: es el
+    propio usuario viendo su nombre, y ningún colegio ve el que puso otro.
+    """
+    for m in membresias.todas:
+        if m.tenant_id == membresias.activo and m.full_name is not None:
+            return m.full_name
+    return profile.full_name
+
+
+def profile_to_schema(profile: Profile, membresias: Membresias) -> ProfileOut:
+    """Helper: arma el ProfileOut combinando perfil + memberships + colegio activo.
+
+    `role`, en la raíz, sigue siendo `profiles.role`: el rol que cuenta para
+    los permisos es el de la membresía activa (`AuthContext.role`).
+    """
     return ProfileOut(
         id=profile.id,
         documento_id=profile.documento_id,
-        full_name=profile.full_name,
+        full_name=nombre_visible(profile, membresias),
         role=profile.role,
         current_streak=profile.current_streak,
         longest_streak=profile.longest_streak,
@@ -168,7 +217,8 @@ def profile_to_schema(
         level=profile.level,
         is_active=profile.is_active,
         last_attendance_date=profile.last_attendance_date,
-        memberships=memberships,
+        memberships=membresias.todas,
+        active_tenant_id=membresias.activo,
     )
 
 
@@ -189,7 +239,8 @@ def build_auth_context(
     Reglas:
       - Si `tenant_id_header` viene, debe coincidir con alguno de los
         memberships del usuario; si no, 403.
-      - Si no viene, se usa el primer membership activo.
+      - Si no viene, se usa el primer membership activo: el más antiguo,
+        por el orden de `get_memberships` (`orden_membresias`).
       - Si el usuario no tiene memberships activos, 403.
     """
     if not memberships:

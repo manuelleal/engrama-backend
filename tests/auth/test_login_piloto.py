@@ -5,7 +5,7 @@ Paso 1 del plan (ESPEC §6): los tests por la API, antes de tocar el código.
   AP1  C1   JWT de otro proyecto -> 401 en `/auth/me` y `GET /challenges/`; control 200.
   AP2  C2   JWT vencido hace 60 s -> 401; control 200.
   AP3  C3   `sub` sin perfil -> 403 `Account has no ENGRAMA profile`, 0 filas nuevas.
-  AP4  C4   el choque de hoy: `sub[:8]` igual al `documento_id` de otro perfil. Hoy 500.
+  AP4  C4   el choque: `sub[:8]` igual al `documento_id` de otro perfil. Antes del paso 2, 500.
   AP5  C5   perfil sin membresía activa -> 403 `User has no active tenant memberships`.
   AP6  C6   tres instituciones: el `X-Tenant-ID` ajeno da 403, el gid ajeno 404, `xyz` 400.
   AP7  C7   docente en dos instituciones: sin encabezado, la más antigua; con B, B.
@@ -17,7 +17,8 @@ AP9 y AP10 (contraseña temporal) llegan en el paso 4, y AP11 vive en
 
 AP3, AP4, AP7 y AP8 corrieron en el paso 1 (`b81d373`) con `xfail(strict=True,
 raises=AssertionError)`: el hueco se vio por la API. En el paso 2 (`get_profile`,
-sin respaldo) AP3 y AP4 dejan el xfail. Cada uno junta lo que
+sin respaldo) AP3 y AP4 dejan el xfail; en el paso 3 (colegio activo y nombre),
+AP7 y AP8. Cada uno junta lo que
 observa en un dict y lo compara ENTERO con lo esperado, así el rojo muestra de
 una vez todas las diferencias. Las claves se leen con `.get()`: un campo que
 falta también es `AssertionError`. El cliente usa `raise_server_exceptions=False`,
@@ -51,10 +52,6 @@ RUTA_SNAPSHOT = Path(__file__).with_name("snapshot_me_antes.json")
 
 SIN_PERFIL = "Account has no ENGRAMA profile"
 SIN_MEMBRESIA = "User has no active tenant memberships"
-
-XFAIL_LOGIN = pytest.mark.xfail(strict=True, raises=AssertionError,
-                                reason="login piloto, paso 1: el hueco por la API")
-
 
 # =============================================================================
 # Siembra y lectura
@@ -227,13 +224,13 @@ def test_ap6_tres_instituciones_aisladas(integ) -> None:
 # =============================================================================
 # AP7 — C7: el docente de dos instituciones
 # =============================================================================
-@XFAIL_LOGIN
 def test_ap7_docente_en_dos_instituciones(integ) -> None:
     """AP7 (C7): sin encabezado, la membresía más antigua (A); con B, B; con C, 403.
 
     B se inserta ANTES que A y A se fecha un día atrás por SQL: el orden
-    físico (B, A) no coincide con el cronológico (A, B). Hoy `get_memberships`
-    no tiene ORDER BY y `/auth/me` no dice qué colegio quedó activo.
+    físico (B, A) no coincide con el cronológico (A, B). Antes del paso 3,
+    `get_memberships` no tenía ORDER BY y `/auth/me` no decía qué colegio
+    quedó activo.
     """
     a, b, c = integ.crear_tenant(), integ.crear_tenant(), integ.crear_tenant()
     d = _perfil(integ, nombre="Nombre del Perfil", rol="teacher")
@@ -274,7 +271,6 @@ def test_ap7_docente_en_dos_instituciones(integ) -> None:
 # =============================================================================
 # AP8 — C8: el nombre sale de la membresía
 # =============================================================================
-@XFAIL_LOGIN
 def test_ap8_nombre_de_la_membresia(integ) -> None:
     """AP8 (C8): perfil como lo deja M3 (`full_name = ''`) y membresía "Ana Sintética"."""
     tenant = integ.crear_tenant()

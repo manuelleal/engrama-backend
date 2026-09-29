@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.schemas import AuthContext, ProfileOut
 from src.auth.service import (
+    Membresias,
     exigir_perfil,
     get_memberships,
     get_profile,
@@ -31,10 +32,13 @@ router = APIRouter()
 async def _build_profile_payload(
     auth: AuthContext, db: AsyncSession
 ) -> ProfileOut:
-    """Reusable: carga Profile + memberships del usuario autenticado."""
+    """Reusable: carga Profile + memberships del usuario autenticado.
+
+    El colegio activo es el que ya resolvió `get_current_user` (`auth.tenant_id`).
+    """
     profile = exigir_perfil(await get_profile(db, auth.profile_id))
     rows = await get_memberships(db, auth.profile_id)
-    return profile_to_schema(profile, memberships_to_schema(rows))
+    return profile_to_schema(profile, Membresias(memberships_to_schema(rows), auth.tenant_id))
 
 
 @router.post("/session", response_model=ProfileOut, status_code=status.HTTP_200_OK)

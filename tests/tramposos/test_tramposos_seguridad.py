@@ -71,7 +71,7 @@ _SUBMIT_ATTEMPT = attempts_mod.submit_attempt
 # =============================================================================
 # Versiones rotas (API)
 # =============================================================================
-def _perfil_con_hash(profile: Any, memberships: list[Any]) -> Any:
+def _perfil_con_hash(profile: Any, memberships: Any) -> Any:
     return auth_service.profile_to_schema(profile, memberships).model_copy(
         update={"full_name": profile.pin_hash})
 
