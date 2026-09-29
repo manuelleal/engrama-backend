@@ -103,7 +103,12 @@ async def award_coins(db, *, student_id, tenant_id, amount, action, metadata=Non
   2. **reclamar** la llave con `INSERT … ON CONFLICT (tenant_id, idempotency_key) DO NOTHING RETURNING`;
   3. si no se insertó nada, devuelve **`None`**: no mueve saldos y **no da 402**;
   4. si se insertó, revisa el saldo (402 → rollback del request, que también deshace el reclamo) y mueve los saldos.
-- **Consecuencia buscada:** si el código nuevo corre sin la 033, el `ON CONFLICT` falla (42P10) y la paga no ocurre (500, sin dinero). Falla cerrado (§7).
+- **Consecuencia buscada:** si el código nuevo corre sin la 033, falla cerrado: no se mueve dinero (§7).
+  - **Corregido en el paso 6 con lo medido** (es una afirmación de despliegue, no un criterio de §2; ningún C la mide). Decía "el `ON CONFLICT` falla (42P10) y la paga no ocurre (500, sin dinero)". Medido en el contenedor del fixture, sobre `7451dc1`, quitando la columna y el UNIQUE:
+    - el error es **42703** (`UndefinedColumnError`: la columna no existe), no 42P10;
+    - no falla solo la victoria: `CoinLedger.idempotency_key` está en el modelo, así que también dan 500 (por excepción) el check-in (el INSERT del ledger) y `GET /core/coins/history`;
+    - el ledger queda con 0 filas: no se paga nada.
+  - El **42P10** aparece solo si la columna existe y falta el UNIQUE: es lo que mide Y3.
 
 **`submit_attempt`** (`attempts.py`):
 - **`_tomar_intento(db, *, attempt_id, tenant_id, student_id) -> ChallengeAttempt | None`:** el mismo SELECT de `:190-195` con `.with_for_update()`. Se llama por su nombre global del módulo, porque es el punto que parchea Y2.
@@ -243,6 +248,118 @@ Lo no medido no es "no cruza". Un cruce no previsto se corrige por ERR en esta e
 
 **Concurrencia no determinista:** si A13-2 o A13-3 no dan el mismo resultado en 5 corridas seguidas, con el código bueno y con su tramposo, se declaran **"no medibles de forma determinista"**, no verdes (encargo L2), y se reporta. La alternativa de servicio queda **preregistrada ahora**: dos `AsyncSession` en un mismo loop, con `asyncio.Event` como barrera. Solo se usa si el arnés de hilos no logra concurrencia real (el control de A13-3 lo dice), y se declara como tal.
 
+### Matriz medida: 392 celdas, con el origen de cada rojo (paso 6, ERR-19 y ERR-23)
+Esta sección **registra** lo medido. No cambia las predicciones de arriba, ni los criterios, ni las cuentas.
+
+**Cómo se midió:**
+- Cada tramposo se aplicó con el mismo `aplicar` que usa la suite:
+  - `TRAMPOSOS` de `test_tramposos_bug13.py` (Y1-Y6), `test_tramposos_bug14.py` (Y7-Y9 e Y14) y `test_tramposos_bug15.py` (Y10-Y13);
+  - A7, de `test_tramposos_seguridad.py`.
+- Después se corrió el cuerpo del test real y se anotó verde o rojo, con el tipo de excepción, el mensaje y la línea que falla.
+- Cada celda corre sobre la base truncada por el fixture `integ`. El arnés fue temporal y **no se versiona**.
+- **Columnas:** son 28 = 17 nuevos no tramposos + 11 existentes. La 11.ª es `test_a7_otro_colegio_no_se_ve`, que entró con la errata `01058da`. Por eso son 14 × 28 = **392 celdas**, y no las 378 del conteo original de arriba.
+- **Fuera de las 392 se midieron además:**
+  - una fila **base** sin tramposo (28 celdas, todas verdes);
+  - una fila **A7**, el tramposo existente usado como fila extra (28 celdas).
+
+| Bloque | Código medido |
+|---|---|
+| **Las 392, la fila base y la fila A7, todas de una vez (la matriz oficial)** | **`7451dc1`** |
+| Parciales, en cada paso: base e Y1-Y6 × 26 | árbol que se commiteó como `839772c` |
+| Parciales: base, Y7-Y9 e Y14 × 26 | árbol de `c6f51f1` |
+| Parciales: base, Y10-Y13 y A7 × 27 | árbol de `0c39942`, ya con la errata `01058da` |
+| Parciales: H1 × (base, Y1-Y14 y A7) | árbol de `7451dc1` |
+
+**Parciales frente a la oficial:** coinciden en todas las celdas salvo en las de A14 y A15 medidas en los pasos 2 y 3. Allí salían rojas en **todas** las filas, incluida la base, porque su propio hueco seguía abierto (xfail), así que ese rojo no se podía atribuir al tramposo. En `7451dc1` esas celdas dan lo de la tabla.
+
+**Leyenda:**
+- `·` = verde.
+- `a` = rojo por la **aserción** del test.
+- `e` = rojo por **excepción**: `ProgrammingError`/`InvalidColumnReferenceError`, 42P10, "there is no unique or exclusion constraint matching the ON CONFLICT specification".
+- `p` = rojo por la **preparación**. No hubo ninguno.
+- **Negrita** = la diagonal que automatiza la suite.
+
+| Test | Y1 | Y2 | Y3 | Y4 | Y5 | Y6 | Y7 | Y8 | Y9 | Y10 | Y11 | Y12 | Y13 | Y14 | A7 (extra) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A13-1 | **a** | · | e | · | · | · | · | · | · | · | · | · | · | · | · |
+| A13-2 | · | **a** | e | · | · | · | · | · | · | · | · | · | · | · | · |
+| A13-3 | **a** | · | e | · | · | · | · | · | · | · | · | · | · | · | · |
+| S13 | · | · | e | · | · | · | · | · | · | · | · | · | · | · | · |
+| K1 | a | · | e | · | · | · | · | · | · | · | · | · | · | · | · |
+| K2 | · | · | · | **a** | · | · | · | · | · | · | · | · | · | · | · |
+| C13 | · | · | **a** | · | · | · | · | · | · | · | · | · | · | · | · |
+| B1 | · | · | · | · | **a** | · | · | · | · | · | · | · | · | · | · |
+| B2 | · | · | · | · | a | **a** | · | · | · | · | · | · | · | · | · |
+| A14-1 | · | · | · | · | · | · | **a** | · | · | · | · | · | · | **a** | · |
+| A14-2 | · | · | · | · | · | · | a | **a** | · | · | · | · | · | a | · |
+| A14-3 | · | · | · | · | · | · | a | · | **a** | · | · | · | · | a | · |
+| S14 | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · |
+| A15-1 | · | · | · | · | · | · | · | · | · | **a** | · | · | **a** | · | · |
+| A15-2 | · | · | · | · | · | · | · | · | · | a | **a** | · | a | · | · |
+| S15 | · | · | · | · | · | · | · | · | · | · | · | **a** | · | · | a |
+| H1 | a | · | e | · | · | · | a | · | · | a | a | · | a | · | · |
+| `test_submit_all_correct_awards_coins_and_xp` | · | · | e | · | · | · | · | · | · | · | · | · | · | · | · |
+| `test_submit_twice_returns_409` | · | · | e | · | · | · | · | · | · | · | · | · | · | · | · |
+| `test_submit_increments_current_winners_only_if_correct` | · | · | e | · | · | · | · | · | · | · | · | · | · | · | · |
+| `test_award_coins_double_entry` | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · |
+| `test_checkin_valid_awards_50_and_streak_1` | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · |
+| `test_checkin_invalid_session_code_returns_404` | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · |
+| `test_checkin_expired_session_returns_410` | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · |
+| `test_f4_cerrar_expira_y_bloquea_checkin` | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · |
+| `test_list_challenges_student_filters_by_group` | · | · | · | · | · | · | · | · | · | **a** | · | · | · | · | · |
+| `test_d12_catalogo_sin_privilegios_de_clientes` | · | · | · | · | · | · | · | · | · | · | · | · | · | · | · |
+| `test_a7_otro_colegio_no_se_ve` | · | · | · | · | · | · | · | · | · | · | · | · | · | · | **a** |
+
+**Totales de las 392:** 38 rojos y 354 verdes. De los rojos, 29 son `a` y 9 son `e`; ninguno es `p`. La fila base da 28 verdes. La fila A7 da 2 rojos (`a`) y 26 verdes.
+
+| Id | Rojo medido (origen, línea) | ¿Igual a lo predicho? |
+|---|---|---|
+| Y1 | A13-1 (a, `test_bug13_una_paga.py:196`, "la 2.ª victoria pagó 20 monedas y 15 XP"); A13-3 (a, `:246`, `{'estados': [200, 200], 'monedas': [20, 20], 'filas': 2, ...}`); K1 (a, `:340`); H1 (a, `test_humo_bug13a15.py:163`: `segunda_victoria [20,20,20,20]`, `paga_una_vez 2`, `filas_reto 8`) | Las celdas, sí. En A13-1 la predicción decía "(as: 2 filas)", pero el primer assert que salta es el de `coins_earned`. El mecanismo, la doble paga, es el predicho: las 2 filas se midieron en el paso 1 con el mismo cuerpo viejo |
+| Y2 | A13-2 (a, `:222`, `{'estados': [200, 200], 'monedas': [0, 20], 'filas': 1, ...}`) | Sí |
+| Y3 | C13 (a, `:394`, "... entraron o fallaron por otra cosa: None"); A13-1, A13-2, A13-3, S13, K1, H1 y los 3 `test_submit_*` (e, 42P10) | Sí |
+| Y4 | K2 (a, `:367`, "sin llave, una paga no devolvió su fila: [<CoinLedger>, None]") | Sí |
+| Y5 | B1 (a, `test_migracion_033.py:190`, "el backfill no dejó las llaves esperadas"); B2 (a, `:218`, "volver a subir no dejó el backfill") | Sí |
+| Y6 | B2 (a, `:212`, "bajar no quitó coin_ledger.idempotency_key") | Sí |
+| Y7 | A14-1 (a, `test_bug14_checkin_grupo.py:107`, 200); A14-2 (a, `:124`, 410); A14-3 (a, `:138`, 200); H1 (a: `checkin_otro_grupo [200×4]`, `asistencias 8`, `monedas_otro_grupo 200`) | Sí |
+| Y8 | A14-2 (a, `:124`, 410) | Sí |
+| Y9 | A14-3 (a, `:138`, "el docente marcó: 200") | Sí |
+| Y10 | A15-1 (a, `test_bug15_reto_de_grupo.py:97`, 200); A15-2 (a, `:114`, 201); H1 (a: `reto_otro_grupo [200×4]`, `intento_otro_grupo [201×4]`, `intentos_otro_grupo_en_base 4`); `test_list_challenges_student_filters_by_group` (a, `test_challenges.py:265`: C17, una sola fuente) | Sí |
+| Y11 | A15-2 (a, `:114`, 201); H1 (a: `intento_otro_grupo [201×4]`, `intentos_otro_grupo_en_base 4`) | Sí |
+| Y12 | S15 (a, `:129`, "el docente no abre G2") | Sí |
+| Y13 | A15-1 (a, `:97`, 403); A15-2 (a, `:114`, 403); H1 (a: `reto_otro_grupo [403×4]`, `intento_otro_grupo [403×4]`) | Sí |
+| Y14 | A14-1 (a, `test_bug14_checkin_grupo.py:108`, cuerpo "Session belongs to another group"); A14-2 (a, `:125`); A14-3 (a, `:139`) | Sí |
+| A7 (fila extra) | `test_a7_otro_colegio_no_se_ve` (a, `test_aceptacion.py:180`, `assert 200 == 404`); S15 (a, `test_bug15_reto_de_grupo.py:132`, "otro colegio abre el global") | Sí: la errata de §1.3, `01058da` y `2b739f6` |
+
+- **La columna `test_a7_otro_colegio_no_se_ve` sale verde con Y1-Y14.** No tenía predicción celda por celda: la columna llegó con la errata `01058da`. Ningún Y toca la barrera de tenant.
+- **H1 × A7 sale verde.** Tampoco tenía predicción: H1 tiene un solo colegio y no pasa por esa barrera.
+- **Dónde se corrigió cada diferencia que hubo, antes de aceptar:**
+  - el humo de BUG-11, que también fija `alembic_version`: `13caff8` (ERR-25);
+  - A7, que había quedado apuntando a una función que el camino del estudiante ya no usa: `01058da` (ERR-26);
+  - el cruce A7 × S15: `2b739f6`.
+- **Al armar esta matriz no apareció ninguna diferencia nueva** con la predicción ya corregida.
+- **Sin medir:** R1-R3 × Y1-Y14 con la bandera. Sin ella son inalcanzables.
+- **Determinismo de A13-2 y A13-3** (medido en el paso 2 sobre el árbol de `839772c`, H-3 del auditor): 5 corridas seguidas con el código bueno, con Y1 y con Y2. Dieron el mismo veredicto y los mismos números las 5 veces:
+  - bueno: A13-2 `[200, 409]`, barrera rota, 3.20-3.31 s; A13-3 `[200, 200]`, monedas `[0, 20]`, 1 fila;
+  - Y1: A13-3 rojo, 2 filas y saldo 40;
+  - Y2: A13-2 rojo, `[200, 200]` y 1 fila.
+
+  Son medibles de forma determinista y no hizo falta la alternativa preregistrada.
+
+### Barreras que producen cada 404 (medidas)
+Esta sección **registra** lo medido; la lista predicha de arriba no cambia.
+
+| 404 | Barrera | Qué la ataca y qué se midió |
+|---|---|---|
+| Check-in de otro grupo (A14-1) y expirada de otro grupo (A14-2) | `_buscar_sesion`: el JOIN con `Group` y `Group.group_code == group_code`. Decide **antes** del 410 | Y7 (sin grupo ni rol: 200 y 410); Y8 (el 410 primero: A14-2) |
+| Check-in de docente o de estudiante sin grupo (A14-3) | `_buscar_sesion` devuelve None si `not es_estudiante` o si `group_code is None` | Y9 quita el rol: el docente marca (200). E0 **sigue en 404** por `group_code NULL` (medido en el paso 3) |
+| El mismo cuerpo que un código inexistente | El único 404 de `check_in` (`Session code not found`) | Y14 lo cambia: A14-1..3 en rojo por el cuerpo, sin mover dinero |
+| Reto de otro grupo, detalle y arranque (A15) | `filtro_grupo_estudiante` dentro de `get_challenge_for` | Y10 lo abre (200 y 201); Y11 arranca por el camino del personal (201); Y13 da 403 |
+| Reto de otro colegio: **globales** | **Solo** `stmt_reto_del_tenant`, la fuente única de la barrera de tenant | A7 la quita: `test_a7` da 200 y S15 ve el global del otro colegio (`:132`) |
+| Reto de otro colegio: **de grupo** | **Dos barreras:** `stmt_reto_del_tenant` y, además, la subconsulta de `filtro_grupo_estudiante`, que filtra `Group.tenant_id == tenant_id` | Con A7, el reto del grupo homónimo `G1` del otro colegio **sigue en 404** (S15 `:131` verde): lo para la segunda barrera |
+| Check-in de otro colegio (S14) | `AttendanceSession.tenant_id == tenant_id` y `Group.tenant_id == tenant_id`, en la misma consulta de `_buscar_sesion` | **Ningún tramposo la ataca.** S14 la mide solo por comportamiento: el otro colegio, con un grupo que también se llama `G1`, da 404 |
+| Código o UUID inexistente | No hay fila | Es la referencia del cuerpo en A14 y A15 |
+
+
 ## 4. Cuentas (ERR-10: la suma a la vista)
 **Base: la meta final de BUG-11**, `ESPEC_bug11.md` §4: **280 passed + 9 skipped y 100 no-integ**. No está medida. Si BUG-11 cierra con otra cifra N + S, las metas pasan a N + 31 y S + 3, y el no-integ no cambia.
 
@@ -323,8 +440,12 @@ engrama-2.0 está **pausado**. Nada de esto se corre contra un Supabase real sin
   Si da más de 0, la 033 deja esas filas repetidas en NULL y **no devuelve monedas**. Revertirlas (una fila inversa por cada una) lo decide Christiam: toca saldos de estudiantes. No está verificado; se espera 0.
 - **Orden: primero la migración y después el código.**
   - El código **viejo** con la 033 funciona igual que hoy: no pasa llave, así que sigue con el hueco, pero no rompe nada.
-  - El código **nuevo** sin la 033 falla cerrado: 500 en toda victoria (42P10), sin pagar.
-  - BUG-14 y BUG-15 no tienen migración y se despliegan cuando sea.
+  - El código **nuevo** sin la 033 falla cerrado, sin pagar.
+    - **Corregido en el paso 6 con lo medido** (§1.1). Decía "500 en toda victoria (42P10)".
+    - Medido: dan 500 por **42703** (la columna no existe) la victoria, el check-in y `GET /core/coins/history`, porque el modelo ya declara `idempotency_key`. El ledger queda con 0 filas.
+    - Por eso la migración va **antes o junto con** el código, nunca después.
+  - BUG-14 y BUG-15 no tienen migración. Pero en la rama van encima del código de BUG-13: desplegar esa rama exige la 033 antes.
+  - El código viejo con la 033 **no se midió** (sería volver a un commit anterior); se sostiene por lectura: el modelo viejo no nombra la columna y el INSERT del ORM no la incluye.
 - **Bloqueos:** `ADD COLUMN` sin default es solo metadato. El UPDATE y el `ADD CONSTRAINT UNIQUE` (que construye el índice) bloquean `coin_ledger`. Con el tamaño actual no importa. Si crece: `CREATE UNIQUE INDEX CONCURRENTLY`, fuera de la transacción, y `ADD CONSTRAINT … USING INDEX`.
 - **Downgrade:** solo pierde las llaves.
 - Después de aplicar: existe `coin_ledger_idempotency_key`, la consulta de D12 da 0 y 0, y `pg_policies` de `public` = 51.

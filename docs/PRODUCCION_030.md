@@ -80,3 +80,50 @@ La 032 agrega `memberships.full_name` (nullable), le copia a cada membresía `st
     -- esperado: CHECK (((role <> 'student'::text) OR (full_name IS NOT NULL)))
     ```
 - **Medido en local** (contenedor desechable del fixture, 2026-09-28): `alembic upgrade head` → `downgrade 031_sin_acceso_directo` → `upgrade head` corre sin errores. En las dos subidas, las columnas de `memberships` (nombre, tipo, nulabilidad y default) y sus restricciones coinciden. D12 da 0 y 0 y hay 51 políticas en las tres etapas. La posición física de `full_name` cambia de 8 a 9 tras bajar y volver a subir: PostgreSQL no reutiliza la ranura de una columna borrada. La prueba se hizo con `memberships` vacía; el backfill con datos lo cubren B1 y B2 (`tests/integ/test_migracion_032.py`).
+
+# Antes de aplicar la 033 (una sola paga por reto, BUG-13)
+
+Origen: `docs/ESPEC_bug13a15.md` §7, 2026-09-28. Medido solo en la imagen local (`supabase/postgres:17.6.1.167`); **nada de esto se probó contra el remoto**. engrama-2.0 está pausado. **Todo lo de esta sección está condicionado al sí de Christiam en esa sesión** (REGLAS §2): nada se corre contra un Supabase real sin él.
+
+Qué hace la 033:
+- agrega `coin_ledger.idempotency_key` (TEXT, nullable);
+- le pone su llave `challenge:<reto>:<estudiante>` a la fila de reto **más antigua** de cada (tenant, reto, estudiante);
+- agrega el UNIQUE `coin_ledger_idempotency_key (tenant_id, idempotency_key)`.
+
+No crea tablas, vistas, secuencias ni funciones. No toca las políticas, los privilegios de la 031 ni `app_private`. BUG-14 y BUG-15 no tienen migración.
+
+- [ ] **Respaldo restaurado en local** y, sobre él, las dobles pagas históricas (la consulta de `ESPEC_bug13a15.md` §7):
+  ```sql
+  select count(*) from (select l.tenant_id, l.metadata->>'challenge_id', w.owner_id
+    from coin_ledger l join coin_wallets w on w.id = l.to_wallet_id and w.owner_type = 'profile'
+   where l.action = 'challenge' group by 1, 2, 3 having count(*) > 1) s;
+  ```
+  - Si da más de 0: la 033 deja las filas repetidas con la llave en NULL y **no devuelve monedas**.
+  - **Revertir esas dobles pagas lo decide Christiam**: una fila inversa por cada una, y toca saldos de estudiantes.
+  - Se espera 0, pero **no está verificado**.
+- [ ] **La migración va antes del código, o junto con él. Nunca después.**
+  - Medido en local, quitando la columna y el UNIQUE: el código nuevo sin la 033 da 500 por **42703** (`column "idempotency_key" … does not exist`) en tres rutas: la victoria de un reto, el **check-in** y `GET /core/coins/history`. El ledger queda con 0 filas, así que no se paga nada. Rompe todo lo que toca el ledger, no solo los retos.
+  - El código viejo con la 033 aplicada **no se midió**. Por lectura funciona igual que hoy: su modelo no nombra la columna, así que no pasa llave y sigue con el hueco, pero no rompe nada.
+  - BUG-14 y BUG-15 no necesitan migración, pero en la rama van encima de BUG-13: desplegar esa rama exige la 033 antes.
+- [ ] **Bloqueos.**
+  - `ADD COLUMN` sin default es solo metadato.
+  - El UPDATE del backfill y el `ADD CONSTRAINT UNIQUE`, que construye el índice, bloquean `coin_ledger`.
+  - Con el tamaño actual no importa. Si la tabla crece, se hace `CREATE UNIQUE INDEX CONCURRENTLY` fuera de la transacción y después `ADD CONSTRAINT … USING INDEX`.
+- [ ] **Sin downgrade en producción.**
+  - Con el código nuevo desplegado, bajar la 033 deja la base sin la columna: victorias, check-in e historial dan 500 (el mismo 42703 medido arriba).
+  - Además se pierden las llaves. Si se vuelve a subir, el backfill solo las recalcula para las filas de reto.
+  - Si hay que volver atrás, **se restaura el respaldo**; no se corre `alembic downgrade`.
+- [ ] **Después de aplicar:**
+  - la consulta de D12 (sección de la 031, arriba) da 0 y 0 (las dos devuelven NULL);
+  - `select count(*) from pg_policies where schemaname = 'public'` da 51;
+  - el UNIQUE existe:
+    ```sql
+    select pg_get_constraintdef(oid) from pg_constraint
+    where conname = 'coin_ledger_idempotency_key';
+    -- esperado: UNIQUE (tenant_id, idempotency_key)
+    ```
+- **Medido en local** (contenedor desechable del fixture, 2026-09-28, sobre `7451dc1`): `alembic upgrade head`, `downgrade 032_nombre_por_membresia` y `upgrade head` corren sin errores (rc 0 en los dos pasos de Alembic).
+  - En las dos subidas coinciden las columnas de `coin_ledger` (nombre, tipo, nulabilidad y default), la definición de cada restricción (`pg_get_constraintdef`) y los índices (`pg_indexes`). No se compara `ordinal_position` (ERR-24).
+  - En la bajada no existen ni la columna, ni el UNIQUE, ni su índice.
+  - D12 da 0 y 0 y hay 51 políticas en las tres etapas.
+  - La prueba se hizo con `coin_ledger` vacío; el backfill con datos lo cubren B1 y B2 (`tests/integ/test_migracion_033.py`).
