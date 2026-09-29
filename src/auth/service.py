@@ -5,6 +5,7 @@ docs/ESPEC_login_piloto.md §1.2: ya no hay respaldo que cree perfiles):
   - validate_jwt            : decodifica y verifica un JWT de Supabase.
   - get_profile             : busca el Profile en DB; nunca lo crea.
   - exigir_perfil           : 403 si el `sub` no tiene perfil.
+  - exigir_clave_definitiva : 403 si la contraseña es temporal (salvo 4 rutas).
   - get_memberships         : carga memberships+tenant del usuario.
   - build_auth_context      : resuelve el tenant activo y construye AuthContext.
 
@@ -24,7 +25,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.shared.config import settings
@@ -112,6 +113,58 @@ def exigir_perfil(profile: Profile | None) -> Profile:
     if profile is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=SIN_PERFIL)
     return profile
+
+
+# =============================================================================
+# 3.2b Contraseña temporal (ESPEC_login_piloto §1.5)
+# =============================================================================
+# La bandera vive en `profiles.force_password_reset` (existe desde la 002).
+# NO en `user_metadata` de GoTrue: el propio usuario lo reescribe con
+# `PUT /user` y se saltaría el cambio. NO en `app_metadata`: el JWT viejo la
+# conserva hasta que vence. En la BD se lee en cada request y la escriben solo
+# el alta del operador (true) y `quitar_contrasena_temporal` (false).
+DEBE_CAMBIAR = "must_change_password"
+
+# Lista de PERMITIDAS, por (path de la ruta, método): una ruta nueva queda
+# bloqueada por defecto. El método importa: con solo el path, una ruta futura
+# `DELETE /auth/me` heredaría el permiso sin que nadie lo decida (H-4).
+RUTAS_CON_CONTRASENA_TEMPORAL: frozenset[tuple[str, str]] = frozenset({
+    ("/auth/me", "GET"), ("/auth/session", "POST"),
+    ("/auth/logout", "POST"), ("/auth/contrasena", "POST"),
+})
+
+
+def puede_con_contrasena_temporal(path: str, metodo: str) -> bool:
+    """¿Esta ruta se puede usar mientras la contraseña es temporal? (pura)."""
+    return (path, metodo.upper()) in RUTAS_CON_CONTRASENA_TEMPORAL
+
+
+def debe_cambiar_clave(profile: Profile) -> bool:
+    """La bandera, SIEMPRE de la BD (una sola fuente: el bloqueo y `/auth/me`)."""
+    return bool(profile.force_password_reset)
+
+
+def exigir_clave_definitiva(profile: Profile, path: str | None, metodo: str) -> None:
+    """403 `must_change_password` si la clave es temporal y la ruta no está permitida.
+
+    `path` es la plantilla de la ruta (`request.scope["route"].path`); si no
+    se conoce, no se permite: falla cerrado.
+    """
+    if not debe_cambiar_clave(profile):
+        return
+    if path is None or not puede_con_contrasena_temporal(path, metodo):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=DEBE_CAMBIAR)
+
+
+async def quitar_contrasena_temporal(db: AsyncSession, profile_id: UUID) -> None:
+    """`force_password_reset = false`, después de que GoTrue aceptó la clave nueva.
+
+    No hace commit: lo hace la ruta. El mismo token sigue sirviendo, porque
+    la bandera se lee de la BD en cada request.
+    """
+    await db.execute(
+        update(Profile).where(Profile.id == profile_id).values(force_password_reset=False)
+    )
 
 
 # =============================================================================
@@ -219,6 +272,7 @@ def profile_to_schema(profile: Profile, membresias: Membresias) -> ProfileOut:
         last_attendance_date=profile.last_attendance_date,
         memberships=membresias.todas,
         active_tenant_id=membresias.activo,
+        must_change_password=debe_cambiar_clave(profile),
     )
 
 

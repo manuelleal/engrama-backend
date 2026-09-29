@@ -14,13 +14,17 @@ automatiza la DIAGONAL (la negrita de §3); la matriz completa se mide aparte
   ZP4   `get_memberships` con ORDER BY `created_at` DESC      -> AP7
   ZP5   `build_auth_context` ignora un `X-Tenant-ID` ajeno y usa la
         primera membresía                                      -> AP6
+  ZP6   la bandera se lee del JWT (`user_metadata`), no de la BD -> AP9
+  ZP8   `/auth/contrasena` llama a GoTrue y NO limpia la bandera -> AP10
+
+ZP7 y ZP20 (no-integ) viven en `test_tramposos_login_piloto_unit.py`.
 
 ZP14 y ZP15 no reemplazan `validate_jwt`: reemplazan el `jwt` de python-jose
 que usa `src/auth/service.py` por uno que apaga UNA verificación. Así el
 tramposo alcanza a todo el que llama a `validate_jwt`, también a los tests
 que la importan por nombre (`tests/auth/test_validate_jwt.py`).
 
-Los tramposos ZP6-ZP20 llegan con sus pasos (ESPEC §6).
+Los tramposos ZP1, ZP9-ZP13 y ZP16-ZP19 llegan con sus pasos (ESPEC §6).
 """
 from __future__ import annotations
 
@@ -34,10 +38,12 @@ from fastapi import HTTPException
 from jose import jwt as jose_jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth import router as auth_router
 from src.auth import service as auth_service
 from src.shared import deps as deps_mod
 from src.shared.models import Membership, Profile
 from tests.auth import test_login_piloto as lp
+from tests.auth import test_login_piloto_clave as lpc
 from tests.tramposos.test_tramposos_bug13 import correr
 
 pytestmark = pytest.mark.integ
@@ -97,6 +103,20 @@ def _contexto_ignora_ajeno(profile: Any, memberships: list[Any],
         raise
 
 
+def _bandera_del_jwt(_profile: Profile) -> bool:
+    """ZP6: la bandera sale de `user_metadata.must_change_password` del JWT.
+
+    Los tokens de prueba no traen metadatos (`integ.headers`) o los traen en
+    false (AP9): para todos ellos esa lectura da False. El tramposo devuelve
+    exactamente eso, sin mirar `profiles.force_password_reset`.
+    """
+    return False
+
+
+async def _no_limpia(_db: AsyncSession, _profile_id: UUID) -> None:
+    """ZP8: GoTrue aceptó la clave, pero la bandera queda como estaba."""
+
+
 def _parche(objetivo: Any, nombre: str, valor: Any) -> Aplicar:
     def aplicar(_integ: Any, mp: pytest.MonkeyPatch) -> AbstractContextManager[Any]:
         mp.setattr(objetivo, nombre, valor)
@@ -131,6 +151,14 @@ TRAMPOSOS: dict[str, tuple[Aplicar, list[tuple[Callable[..., None], str]]]] = {
     ]),
     "ZP5": (_parche(deps_mod, "build_auth_context", _contexto_ignora_ajeno), [
         (lp.test_ap6_tres_instituciones_aisladas, r"estudiante de A en /auth/me con B: 200"),
+    ]),
+    "ZP6": (_parche(auth_service, "debe_cambiar_clave", _bandera_del_jwt), [
+        (lpc.test_ap9_contrasena_temporal_bloquea_menos_cuatro_rutas, r"'me': \(200, False\)"),
+    ]),
+    "ZP8": (_parche(auth_router, "quitar_contrasena_temporal", _no_limpia), [
+        # El diff ordena las claves: 'bandera' sale antes que 'llamadas' (el token).
+        (lpc.test_ap10_cambio_de_contrasena,
+         r"\{'valida': \{'bandera': True, 'llamadas': .*'mismo_token': 403"),
     ]),
 }
 

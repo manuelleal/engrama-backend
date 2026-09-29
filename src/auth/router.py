@@ -4,17 +4,19 @@ Expone:
   - POST /auth/session  : perfil + memberships (al iniciar sesión).
   - GET  /auth/me       : mismo payload, para refrescar.
   - POST /auth/logout   : 200 OK + audit log (el logout real es frontend).
+  - POST /auth/contrasena : cambia la contraseña temporal (ESPEC_login_piloto §1.5).
 
 Todos requieren un JWT válido vía `get_current_user`. El router no habla
 directamente con la DB salvo para logout (audit_logs).
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.auth.schemas import AuthContext, ProfileOut
+from src.auth.cuentas import CambioDeClave, CambioFallido, ClaveRechazada, get_cambio_de_clave
+from src.auth.schemas import AuthContext, CambioDeClaveIn, ProfileOut
 from src.auth.service import (
     Membresias,
     exigir_perfil,
@@ -22,9 +24,10 @@ from src.auth.service import (
     get_profile,
     memberships_to_schema,
     profile_to_schema,
+    quitar_contrasena_temporal,
 )
 from src.shared.db import get_db
-from src.shared.deps import get_current_user
+from src.shared.deps import _extract_bearer_token, get_current_user
 
 router = APIRouter()
 
@@ -93,3 +96,39 @@ async def logout(
     )
     await db.commit()
     return {"status": "ok"}
+
+
+@router.post("/contrasena", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+async def cambiar_contrasena(
+    payload: CambioDeClaveIn,
+    auth: AuthContext = Depends(get_current_user),
+    authorization: str | None = Header(default=None),
+    cambio: CambioDeClave | None = Depends(get_cambio_de_clave),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Cambia la contraseña en GoTrue y, si GoTrue la acepta, quita la bandera.
+
+    Es una de las 4 rutas que se pueden usar con la contraseña temporal. Un
+    `nueva` de menos de 10 o más de 72 caracteres ya dio 422 antes de llegar
+    aquí (sin llamar a GoTrue).
+      - GoTrue 200            -> bandera en false, commit y 204.
+      - GoTrue 422            -> 422 `password_rejected` (bandera igual).
+      - sin respuesta, 5xx... -> 502 `password_change_failed` (bandera igual).
+      - sin URL de GoTrue     -> 503 `password_change_not_configured`.
+    """
+    if cambio is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="password_change_not_configured")
+    # El mismo Bearer que ya validó `get_current_user`: GoTrue lo valida otra vez.
+    token = _extract_bearer_token(authorization)
+    try:
+        await cambio.cambiar(token, payload.nueva)
+    except ClaveRechazada as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="password_rejected") from exc
+    except CambioFallido as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail="password_change_failed") from exc
+    await quitar_contrasena_temporal(db, auth.profile_id)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

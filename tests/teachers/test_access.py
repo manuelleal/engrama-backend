@@ -97,7 +97,15 @@ _NUEVAS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/admin/groups/{gid}/students/import", frozenset({"POST"})): "admin",     # M4
 }
 
-EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {**_PREVIAS, **_NUEVAS}  # type: ignore[type-arg]
+# -----------------------------------------------------------------------------
+# docs/ESPEC_login_piloto.md §1.5: cambio de la contraseña temporal.
+# -----------------------------------------------------------------------------
+_LOGIN_PILOTO: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/auth/contrasena", frozenset({"POST"})): "user",
+}
+
+EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:

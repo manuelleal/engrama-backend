@@ -56,6 +56,17 @@ class ProfileOut(BaseModel):
     # El colegio que resolvió `build_auth_context` para ESTA request. Con más
     # de una membresía, el cliente manda `X-Tenant-ID` en toda llamada.
     active_tenant_id: UUID
+    # `profiles.force_password_reset`: la contraseña es temporal y hay que
+    # cambiarla con `POST /auth/contrasena` antes de usar el resto de la API.
+    must_change_password: bool
+
+
+class CambioDeClaveIn(BaseModel):
+    """Body de `POST /auth/contrasena`. 72 es el límite de bcrypt (en GoTrue)."""
+
+    model_config = _STRICT
+
+    nueva: str = Field(min_length=10, max_length=72)
 
 
 class AuthContext(BaseModel):

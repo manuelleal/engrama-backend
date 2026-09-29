@@ -18,12 +18,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.schemas import AuthContext
 from src.auth.service import (
     build_auth_context,
+    exigir_clave_definitiva,
     exigir_perfil,
     get_memberships,
     get_profile,
@@ -54,6 +55,7 @@ def _extract_bearer_token(authorization: str | None) -> str:
 
 
 async def get_current_user(
+    request: Request,
     authorization: str | None = Header(default=None),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-ID"),
     db: AsyncSession = Depends(get_db),
@@ -64,6 +66,8 @@ async def get_current_user(
       1. Extrae el Bearer token del header.
       2. Valida el JWT con `validate_jwt`.
       3. Lookup del Profile: si el `sub` no tiene perfil, 403 (nunca lo crea).
+         Con la contraseña temporal, 403 `must_change_password` salvo en las
+         rutas permitidas (`RUTAS_CON_CONTRASENA_TEMPORAL`).
       4. Carga memberships activos.
       5. Resuelve tenant activo (X-Tenant-ID si viene, sino el primero).
     """
@@ -80,6 +84,10 @@ async def get_current_user(
         ) from exc
 
     profile = exigir_perfil(await get_profile(db, profile_id))
+    # La plantilla de la ruta (p. ej. "/auth/me"), no la URL concreta. FastAPI
+    # la pone en el scope al elegir la ruta; si faltara, no se permite.
+    ruta = request.scope.get("route")
+    exigir_clave_definitiva(profile, getattr(ruta, "path", None), request.method)
     memberships = await get_memberships(db, profile_id)
     return build_auth_context(profile, memberships, tenant_id_header=x_tenant_id)
 

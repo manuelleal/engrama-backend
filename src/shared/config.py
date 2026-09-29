@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     )
     supabase_service_role_key: str = Field(default="")
     supabase_anon_key: str = Field(default="")
+    # GoTrue, para `POST /auth/contrasena` (ESPEC_login_piloto §1.5). Vacía:
+    # se usa `supabase_url + "/auth/v1"`. En el piloto: http://gotrue:9999.
+    # El proceso web NO necesita la clave de servicio: cambia la clave con el
+    # mismo Bearer del usuario.
+    gotrue_url: str = Field(default="")
 
     # --- Database ---
     database_url: str = Field(
