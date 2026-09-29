@@ -88,7 +88,7 @@ La matriz se mide completa antes de aceptar: 5 tramposos × 6 tests (A16-1, A16-
 - **no-integ:** 100 + 2 = **102**;
 - ruff 0 y mypy 0.
 
-Si `ESPEC_login_piloto.md` entra antes, las dos metas se suman: 352 + 11 = **363 passed**, 14 skipped y 106 + 2 = **108 no-integ** (§5 de esa espec).
+Si `ESPEC_login_piloto.md` entra antes, las dos metas se suman: 355 + 11 = **366 passed**, 14 skipped y 107 + 2 = **109 no-integ** (§5 de esa espec, corregida en 73dbbfd).
 
 ## 5. Orden de commits (cada uno con 0 failed)
 1. **`test(bug16)`:** A16-1, A16-2 y U16-2 con `xfail(strict=True, raises=AssertionError)`; S16 y U16-1 en verde (hoy el esquema no tiene Literal, así que U16-1 compara las **tuplas** `CHALLENGE_TYPES` y `CEFR_LEVELS` con la BD, y en el paso 2 pasa a leer el Literal).
