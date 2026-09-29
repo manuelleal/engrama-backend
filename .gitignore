@@ -13,6 +13,7 @@ venv/
 tests/_salida/humo_integ.json
 tests/_salida/humo_grupos.json
 tests/_salida/humo_bug11.json
+tests/_salida/humo_bug13a15.json
 
 # Salidas sueltas de herramientas
 *_output.txt
