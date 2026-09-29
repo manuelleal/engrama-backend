@@ -24,6 +24,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.engrama_core.schemas import (
@@ -93,7 +94,8 @@ async def award_coins(
     action: str,
     metadata: dict[str, Any] | None = None,
     created_by_profile_id: UUID | None = None,
-) -> CoinLedger:
+    idempotency_key: str | None = None,
+) -> CoinLedger | None:
     """Transfiere `amount` coins desde el wallet del tenant al del estudiante.
 
     Flujo double-entry (spec §3.2):
@@ -102,6 +104,17 @@ async def award_coins(
       3. Verifica balance suficiente → 402 si no.
       4. INSERT en coin_ledger.
       5. UPDATE de ambos balances en memoria (ORM persiste al flush/commit).
+
+    `idempotency_key` (033, BUG-13; docs/ESPEC_bug13a15.md §1.1):
+      - None: el comportamiento de siempre, idéntico. Devuelve la fila.
+      - Con llave: después de los mismos locks, RECLAMA la llave con
+        `INSERT ... ON CONFLICT (tenant_id, idempotency_key) DO NOTHING`.
+        Si la llave ya estaba (esta paga ya ocurrió), devuelve None: no mueve
+        saldos y NO da 402 (repetir una paga hecha no es "falta de fondos").
+        Si la reclamó, sigue igual: 402 si no hay fondos (el rollback del
+        request deshace también el reclamo) y mueve los saldos.
+      La regla "una paga por llave" la garantiza el UNIQUE de la BD, no este
+      código: sin la 033 el ON CONFLICT falla y la paga no ocurre (falla cerrado).
 
     No commitea: el caller decide cuándo cerrar la transacción.
     """
@@ -120,6 +133,29 @@ async def award_coins(
         db, "profile", student_id, tenant_id=tenant_id, for_update=True
     )
 
+    # Paso 2b (solo con llave) — reclamar la llave. Si ya estaba, la paga ya
+    # se hizo: nada que mover.
+    entry: CoinLedger | None = None
+    if idempotency_key is not None:
+        reclamo = (
+            pg_insert(CoinLedger)
+            .values(
+                tenant_id=tenant_id,
+                from_wallet_id=from_wallet.id,
+                to_wallet_id=to_wallet.id,
+                amount=amount,
+                action=action,
+                created_by_profile_id=created_by_profile_id,
+                ledger_metadata=metadata or {},
+                idempotency_key=idempotency_key,
+            )
+            .on_conflict_do_nothing(index_elements=["tenant_id", "idempotency_key"])
+            .returning(CoinLedger)
+        )
+        entry = (await db.execute(reclamo)).scalar_one_or_none()
+        if entry is None:
+            return None
+
     # Paso 3 — fondos insuficientes.
     if from_wallet.balance < amount:
         raise HTTPException(
@@ -130,17 +166,18 @@ async def award_coins(
             ),
         )
 
-    # Paso 4 — INSERT ledger.
-    entry = CoinLedger(
-        tenant_id=tenant_id,
-        from_wallet_id=from_wallet.id,
-        to_wallet_id=to_wallet.id,
-        amount=amount,
-        action=action,
-        created_by_profile_id=created_by_profile_id,
-        ledger_metadata=metadata or {},
-    )
-    db.add(entry)
+    # Paso 4 — INSERT ledger (con llave ya se insertó al reclamarla).
+    if entry is None:
+        entry = CoinLedger(
+            tenant_id=tenant_id,
+            from_wallet_id=from_wallet.id,
+            to_wallet_id=to_wallet.id,
+            amount=amount,
+            action=action,
+            created_by_profile_id=created_by_profile_id,
+            ledger_metadata=metadata or {},
+        )
+        db.add(entry)
 
     # Paso 5 — UPDATE balances. SQLAlchemy emite los UPDATEs al flush.
     from_wallet.balance = from_wallet.balance - amount

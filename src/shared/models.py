@@ -299,9 +299,16 @@ class CoinLedger(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # 033 (BUG-13): llave de idempotencia. Una paga con llave ocupa UNA fila por
+    # (tenant_id, llave); los retos usan `challenge:<reto>:<estudiante>`. NULL
+    # = sin llave (asistencia y demás): en PostgreSQL los NULL no chocan.
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         CheckConstraint("amount > 0", name="coin_ledger_amount_pos_check"),
+        UniqueConstraint(
+            "tenant_id", "idempotency_key", name="coin_ledger_idempotency_key"
+        ),
         Index("idx_ledger_tenant", "tenant_id"),
         Index("idx_ledger_from_wallet", "from_wallet_id"),
         Index("idx_ledger_to_wallet", "to_wallet_id"),

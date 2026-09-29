@@ -11,12 +11,17 @@ sin `FOR UPDATE`, así que dos envíos simultáneos del mismo intento ven los do
              Control: la barrera no se rompió (si se rompió, `PruebaRota`).
   S13    C9  identidad de la primera paga, byte a byte, contra el snapshot
              congelado en el commit 1 (`snapshot_bug13_primera_paga.json`).
+  K1     C4  `award_coins` con llave: fila y luego None (en 2 transacciones y
+             en una); la repetición con el banco en 0 da None, no 402.
+  K2     C5  sin llave, idéntico a hoy: 2 llamadas, 2 filas, saldos x2.
+  C13    C6  el UNIQUE en la BD: misma (tenant, llave) -> 23505; otro tenant
+             y dos NULL entran.
 
 A13-1..3 afirman por la API y cuentan filas del ledger por
 `action = 'challenge' AND metadata->>'challenge_id'`: NUNCA nombran
-`idempotency_key` (ESPEC §3). Por eso corren en el commit 1, sobre el código
-viejo, con `xfail(strict=True, raises=AssertionError)`: el hueco se ve en rojo.
-Si el hueco se cerrara sin quitar el xfail, el estricto se pone rojo (XPASS).
+`idempotency_key` (ESPEC §3). Por eso corrieron en el commit 1 (508d568),
+sobre el código viejo, con `xfail(strict=True, raises=AssertionError)`: el
+hueco se vio en rojo. Con la 033 y el código nuevo el xfail se quitó.
 
 ERR-9: cada intento se siembra `in_progress` en la base (`crear_intento`), así
 que cada A depende solo de `/submit`. Estudiantes con `saldo=0`: la billetera
@@ -30,7 +35,7 @@ concurrencia es real. Con el código bueno, A13-2 cuesta unos 3 s: el primero
 espera en la barrera hasta el timeout mientras el segundo está bloqueado en el
 `FOR UPDATE` del intento.
 
-K1, K2 y C13 llegan con la 033 (commit 2, ESPEC §10).
+Tramposos Y1-Y6: `tests/tramposos/test_tramposos_bug13.py`.
 """
 from __future__ import annotations
 
@@ -41,18 +46,21 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import asyncpg  # type: ignore[import-untyped]
 import httpx
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from src.challenge_engine.service import challenges as challenges_mod
+from src.engrama_core.service import coins as coins_mod
 from src.main import app
+from src.shared.models import CoinLedger
+from tests.integ import test_migracion_033 as mig
 from tests.seguridad.veredictos import PruebaRota
 
 pytestmark = pytest.mark.integ
 client = TestClient(app)
-
-XFAIL_BUG13 = pytest.mark.xfail(strict=True, raises=AssertionError, reason="BUG-13")
 
 RUTA_SNAPSHOT = Path(__file__).with_name("snapshot_bug13_primera_paga.json")
 POOL = 1000
@@ -170,7 +178,6 @@ def _medir(integ: Any, rs: list[httpx.Response], barrera: threading.Barrier,
 # =============================================================================
 # A13-1 — C1: en secuencia
 # =============================================================================
-@XFAIL_BUG13
 def test_a13_1_segunda_victoria_del_mismo_reto_no_paga(integ) -> None:
     """E gana el intento 1 (20 y 15 XP) y gana un intento 2: 200 con 0 y 0, una fila."""
     tenant, alumno, cid, qids = _sembrar(integ)
@@ -204,7 +211,6 @@ def test_a13_1_segunda_victoria_del_mismo_reto_no_paga(integ) -> None:
 # =============================================================================
 # A13-2 — C2: doble toque del mismo intento
 # =============================================================================
-@XFAIL_BUG13
 def test_a13_2_doble_toque_del_mismo_intento(integ, monkeypatch) -> None:
     """Dos `/submit` simultáneos del MISMO intento: [200, 409], 20 monedas, una fila."""
     tenant, alumno, cid, qids = _sembrar(integ)
@@ -222,7 +228,6 @@ def test_a13_2_doble_toque_del_mismo_intento(integ, monkeypatch) -> None:
 # =============================================================================
 # A13-3 — C3: dos intentos distintos en vuelo
 # =============================================================================
-@XFAIL_BUG13
 def test_a13_3_dos_intentos_en_vuelo_pagan_una_vez(integ, monkeypatch) -> None:
     """Dos intentos `in_progress` del mismo E y reto, a la vez: [200, 200] y UNA paga."""
     tenant, alumno, cid, qids = _sembrar(integ)
@@ -285,3 +290,111 @@ def test_s13_primera_paga_identica_al_snapshot(integ) -> None:
     assert actual["respuesta"] == congelado["respuesta"], "la respuesta de /submit cambió"
     assert actual["ledger"] == congelado["ledger"], "la fila del ledger cambió"
     assert actual["saldos"] == congelado["saldos"], "los saldos cambiaron"
+
+
+# =============================================================================
+# K1, K2 — `award_coins` con y sin llave (C4, C5)
+# =============================================================================
+def _pagar(integ: Any, tenant: UUID, alumno: UUID, *, llave: str | None,
+           veces: int = 1) -> list[Any]:
+    """`veces` llamadas a `award_coins` (20) en UNA transacción, con commit.
+
+    Devuelve lo que devolvió cada llamada; una HTTPException (p. ej. el 402)
+    se guarda en la lista en vez de subir, para afirmarla con `assert`.
+    Se llama por `coins_mod.award_coins`: es el punto que parchean Y1 e Y4.
+    """
+    async def _q() -> list[Any]:
+        salida: list[Any] = []
+        async with integ.sesion() as db:
+            for _ in range(veces):
+                try:
+                    salida.append(await coins_mod.award_coins(
+                        db, student_id=alumno, tenant_id=tenant, amount=MONEDAS,
+                        action="challenge", metadata={}, idempotency_key=llave))
+                except HTTPException as exc:
+                    salida.append(exc)
+            await db.commit()
+        return salida
+
+    return list(integ.run(_q()))
+
+
+def _con_llave(integ: Any, llave: str) -> int:
+    return int(integ.valor(
+        "select count(*) from coin_ledger where idempotency_key = :k", k=llave))
+
+
+def _es_fila(x: Any) -> bool:
+    return isinstance(x, CoinLedger)
+
+
+def test_k1_award_coins_con_llave_es_idempotente(integ) -> None:
+    """Misma llave: fila y luego None (2 transacciones o una); con el banco en 0, None."""
+    tenant = integ.crear_tenant(pool=POOL)
+    e_a = integ.crear_perfil(tenant, saldo=0)
+    e_b = integ.crear_perfil(tenant, saldo=0)
+
+    primera = _pagar(integ, tenant, e_a, llave="k1:a")
+    segunda = _pagar(integ, tenant, e_a, llave="k1:a")
+    assert _es_fila(primera[0]), f"la primera paga con llave no devolvió la fila: {primera}"
+    assert segunda == [None], f"la misma llave en otra transacción pagó otra vez: {segunda}"
+    assert _con_llave(integ, "k1:a") == 1
+    assert integ.saldo("profile", e_a) == MONEDAS, "los saldos se movieron dos veces"
+
+    misma_tx = _pagar(integ, tenant, e_b, llave="k1:b", veces=2)
+    assert _es_fila(misma_tx[0]) and misma_tx[1] is None, (
+        f"la misma llave dos veces en una transacción: {misma_tx}")
+    assert _con_llave(integ, "k1:b") == 1
+    assert integ.saldo("profile", e_b) == MONEDAS
+    assert integ.saldo("tenant", tenant) == POOL - 2 * MONEDAS
+
+    # El banco queda en 0 tras la primera paga: repetirla NO es "falta de fondos".
+    tenant0 = integ.crear_tenant(pool=MONEDAS)
+    e_c = integ.crear_perfil(tenant0, saldo=0)
+    assert _es_fila(_pagar(integ, tenant0, e_c, llave="k1:c")[0])
+    assert integ.saldo("tenant", tenant0) == 0
+    repetida = _pagar(integ, tenant0, e_c, llave="k1:c")
+    assert repetida == [None], f"la repetición con el banco en 0 no dio None: {repetida}"
+    assert integ.saldo("profile", e_c) == MONEDAS
+
+
+def test_k2_sin_llave_paga_cada_vez(integ) -> None:
+    """Sin llave, idéntico a hoy: dos llamadas, dos filas, saldos movidos dos veces."""
+    tenant = integ.crear_tenant(pool=POOL)
+    alumno = integ.crear_perfil(tenant, saldo=0)
+
+    pagos = _pagar(integ, tenant, alumno, llave=None) + _pagar(integ, tenant, alumno, llave=None)
+    assert all(_es_fila(p) for p in pagos), f"sin llave, una paga no devolvió su fila: {pagos}"
+    assert integ.valor("select count(*) from coin_ledger") == 2, "sin llave se deduplicó"
+    assert integ.saldo("profile", alumno) == 2 * MONEDAS
+    assert integ.saldo("tenant", tenant) == POOL - 2 * MONEDAS
+
+
+# =============================================================================
+# C13 — el UNIQUE en la BD (C6)
+# =============================================================================
+def test_c13_unique_de_la_llave_en_la_bd(integ) -> None:
+    """Misma (tenant, llave) -> 23505 con el nombre del UNIQUE; otro tenant y dos NULL entran."""
+    async def cuerpo(conn: asyncpg.Connection) -> None:
+        ta, tb = await mig.tenant_crudo(conn), await mig.tenant_crudo(conn)
+
+        async def insertar(tenant: UUID, llave: str | None) -> str | None:
+            """INSERT en su SAVEPOINT; devuelve 'SQLSTATE mensaje' o None si entró."""
+            try:
+                async with conn.transaction():
+                    await conn.execute(
+                        "insert into coin_ledger (tenant_id, amount, action, idempotency_key) "
+                        "values ($1, 20, 'challenge', $2)", tenant, llave)
+            except asyncpg.PostgresError as e:
+                return f"{e.sqlstate} {e}"
+            return None
+
+        assert await insertar(ta, "c13") is None, "la primera fila con llave no entró"
+        choque = await insertar(ta, "c13")
+        assert choque is not None and choque.startswith("23505") and mig.UNIQUE in choque, (
+            f"dos filas con la misma (tenant, llave) entraron o fallaron por otra cosa: {choque}")
+        assert await insertar(tb, "c13") is None, "la misma llave en otro tenant no entró"
+        assert await insertar(ta, None) is None, "una fila sin llave no entró"
+        assert await insertar(ta, None) is None, "dos filas sin llave chocaron"
+
+    mig.en_transaccion(integ, cuerpo)

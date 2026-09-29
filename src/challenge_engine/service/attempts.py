@@ -15,11 +15,19 @@ Reglas:
       * multiple_choice / listening → is_correct = score_percent == 100.
       * open / fill_blank            → is_correct = score_percent >= 70.
   - Si el intento fue correcto Y aún hay cupo (`current_winners <
-    max_winners`), se incrementa `current_winners` y se otorgan
-    `coins_reward` + `xp_reward`. Si no queda cupo el estudiante recibe
-    el resultado correcto pero sin premios (política conservadora, spec
-    §3.2 dice "excluir challenges con cupo lleno del feed"; si llega aquí
-    es porque otro ganó entre que abrió el challenge y lo envió).
+    max_winners`), se intenta pagar `coins_reward` con la llave
+    `challenge:<reto>:<estudiante>` (033, BUG-13): UNA sola paga por
+    (reto, estudiante), la haga el intento que la haga. Solo si la paga
+    ocurre se otorga `xp_reward` y se incrementa `current_winners`. Quien
+    vuelve a ganar un reto ya cobrado recibe el resultado correcto con 0
+    monedas y 0 XP, y no gasta cupo de ganador. Si no queda cupo el
+    estudiante recibe el resultado correcto pero sin premios (política
+    conservadora, spec §3.2 dice "excluir challenges con cupo lleno del
+    feed"; si llega aquí es porque otro ganó entre que abrió el challenge
+    y lo envió).
+  - El intento se lee con `SELECT ... FOR UPDATE` (`_tomar_intento`): dos
+    envíos simultáneos del MISMO intento se serializan y el segundo ve
+    `completed` y responde 409 (docs/ESPEC_bug13a15.md §1.1).
   - Comparación case-insensitive + strip para texto libre.
 """
 from __future__ import annotations
@@ -177,6 +185,32 @@ async def start_attempt(
 # =============================================================================
 # 4.2 submit_attempt
 # =============================================================================
+def llave_reto(challenge_id: UUID, student_id: UUID) -> str:
+    """Llave de idempotencia de la paga de un reto (mismo formato que el backfill de la 033)."""
+    return f"challenge:{challenge_id}:{student_id}"
+
+
+async def _tomar_intento(
+    db: AsyncSession, *, attempt_id: UUID, tenant_id: UUID, student_id: UUID
+) -> ChallengeAttempt | None:
+    """Lee el intento del estudiante y BLOQUEA su fila hasta el commit.
+
+    Así un doble toque sobre el mismo intento se serializa: el segundo
+    request espera aquí, y al seguir ya ve `completed` (→ 409). No cierra
+    dos intentos DISTINTOS en vuelo: eso lo cierra la llave de la paga.
+    """
+    stmt = (
+        select(ChallengeAttempt)
+        .where(
+            ChallengeAttempt.id == attempt_id,
+            ChallengeAttempt.tenant_id == tenant_id,
+            ChallengeAttempt.student_id == student_id,
+        )
+        .with_for_update()
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
 async def submit_attempt(
     db: AsyncSession,
     *,
@@ -186,13 +220,10 @@ async def submit_attempt(
     answers: list[AnswerSubmit],
 ) -> AttemptSubmitOut:
     """Califica el intento, actualiza balances, persiste resultado."""
-    # 1. Cargar attempt validando ownership y status.
-    attempt_stmt = select(ChallengeAttempt).where(
-        ChallengeAttempt.id == attempt_id,
-        ChallengeAttempt.tenant_id == tenant_id,
-        ChallengeAttempt.student_id == student_id,
+    # 1. Cargar (y bloquear) el attempt validando ownership y status.
+    attempt = await _tomar_intento(
+        db, attempt_id=attempt_id, tenant_id=tenant_id, student_id=student_id
     )
-    attempt = (await db.execute(attempt_stmt)).scalar_one_or_none()
     if attempt is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -224,28 +255,32 @@ async def submit_attempt(
     # 4. Premios. Respetamos el cupo de max_winners: si justo se llenó
     # entre que el estudiante abrió el challenge y envió, no duplicamos
     # ganadores pero SÍ devolvemos is_correct/score para feedback.
+    # La paga lleva llave (BUG-13): si este estudiante ya cobró este reto,
+    # `award_coins` devuelve None y aquí no se suma nada más.
     coins_earned = 0
     xp_earned = 0
     if is_correct and challenge.current_winners < challenge.max_winners:
-        coins_earned = challenge.coins_reward
-        xp_earned = challenge.xp_reward
-        await coins_service.award_coins(
+        entrada = await coins_service.award_coins(
             db,
             student_id=student_id,
             tenant_id=tenant_id,
-            amount=coins_earned,
+            amount=challenge.coins_reward,
             action="challenge",
             metadata={
                 "challenge_id": str(challenge.id),
                 "attempt_id": str(attempt.id),
             },
+            idempotency_key=llave_reto(challenge.id, student_id),
         )
-        # XP al perfil.
-        profile = await db.get(Profile, student_id)
-        if profile is not None:
-            profile.xp = profile.xp + xp_earned
-        # +1 ganador en el challenge.
-        challenge.current_winners = challenge.current_winners + 1
+        if entrada is not None:
+            coins_earned = challenge.coins_reward
+            xp_earned = challenge.xp_reward
+            # XP al perfil.
+            profile = await db.get(Profile, student_id)
+            if profile is not None:
+                profile.xp = profile.xp + xp_earned
+            # +1 ganador en el challenge.
+            challenge.current_winners = challenge.current_winners + 1
 
     # 5. Persistir el intento.
     attempt.status = "completed"
