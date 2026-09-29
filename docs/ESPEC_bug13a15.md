@@ -140,6 +140,10 @@ async def award_coins(db, *, student_id, tenant_id, amount, action, metadata=Non
 >   - **Predicción:** `test_a7_otro_colegio_no_se_ve` en rojo por la aserción (`200 == 404`), ahora a través del camino del estudiante.
 >   - **Se agrega a la matriz como columna existente número 11.** Su criterio ("sin la barrera de tenant, un estudiante de otro colegio ve el reto") no cambia; solo cambia el punto donde se inyecta el defecto, que sigue a la fuente única.
 > - **Cuentas:** A7 ya existía, así que §10.4 sigue en **310 passed + 9 skipped**.
+> - **Medido tras aplicar la errata** (anotado antes de aceptar el código, ERR-23):
+>   - A7 también pone S15 en rojo (`test_bug15_reto_de_grupo.py:132`, "otro colegio abre el global"), por la aserción.
+>   - El reto de grupo del otro colegio sigue en 404 porque `filtro_grupo_estudiante` filtra `Group.tenant_id` en su subconsulta: es una **segunda barrera**, solo para los retos de grupo. Los retos globales dependen solo de `stmt_reto_del_tenant`.
+>   - Las cuentas no cambian.
 **Una sola fuente del filtro** (`service/challenges.py`), llamada por nombre global:
 - **`filtro_grupo_estudiante(tenant_id, group_code) -> ColumnElement[bool]`:** el cuerpo actual de `:125-139`, extraído sin cambios. El feed (`list_challenges_for_student`) pasa a usarlo (refactor de identidad: `test_list_challenges_student_filters_by_group` no cambia).
 - **`get_challenge_for(db, challenge_id, *, tenant_id, group_code, es_personal) -> Challenge`:**
