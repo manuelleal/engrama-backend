@@ -130,6 +130,16 @@ async def award_coins(db, *, student_id, tenant_id, amount, action, metadata=Non
 - **Cambio de contrato declarado:** un docente o admin que marca asistencia recibe 404, aunque su membresía tenga `group_code`. Hoy cobra 50 (§8).
 
 ### 1.3 BUG-15 · Detalle y arranque de un reto solo si es del grupo del estudiante
+
+> **Errata tras la medición del paso 4 (ERR-26, regla 8), antes de aceptar el código:**
+> - **La barrera de tenant tiene una sola fuente.** Una función `stmt_reto_del_tenant(challenge_id, tenant_id)` devuelve el `select(Challenge)` filtrado por `id` y `tenant_id`.
+>   - `get_challenge` la usa tal cual.
+>   - `get_challenge_for` la usa para el personal y, para el estudiante, le agrega `filtro_grupo_estudiante`.
+>   - Ninguna otra consulta de retos repite `Challenge.tenant_id ==` en este camino.
+> - **El tramposo existente A7** (`tests/tramposos/test_tramposos_seguridad.py:201`) pasa a parchear `stmt_reto_del_tenant` (el mismo defecto: sin filtro de tenant), en vez de `get_challenge`.
+>   - **Predicción:** `test_a7_otro_colegio_no_se_ve` en rojo por la aserción (`200 == 404`), ahora a través del camino del estudiante.
+>   - **Se agrega a la matriz como columna existente número 11.** Su criterio ("sin la barrera de tenant, un estudiante de otro colegio ve el reto") no cambia; solo cambia el punto donde se inyecta el defecto, que sigue a la fuente única.
+> - **Cuentas:** A7 ya existía, así que §10.4 sigue en **310 passed + 9 skipped**.
 **Una sola fuente del filtro** (`service/challenges.py`), llamada por nombre global:
 - **`filtro_grupo_estudiante(tenant_id, group_code) -> ColumnElement[bool]`:** el cuerpo actual de `:125-139`, extraído sin cambios. El feed (`list_challenges_for_student`) pasa a usarlo (refactor de identidad: `test_list_challenges_student_filters_by_group` no cambia).
 - **`get_challenge_for(db, challenge_id, *, tenant_id, group_code, es_personal) -> Challenge`:**
