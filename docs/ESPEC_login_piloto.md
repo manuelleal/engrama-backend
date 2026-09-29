@@ -62,6 +62,14 @@ El `sub` de esa cuenta **es** el `profiles.id`, así que no hay nada que enlazar
 - **Mantener el stub y enlazar por correo al primer ingreso:** guarda correos (Ley 1581, dato mínimo) y conserva el choque.
 
 **P0, precondición MEDIDA antes del código (ERR-14):** que GoTrue `v2.196.0` (la imagen del piloto) respete `id` en `POST /admin/users`.
+
+> **P0 MEDIDO = SÍ (2026-09-28, por ARQUITECTO en el stack local `engrama-piloto`, directo contra `gotrue:9999`):**
+> - `POST /admin/users` con un `id` elegido → 200, y el `id` devuelto es idéntico;
+> - `POST /token?grant_type=password` → 200, y el `sub` del JWT es idéntico;
+> - el usuario de prueba se borró.
+>
+> Va el diseño "perfil primero"; la alternativa "sub primero" no se aplica.
+
 - Se predice que sí (`AdminUserParams.Id` en supabase/auth), pero **no se verificó**.
 - La mide ARQUITECTO en su stack, con su permiso para Docker (ERR-21): una cuenta sintética con un id elegido, y después `GET /admin/users/{id}` debe dar 200.
 - **Si P0 falla, la alternativa preregistrada es "sub primero":**
