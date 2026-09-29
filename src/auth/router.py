@@ -16,8 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.schemas import AuthContext, ProfileOut
 from src.auth.service import (
+    exigir_perfil,
     get_memberships,
-    get_or_create_profile,
+    get_profile,
     memberships_to_schema,
     profile_to_schema,
 )
@@ -31,7 +32,7 @@ async def _build_profile_payload(
     auth: AuthContext, db: AsyncSession
 ) -> ProfileOut:
     """Reusable: carga Profile + memberships del usuario autenticado."""
-    profile = await get_or_create_profile(db, auth.profile_id, jwt_payload={})
+    profile = exigir_perfil(await get_profile(db, auth.profile_id))
     rows = await get_memberships(db, auth.profile_id)
     return profile_to_schema(profile, memberships_to_schema(rows))
 

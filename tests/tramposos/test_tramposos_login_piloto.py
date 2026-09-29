@@ -1,0 +1,106 @@
+"""Tramposos (integ) del login piloto — `docs/ESPEC_login_piloto.md` §3.
+
+Mismo patrón que `test_tramposos_bug15.py`: una versión ROTA a propósito, se
+inyecta con monkeypatch en el módulo donde se USA, se corre el cuerpo del test
+real y se exige `AssertionError` con el mensaje del mecanismo. Aquí se
+automatiza la DIAGONAL (la negrita de §3); la matriz completa se mide aparte
+(ERR-15, 19 y 23).
+
+  ZP2   `deps.get_profile` = el respaldo viejo (`get_or_create_profile`, que
+        crea el stub con `documento_id = sub[:8]`)          -> AP3 y AP4
+  ZP14  `validate_jwt` sin verificar la firma               -> AP1
+  ZP15  `validate_jwt` sin verificar `exp`                  -> AP2
+
+ZP14 y ZP15 no reemplazan `validate_jwt`: reemplazan el `jwt` de python-jose
+que usa `src/auth/service.py` por uno que apaga UNA verificación. Así el
+tramposo alcanza a todo el que llama a `validate_jwt`, también a los tests
+que la importan por nombre (`tests/auth/test_validate_jwt.py`).
+
+Los tramposos ZP3-ZP20 llegan con sus pasos (ESPEC §6).
+"""
+from __future__ import annotations
+
+from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
+from typing import Any
+from uuid import UUID
+
+import pytest
+from jose import jwt as jose_jwt
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.auth import service as auth_service
+from src.shared import deps as deps_mod
+from src.shared.models import Profile
+from tests.auth import test_login_piloto as lp
+from tests.tramposos.test_tramposos_bug13 import correr
+
+pytestmark = pytest.mark.integ
+
+Aplicar = Callable[[Any, pytest.MonkeyPatch], AbstractContextManager[Any]]
+
+_GET_PROFILE_BUENO = auth_service.get_profile
+
+
+async def _get_profile_viejo(db: AsyncSession, profile_id: UUID) -> Profile:
+    """ZP2: el respaldo "solo desarrollo" de antes del paso 2 (hasta `b81d373`).
+
+    Si el `sub` no tiene perfil, crea un stub con `documento_id = sub[:8]`.
+    """
+    perfil = await _GET_PROFILE_BUENO(db, profile_id)
+    if perfil is not None:
+        return perfil
+    corto = str(profile_id).replace("-", "")[:8]
+    perfil = Profile(id=profile_id, documento_id=corto, full_name=f"User {corto}", pin_hash="")
+    db.add(perfil)
+    await db.commit()
+    await db.refresh(perfil)
+    return perfil
+
+
+class _JoseSin:
+    """El `jwt` de python-jose con una verificación apagada (ZP14, ZP15)."""
+
+    def __init__(self, **apagadas: bool) -> None:
+        self.apagadas = apagadas
+
+    def decode(self, token: str, key: str, **kw: Any) -> dict[str, Any]:
+        opciones = {**(kw.pop("options", None) or {}), **self.apagadas}
+        datos: dict[str, Any] = jose_jwt.decode(token, key, options=opciones, **kw)
+        return datos
+
+
+def _parche(objetivo: Any, nombre: str, valor: Any) -> Aplicar:
+    def aplicar(_integ: Any, mp: pytest.MonkeyPatch) -> AbstractContextManager[Any]:
+        mp.setattr(objetivo, nombre, valor)
+        return nullcontext()
+    return aplicar
+
+
+# =============================================================================
+# Registro: id -> (cómo romper, [(test real, mensaje con el que debe caer)])
+# =============================================================================
+TRAMPOSOS: dict[str, tuple[Aplicar, list[tuple[Callable[..., None], str]]]] = {
+    "ZP2": (_parche(deps_mod, "get_profile", _get_profile_viejo), [
+        (lp.test_ap3_sin_perfil_da_403_sin_crear_filas, r"'profiles': 1\}"),
+        (lp.test_ap4_choque_de_documento_da_403_no_500, r"\(500, None\)"),
+    ]),
+    "ZP14": (_parche(auth_service, "jwt", _JoseSin(verify_signature=False)), [
+        (lp.test_ap1_jwt_de_otro_proyecto_da_401,
+         r"/auth/me con el token de otro proyecto: 200"),
+    ]),
+    "ZP15": (_parche(auth_service, "jwt", _JoseSin(verify_exp=False)), [
+        (lp.test_ap2_jwt_vencido_da_401, r"/auth/me con el token vencido: 200"),
+    ]),
+}
+
+
+@pytest.mark.parametrize("clave", list(TRAMPOSOS))
+def test_tramposo_pone_rojo_su_test(integ, monkeypatch, clave: str) -> None:
+    aplicar, diagonal = TRAMPOSOS[clave]
+    with aplicar(integ, monkeypatch):
+        for i, (test_real, motivo) in enumerate(diagonal):
+            if i:
+                integ.truncar_todo()  # cada test real arranca con la base vacía, como en pytest
+            with pytest.raises(AssertionError, match=motivo):
+                correr(test_real, integ, monkeypatch)

@@ -1,8 +1,10 @@
 """Lógica de negocio del módulo auth — validación JWT y lookup de perfil.
 
-Implementa las 4 funciones de SPECS/01-auth.md §3:
+Implementa las funciones de SPECS/01-auth.md §3 (con el cambio de
+docs/ESPEC_login_piloto.md §1.2: ya no hay respaldo que cree perfiles):
   - validate_jwt            : decodifica y verifica un JWT de Supabase.
-  - get_or_create_profile   : busca/crea fallback del Profile en DB.
+  - get_profile             : busca el Profile en DB; nunca lo crea.
+  - exigir_perfil           : 403 si el `sub` no tiene perfil.
   - get_memberships         : carga memberships+tenant del usuario.
   - build_auth_context      : resuelve el tenant activo y construye AuthContext.
 
@@ -75,45 +77,39 @@ def validate_jwt(token: str) -> dict[str, Any]:
 
 
 # =============================================================================
-# 3.2 get_or_create_profile
+# 3.2 get_profile y exigir_perfil (ESPEC_login_piloto §1.2)
 # =============================================================================
-async def get_or_create_profile(
-    db: AsyncSession,
-    profile_id: UUID,
-    jwt_payload: dict[str, Any],
-) -> Profile:
-    """Busca `profiles.id = profile_id`; si no existe crea un stub mínimo.
+# El 403 de "sin perfil" vive SOLO aquí (una sola fuente, ERR-26): lo usan
+# `get_current_user` y el payload de `/auth/me` y `/auth/session`.
+SIN_PERFIL = "Account has no ENGRAMA profile"
 
-    El perfil "real" se crea en el flujo de onboarding (otra spec); este
-    fallback solo existe para desarrollo y para escenarios en los que
-    Supabase Auth creó al usuario pero el backend aún no registró el
-    Profile espejo.
 
-    Campos del stub:
-      - documento_id: primeros 8 caracteres del sub (único por UUID)
-      - full_name:    email del JWT o 'User <sub[:8]>' si no hay email
-      - pin_hash:     '' (el usuario debe definirlo en onboarding)
-      - role:         'student' (default de la tabla)
+async def get_profile(db: AsyncSession, profile_id: UUID) -> Profile | None:
+    """Busca `profiles.id = profile_id`. NUNCA escribe.
+
+    Antes existía un respaldo "solo desarrollo" (`get_or_create_profile`) que
+    creaba un perfil stub con `documento_id = sub[:8]` para cualquier `sub`
+    desconocido. Tenía dos defectos (ESPEC_login_piloto §0):
+      - cualquiera con una cuenta de GoTrue quedaba con perfil en ENGRAMA;
+      - si `sub[:8]` coincidía con el `documento_id` de otra persona, el
+        INSERT violaba el UNIQUE y la API respondía 500.
+    Ahora el perfil lo crea solo el alta (M3, M4 o el operador) y la cuenta
+    de GoTrue nace con `id = profiles.id` (§1.1): el `sub` ES el perfil.
     """
     stmt = select(Profile).where(Profile.id == profile_id)
     result = await db.execute(stmt)
-    profile = result.scalar_one_or_none()
-    if profile is not None:
-        return profile
+    return result.scalar_one_or_none()
 
-    short = str(profile_id).replace("-", "")[:8]
-    email = jwt_payload.get("email")
-    full_name = str(email) if email else f"User {short}"
 
-    profile = Profile(
-        id=profile_id,
-        documento_id=short,
-        full_name=full_name,
-        pin_hash="",  # stub: se completa en onboarding real
-    )
-    db.add(profile)
-    await db.commit()
-    await db.refresh(profile)
+def exigir_perfil(profile: Profile | None) -> Profile:
+    """403 `Account has no ENGRAMA profile` si el `sub` no tiene perfil.
+
+    Es un 403 y no un 401: el JWT es válido (la identidad está probada), lo
+    que falta es la cuenta en ENGRAMA. El cliente lo distingue del 403 "sin
+    membresía" por el `detail`.
+    """
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=SIN_PERFIL)
     return profile
 
 

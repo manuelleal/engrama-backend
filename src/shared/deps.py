@@ -24,8 +24,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.schemas import AuthContext
 from src.auth.service import (
     build_auth_context,
+    exigir_perfil,
     get_memberships,
-    get_or_create_profile,
+    get_profile,
     validate_jwt,
 )
 from src.shared.db import get_db
@@ -62,7 +63,7 @@ async def get_current_user(
     Secuencia:
       1. Extrae el Bearer token del header.
       2. Valida el JWT con `validate_jwt`.
-      3. Lookup del Profile (fallback dev: lo crea si falta).
+      3. Lookup del Profile: si el `sub` no tiene perfil, 403 (nunca lo crea).
       4. Carga memberships activos.
       5. Resuelve tenant activo (X-Tenant-ID si viene, sino el primero).
     """
@@ -78,7 +79,7 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
-    profile = await get_or_create_profile(db, profile_id, payload)
+    profile = exigir_perfil(await get_profile(db, profile_id))
     memberships = await get_memberships(db, profile_id)
     return build_auth_context(profile, memberships, tenant_id_header=x_tenant_id)
 

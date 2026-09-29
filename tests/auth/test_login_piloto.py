@@ -15,8 +15,9 @@ Paso 1 del plan (ESPEC §6): los tests por la API, antes de tocar el código.
 AP9 y AP10 (contraseña temporal) llegan en el paso 4, y AP11 vive en
 `tests/teachers/test_m3_documento.py`.
 
-AP3, AP4, AP7 y AP8 corren en el paso 1 con `xfail(strict=True,
-raises=AssertionError)`: el hueco se ve por la API. Cada uno junta lo que
+AP3, AP4, AP7 y AP8 corrieron en el paso 1 (`b81d373`) con `xfail(strict=True,
+raises=AssertionError)`: el hueco se vio por la API. En el paso 2 (`get_profile`,
+sin respaldo) AP3 y AP4 dejan el xfail. Cada uno junta lo que
 observa en un dict y lo compara ENTERO con lo esperado, así el rojo muestra de
 una vez todas las diferencias. Las claves se leen con `.get()`: un campo que
 falta también es `AssertionError`. El cliente usa `raise_server_exceptions=False`,
@@ -145,22 +146,20 @@ ESPERADO_SIN_PERFIL = {
 }
 
 
-@XFAIL_LOGIN
 def test_ap3_sin_perfil_da_403_sin_crear_filas(integ) -> None:
     """AP3 (C3): JWT válido, `sub` sin perfil -> 403 en me y session, 0 filas nuevas.
 
-    Hoy el respaldo de desarrollo crea el perfil stub y responde el 403 de
+    Antes del paso 2, el respaldo de desarrollo creaba el perfil stub y respondía el 403 de
     "sin membresía".
     """
     integ.crear_perfil(integ.crear_tenant())  # la base no está vacía
     assert _sin_perfil(integ, str(uuid4())) == ESPERADO_SIN_PERFIL
 
 
-@XFAIL_LOGIN
 def test_ap4_choque_de_documento_da_403_no_500(integ) -> None:
     """AP4 (C4): hay un perfil con `documento_id = '12345678'` y llega el `sub` que empieza igual.
 
-    Hoy el stub escribe `documento_id = sub[:8]`, viola el UNIQUE y da 500.
+    Antes del paso 2, el stub escribía `documento_id = sub[:8]`, violaba el UNIQUE y daba 500.
     """
     otro = _perfil(integ, nombre="Persona Sintética", documento="12345678")
     _membresia(integ, otro, integ.crear_tenant(), nombre="Persona Sintética", grupo="G1")
