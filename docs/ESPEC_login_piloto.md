@@ -2,6 +2,12 @@
 
 F4 · Creador · 2026-09-28 · preregistro. Rama `test/fixture-integ`, HEAD `508d568`. Origen: el despliegue del piloto de ARQUITECTO (`ENGRAMA/despliegue/docs/ESPEC_despliegue_piloto.md` §5.1, §10 y §11), medido contra `5566c47`.
 
+**Corregido tras la auditoría (H-1, H-3 y H-4), antes de escribir código.** Es una corrección de preregistro: no hay nada medido que mover.
+- H-1: el origen de cada rojo, en §3.
+- H-3: el orden de la bandera y la cuenta, en §1.7 paso 4, con OP8 y ZP19.
+- H-4: las rutas permitidas por `(path, método)`, en §1.5, con ZP20.
+- Las cuentas se recalculan en §5 y §6.
+
 **El piloto es multitenant real:** UIS, SENA y UNAD comparten un solo despliegue.
 
 **Depende de BUG-13, 14 y 15.** Las cuentas parten de su meta final: **311 passed + 12 skipped y 100 no-integ** (`ESPEC_bug13a15.md` §4), que no está medida. Esta espec no toca los archivos de BUG-13: `src/challenge_engine/*`, `service/coins.py`, `service/attendance.py` ni la 033.
@@ -112,9 +118,17 @@ Solo se **agregan** campos; ninguno previo desaparece:
 **Quién la pone en `true`:** el alta del operador, solo al **crear** una cuenta o al **restablecerla** (§1.7). Nunca a una cuenta que ya existía.
 
 **Bloqueo:** con la bandera en `true`, `get_current_user` responde **403 `{"detail": "must_change_password"}`** en toda ruta menos cuatro:
-- el conjunto exacto `RUTAS_CON_CONTRASENA_TEMPORAL = {"/auth/me", "/auth/session", "/auth/logout", "/auth/contrasena"}`;
-- la ruta se lee de `request.scope["route"].path`; si falta, no se permite (falla cerrado);
-- es una lista de permitidas: una ruta nueva queda bloqueada por defecto.
+- el conjunto exacto, **indexado por `(path, método)`** como `EXPECTED_GUARDS` de `test_access.py`:
+  ```python
+  RUTAS_CON_CONTRASENA_TEMPORAL = frozenset({
+      ("/auth/me", "GET"), ("/auth/session", "POST"),
+      ("/auth/logout", "POST"), ("/auth/contrasena", "POST"),
+  })
+  ```
+- la clave es `(request.scope["route"].path, request.method)`; si falta la ruta, no se permite (falla cerrado);
+- **por qué el método (H-4):** con solo el path, una ruta futura `DELETE /auth/me` o `POST /auth/me` heredaría el permiso sin que nadie lo decida;
+- es una lista de permitidas: una ruta nueva queda bloqueada por defecto;
+- `puede_con_contrasena_temporal(path: str, metodo: str) -> bool` es la función pura que usan `get_current_user` y UP3.
 
 **`POST /auth/contrasena {"nueva": str}`**, con guarda `user`:
 - `nueva` debe tener entre 10 y 72 caracteres (72 bytes es el límite de bcrypt); si no, 422 sin llamar a GoTrue;
@@ -175,6 +189,17 @@ Solo se **agregan** campos; ninguno previo desaparece:
        - `crear(id = profiles.id, correo, clave)`;
        - si se creó, **se anota de inmediato** en `--salida`;
        - si el correo ya es de otra cuenta, error de esa fila (salida 1 al final).
+     - **Orden decidido (H-3): la bandera primero y la cuenta después.** Se mantiene y se declara el estado intermedio.
+       - **Estado "perfil con bandera, sin cuenta":** aparece si `crear` falla o el proceso muere entre el commit y `crear`. Queda **pendiente hasta la próxima corrida idempotente**:
+         - `buscar` da `None`;
+         - se vuelve a poner la bandera (ya estaba en `true`, sin efecto);
+         - `crear` completa la cuenta.
+         - Es **inocuo**: sin cuenta en GoTrue nadie puede entrar con ese perfil, y la bandera en `true` no bloquea nada que exista.
+       - **Por qué no invertir el orden (cuenta primero, bandera después):** si el proceso muere entre `crear` y el commit, queda una cuenta **con la bandera en `false`**, es decir, una contraseña temporal que no obliga a cambiarse.
+         - La próxima corrida tampoco lo arregla: `buscar` encuentra la cuenta y, por C18 y ZP18, **no toca** su bandera.
+         - Ese orden falla abierto y para siempre. El elegido falla cerrado y se corrige solo.
+       - **Criterio nuevo C24 (OP8)**, con su tramposo ZP19 (el orden invertido).
+       - El `restablecer` sigue la misma regla: la bandera en `true` y commit, **antes** de `cambiar_clave`. Si `cambiar_clave` falla, la persona queda obligada a cambiar una contraseña que sigue siendo la suya: falla cerrado.
   5. Imprime un resumen JSON **sin contraseñas**.
 - **`restablecer --slug <slug> --documento <doc> --salida <ruta>`:**
   - el documento debe tener una membresía activa en ese tenant y una cuenta; si no, error y 0 cambios;
@@ -192,7 +217,11 @@ Solo se **agregan** campos; ninguno previo desaparece:
   - nunca aparece en un archivo del repo, en el resumen ni en un log.
 - **Puerto:** `CuentasAdmin` (protocolo: `buscar(id) -> correo | None`, `crear(id, correo, clave) -> "creada" | "correo_en_uso"` y `cambiar_clave(id, clave)`), con el adaptador httpx `GoTrueAdmin`.
   - `main(argv, *, cuentas=None, sesiones=None) -> int` permite inyectar el doble y la sesión del fixture.
-  - El doble vive en `tests/cuentas_falsas.py`. Rechaza un `id` repetido como GoTrue (predicho) y genera un `uuid4` si no recibe `id` (para ZP1).
+  - El doble vive en `tests/cuentas_falsas.py`:
+    - rechaza un `id` repetido como GoTrue (predicho), **lanzando `ErrorCuenta("id_en_uso")`**, que la CLI atrapa por fila y convierte en salida 1;
+    - genera un `uuid4` si no recibe `id` (para ZP1);
+    - acepta `fallar_en: set[documento]`, para que `crear` falle en OP8;
+    - acepta un observador asíncrono que, **al entrar a `crear`**, lee `force_password_reset` del perfil **desde otra conexión** (el engine `NullPool` del fixture). Así solo ve lo que ya está commiteado.
 
 ### 1.8 Migración: **ninguna**
 Nada de esto cambia el esquema: `force_password_reset` existe desde la 002, `Membership.full_name` desde la 032 y `created_at` desde la 003.
@@ -217,14 +246,15 @@ Nada de esto cambia el esquema: `force_password_reset` existe desde la 002, `Mem
 | C12 | **Identidad de `/auth/me`:** para un estudiante con una sola membresía, la respuesta es **byte a byte** el snapshot congelado antes del cambio, sin contar las claves nuevas (`active_tenant_id`, `must_change_password` y `memberships[].full_name`) y con los ids normalizados por posición | SP1 |
 | C13 | **Una sola fuente de la regex:** `DOC_ID_RE.pattern == DOC_ID_PATRON`; el `pattern` de `StudentEnrollIn.documento_id` es `DOC_ID_PATRON`; `DOC_ID_RE.match("sena:001") is None` | UP1 |
 | C14 | **CSV del alta** (puro): CC con puntos → solo dígitos; `CODIGO 7` en `sena` → `sena_7`; un `CODIGO` que pasa de 32 con el prefijo → error; TI con letras → error; estudiante sin grupo → error; dos roles → error; profe en dos grupos → 2 filas válidas; `;`, BOM y cp1252; varios errores → todos juntos con su fila | UP2 |
-| C15 | **Lista de permitidas:** para cada `APIRoute` de la app, `puede_con_contrasena_temporal(path)` es verdadero **solo** para las 4 rutas de §1.5 | UP3 |
+| C15 | **Lista de permitidas por `(path, método)`:**<br>- para cada `APIRoute` de la app y cada método de `route.methods`, `puede_con_contrasena_temporal(path, método)` es verdadero **solo** para los 4 pares de §1.5;<br>- además, 4 pares que hoy no existen dan falso: `("/auth/me", "POST")`, `("/auth/me", "DELETE")`, `("/auth/contrasena", "GET")` y `("/auth/session", "GET")` | UP3 |
 | C16 | **Institución:**<br>- `alta` con 1000 → 1 tenant, billetera 1000 y `coin_pool` 1000;<br>- la 2.ª `alta` con `--monedas 5000` → billetera 1000, `coin_pool` 1000 y 0 filas en `coin_ledger` | OP1 |
 | C17 | **Alta completa** (admin, profe y 3 estudiantes en un grupo):<br>- 5 perfiles y 5 cuentas en el doble, **cada una con `id == profiles.id`** (el vínculo);<br>- las 5 con `force_password_reset = true`;<br>- `--salida` con 5 filas, 5 claves distintas y sin documento;<br>- membresías: 1 admin, 1 teacher (y su fila en `teacher_groups`) y 3 students con el nombre del CSV;<br>- con `headers(profiles.id)`, `/auth/me` → 200 y `must_change_password: true`;<br>- el stdout no contiene ninguna clave | OP2 |
 | C18 | **Idempotencia:** después de la 1.ª corrida se pone la bandera en `false` a uno; la 2.ª corrida da 0 perfiles, 0 membresías y 0 cuentas nuevas, `--salida` sigue con 5 filas y **esa bandera sigue en `false`** | OP3 |
-| C19 | **Multi-institución:**<br>- el profe D (CC 7001) está en el CSV de A y en el de B con otro correo;<br>- resultado: 1 perfil, **1** cuenta (la del correo de A) y 2 membresías teacher;<br>- el resumen de B dice `cuenta_existente: 1` y `cuenta_con_otro_correo: 1`;<br>- el doble recibió 1 solo `crear` para D;<br>- `/auth/me` de D sin encabezado → A, y con B → B | OP4 |
+| C19 | **Multi-institución:**<br>- el profe D (CC 7001) está en el CSV de A y en el de B con otro correo;<br>- resultado: 1 perfil, **1** cuenta (la del correo de A) y 2 membresías teacher;<br>- el resumen de B dice `cuenta_existente: 1` y `cuenta_con_otro_correo: 1`;<br>- el doble recibió 1 solo `crear` para D;<br>- **antes de la corrida de B** se pone la bandera de D en `false` (D ya cambió su clave), y después sigue en `false`;<br>- `/auth/me` de D sin encabezado → A, y con B → B | OP4 |
 | C20 | **Todo o nada:**<br>- una fila mala (CC `12a`) → salida 1, con 0 tenants, 0 perfiles y 0 cuentas, y sin archivo de salida;<br>- un choque en la BD (el estudiante ya está en otro grupo de ese tenant) → ROLLBACK: 0 perfiles, 0 membresías nuevas y 0 cuentas;<br>- `--salida` dentro del repo → salida 2 y 0 escrituras | OP5 |
 | C21 | **Perfil previo sin cuenta:** el admin matricula X por M3 (HTTP, `uuid4`); el alta con X crea la cuenta con `id ==` ese perfil, y la matrícula da `ya_estaba` | OP6 |
 | C22 | **Restablecer:**<br>- con la bandera ya en `false`, `restablecer` del documento X → el doble registró `cambiar_clave(X.id, nueva)`, la bandera vuelve a `true` y hay 1 fila más en `--salida`;<br>- un documento de otro tenant → salida 1 y 0 cambios;<br>- un documento sin cuenta → salida 1 | OP7 |
+| C24 | **La bandera antes que la cuenta (H-3):**<br>- en una corrida con 3 personas nuevas, el observador del doble ve `force_password_reset = true`, **ya commiteada**, en las 3 llamadas a `crear`;<br>- si `crear` falla para una persona: salida 1; esa persona queda con perfil y bandera en `true`, sin cuenta y sin fila en `--salida`, y las otras 2 quedan completas;<br>- una 2.ª corrida sin fallos crea **esa** cuenta (`id == profiles.id`) y agrega 1 fila, con la bandera en `true` y 0 cuentas nuevas para las otras 2 | OP8 |
 | C23 | Regresión: los 311 previos siguen verdes. Única edición: una entrada en el mapa de guardas (§3). D12 da 0 y 0 | la suite completa |
 
 ## 3. Tests y tramposos
@@ -233,7 +263,7 @@ Nada de esto cambia el esquema: `force_password_reset` existe desde la 002, `Mem
 - `tests/teachers/test_m3_documento.py`: AP11 (integ) y UP1 (no-integ).
 - `tests/auth/test_permitidas_unit.py`: UP3 (no-integ).
 - `tests/onboarding/test_csv_personas.py`: UP2 (no-integ).
-- `tests/onboarding/test_alta.py`: OP1-OP7 (integ, con `tests/cuentas_falsas.py`).
+- `tests/onboarding/test_alta.py`: OP1-OP8 (integ, con `tests/cuentas_falsas.py`).
 - `tests/integ/test_humo_login_piloto.py`: HP1.
 
 **Reglas comunes:**
@@ -249,36 +279,48 @@ Nada de esto cambia el esquema: `force_password_reset` existe desde la 002, `Mem
 - Patrón de `test_tramposos_integ.py`: monkeypatch en el módulo donde se **usa** y `pytest.raises(AssertionError)` sobre el cuerpo del test real.
 - Para cambiar el **esquema** de una ruta (ZP9), se reemplaza la `APIRoute` en `app.router.routes` con `monkeypatch.setitem`, como en `ESPEC_bug16.md` §3.
 
-**Diagonal y cruces PREDICHOS** (ERR-15 y ERR-19: el código no existe):
+**Diagonal y cruces PREDICHOS** (ERR-15, ERR-19 y ERR-23: el código no existe).
+
+Cada celda roja dice de dónde sale el rojo:
+- **as:** una aserción del test;
+- **ex:** una excepción que no es `AssertionError`;
+- **prep:** falla la preparación antes de llegar a la aserción.
+
+Cada fila recorre **todas** las columnas que pasan por el mismo camino de datos que rompe el tramposo. Lo que no se nombra en una fila está en "Inalcanzables".
+
+**Ninguna celda roja sale de la preparación (predicho).** OP3, OP4, OP7 y OP8 usan la CLI en su preparación, pero ningún tramposo la hace fallar antes de la acción del test; eso se comprueba al medir.
 
 | Id | Rompe | Rojo predicho (diagonal en negrita) | Verde predicho y por qué |
 |---|---|---|---|
-| ZP1 | El alta llama a `crear` sin `id` (GoTrue elige el `sub`) | **OP2** (as: `id ≠ profiles.id`), OP6, OP4 y HP1 | OP1: no crea cuentas. UP2: puro |
-| ZP2 | `deps_mod.get_profile` = el `get_or_create_profile` viejo | **AP3** (as: `profiles` crece) y **AP4** (as: 500) | AP5: el perfil existe. AP6-AP10: sembrados |
-| ZP3 | `full_name` de `/auth/me` sale del perfil | **AP8** y AP7 | SP1: el factory pone el mismo nombre en el perfil y en la membresía (por eso SP1 no la detecta) |
-| ZP4 | `get_memberships` con `ORDER BY created_at DESC` | **AP7** y OP4 | AP6: una membresía por usuario. **El `memberships[0]` sin orden de hoy no es un tramposo determinista:** AP7 lo pone rojo solo si el plan de Postgres devuelve el orden físico, y eso se mide en el paso 1 (xfail) |
-| ZP5 | `build_auth_context` ignora un `X-Tenant-ID` ajeno y usa la primera membresía | **AP6** y AP7 (C → 200) | AP1-AP5 y AP8: sin encabezado |
-| ZP6 | La bandera se lee del JWT (`user_metadata`) y no de la BD | **AP9** (as: 200) y HP1 | AP10: sus tokens no traen metadatos y su aserción es sobre la BD y el doble |
-| ZP7 (no-integ) | `puede_con_contrasena_temporal = lambda _: True` | **UP3** | cruce predicho con AP9, que no corre dentro de este tramposo |
-| ZP8 | `/auth/contrasena` llama al doble y **no** limpia la bandera | **AP10** y HP1 | AP9: no cambia la clave |
-| ZP9 | La ruta de M3 con `documento_id: str` | **AP11** (as: `"12.345.678"` → 201) | UP1: lee el esquema, no la ruta |
-| ZP10 (no-integ) | `StudentEnrollIn.model_fields["documento_id"]` con un `pattern` que admite `:` | **UP1** | AP11: la validación compilada no cambia |
-| ZP11 | `asegurar_institucion` recarga la billetera en cada corrida | **OP1** y HP1 (`segunda_corrida.billetera`) | OP2-OP7: no afirman el saldo de la institución (OP3 corre dos veces, pero no lo mira) |
-| ZP12 | El alta hace commit por fila, sin validar primero | **OP5** | OP2-OP4: CSV válidos |
-| ZP13 | El alta no llama a `buscar` y siempre crea | **OP3** (as: el doble rechaza el id repetido) y **OP4**, HP1 | OP2 y OP6: una cuenta por perfil nuevo |
-| ZP14 | `validate_jwt` sin verificar la firma | **AP1**, y 2 de `tests/auth` (`test_me_with_invalid_signature_returns_401` y `test_invalid_signature_raises_401`) | AP2: `exp` se sigue verificando (predicho con python-jose) |
-| ZP15 | `validate_jwt` sin verificar `exp` | **AP2**, y 2 de `tests/auth` (los de "expired") | AP1 |
-| ZP16 (no-integ) | `leer_csv` no antepone el prefijo a `CODIGO` | **UP2** | cruce predicho con HP1 (`codigo_con_prefijo`), que no corre aquí |
-| ZP17 | `restablecer` no pone la bandera | **OP7** | los demás no restablecen, salvo HP1 (`restablecer.bloqueado`): cruce predicho |
-| ZP18 | El alta pone la bandera en `true` también a las cuentas existentes | **OP3** y OP4 (la bandera de D) | OP2 y OP6: solo hay cuentas nuevas |
+| ZP1 | El alta llama a `crear` sin `id` (GoTrue elige el `sub`) | **OP2** (as: `id ≠ profiles.id`).<br>OP6 (as: la cuenta no tiene el id del perfil de M3).<br>OP3 (as: en la 2.ª corrida `buscar(profiles.id)` da `None`, vuelve a crear, el correo ya está en uso y sale con 1).<br>OP4 (as: la corrida de B no encuentra la cuenta de D y crea otra: 2 `crear`).<br>OP7 (as: `restablecer` no encuentra la cuenta y sale con 1).<br>OP8 (as: la 2.ª corrida choca con los correos ya usados).<br>HP1 (as: `cuenta_igual_perfil` = 0) | OP1: no hay personas. OP5: todo o nada falla antes de las cuentas |
+| ZP2 | `deps_mod.get_profile` = el `get_or_create_profile` viejo | **AP3** (as: `profiles` crece y el `detail` es el de sin membresía).<br>**AP4** (as: 500, con `raise_server_exceptions=False`) | AP1, AP2 y AP5-AP11, SP1, OP y HP1: todos llaman con un perfil que existe, y ahí la función vieja no escribe |
+| ZP3 | `full_name` de `/auth/me` sale del perfil | **AP8** (as: `''`).<br>AP7 (as: el nombre del factory, no el de A ni el de B).<br>HP1 (as: `nombre_de_la_membresia` = false, porque el perfil que crea el alta tiene `full_name = ''`) | SP1: el factory pone el mismo nombre en el perfil y en la membresía (por eso SP1 no la detecta). OP2 y OP4: no miran el nombre |
+| ZP4 | `get_memberships` con `ORDER BY created_at DESC` | **AP7** (as: activo = B).<br>OP4 (as: D sin encabezado → B).<br>HP1 (as: `sin_encabezado` = "B") | AP6, AP8-AP10 y SP1: una membresía por usuario. **El `memberships[0]` sin orden de hoy no es un tramposo determinista:** AP7 lo pone rojo solo si el plan de Postgres devuelve el orden físico, y eso se mide en el paso 1 (xfail) |
+| ZP5 | `build_auth_context` ignora un `X-Tenant-ID` ajeno y usa la primera membresía | **AP6** (as: 200 donde se espera 403).<br>AP7 (as: C → 200).<br>HP1 (as: `otro_colegio` = [200, 200]).<br>Fuera de la matriz, predicho: `test_a7_otro_colegio_no_se_ve` (as) | AP1-AP5, AP8-AP11 y SP1: sin encabezado. OP4: pide B y D **es** miembro de B |
+| ZP6 | La bandera (el bloqueo y `must_change_password` de `/auth/me`) se lee del JWT (`user_metadata`) y no de la BD | **AP9** (as: 200).<br>OP2 (as: `must_change_password` = false, porque los tokens de `headers()` no traen metadatos).<br>HP1 (as: `bloqueados_403` = 0) | AP10: afirma sobre la BD, el doble y un 200 que el tramposo también da. OP7 y OP8: afirman la columna en la BD |
+| ZP7 (no-integ) | `puede_con_contrasena_temporal = lambda *_: True` | **UP3** (as: los pares no permitidos dan verdadero) | Cruces con AP9 y HP1 (as), predichos pero **no se miden** en este tramposo, porque no los corre |
+| ZP8 | `/auth/contrasena` llama al doble y **no** limpia la bandera | **AP10** (as: la bandera sigue en `true` y el mismo token da 403).<br>HP1 (as: `desbloqueados_200` = 0) | AP9: no cambia la clave. OP: no llaman a la ruta |
+| ZP9 | La ruta de M3 con `documento_id: str` (se reemplaza la `APIRoute`) | **AP11** (as: `"12.345.678"` → 201).<br>HP1 (as: `documento_con_puntos` = 201) | UP1: lee el esquema, no la ruta. OP6: su M3 manda un documento válido. AP6: su M3 llega al 404 de `authorize_group`, porque la ruta falsa llama al endpoint original. OP: el alta usa el servicio, no la ruta |
+| ZP10 (no-integ) | `StudentEnrollIn.model_fields["documento_id"]` con un `pattern` que admite `:` | **UP1** (as) | AP11 y HP1: la validación compilada de la ruta no cambia |
+| ZP11 | `asegurar_institucion` recarga la billetera en cada corrida | **OP1** (as: billetera 2000 o 6000).<br>HP1 (as: `segunda_corrida.billetera` = 2000) | OP2-OP8: no afirman el saldo de la institución (OP3, OP4 y OP8 corren dos veces, pero no lo miran) |
+| ZP12 | El alta hace commit por fila, sin validar antes todo el CSV | **OP5** (as: quedan tenant y perfiles de las filas buenas; en el choque de BD quedan las filas previas al choque) | OP2-OP4 y OP6-OP8, y HP1: sus CSV son válidos y no chocan, así que el resultado final es el mismo |
+| ZP13 | El alta no llama a `buscar` y siempre crea | **OP3** (as: la 2.ª corrida recibe `ErrorCuenta("id_en_uso")` del doble y sale con 1).<br>**OP4** (as: `id_en_uso` para D en B).<br>OP8 (as: la 2.ª corrida choca con las 2 cuentas ya hechas).<br>HP1 (as: la 2.ª corrida de A sale con 1) | OP2, OP6 y OP7: una sola corrida, así que cada perfil se crea una vez. **Si la CLI no atrapara el error del doble, estas celdas serían ex:** eso sería un defecto de la CLI (§1.7) y se reporta |
+| ZP14 | `validate_jwt` sin verificar la firma | **AP1** (as: 200 con el token de otro proyecto).<br>`test_me_with_invalid_signature_returns_401` (as).<br>`test_invalid_signature_raises_401` (**ex:** `pytest.raises(HTTPException)` da `Failed: DID NOT RAISE`, que no es `AssertionError`) | AP2: python-jose sigue verificando `exp` sin firma (predicho). `test_malformed_jwt_raises_401`: el token malformado no se decodifica. Los demás de `tests/auth` usan tokens bien firmados |
+| ZP15 | `validate_jwt` sin verificar `exp` | **AP2** (as: 200).<br>`test_me_with_expired_token_returns_401` (as).<br>`test_expired_jwt_raises_401` (**ex:** `Failed: DID NOT RAISE`) | AP1: sigue la firma. Los demás tokens están vigentes |
+| ZP16 (no-integ) | `leer_csv` no antepone el prefijo a `CODIGO` | **UP2** (as: `7` en vez de `sena_7`) | Cruce con HP1 (as: `codigo_con_prefijo` = false), predicho y no medido aquí. OP2-OP8: solo usan CC |
+| ZP17 | `restablecer` no pone la bandera | **OP7** (as: la bandera sigue en `false`).<br>HP1 (as: `restablecer.debe_cambiar` = false y `bloqueado` = 200) | Los demás no restablecen |
+| ZP18 | El alta pone la bandera en `true` también a las cuentas existentes | **OP3** (as: la bandera puesta en `false` vuelve a `true`).<br>OP4 (as: la bandera de D, en `false` antes de B, vuelve a `true`) | OP2 y OP6: solo cuentas nuevas. OP8: las otras 2 ya tenían la bandera en `true`, así que ponerla otra vez no se ve. HP1: las dos corridas de A y la de B ocurren **antes** de cambiar las claves |
+| ZP19 | Orden invertido: `crear` primero y la bandera después (H-3) | **OP8** (as: el observador ve `false` en `crear`) | OP2, OP3, OP4, OP6 y HP1: el estado **final** es el mismo, y solo OP8 mira el estado intermedio |
+| ZP20 (no-integ) | `RUTAS_CON_CONTRASENA_TEMPORAL` indexada solo por path (H-4) | **UP3** (as: `("/auth/me", "POST")` da verdadero) | AP9: con las rutas de hoy, cada path permitido tiene un solo método, así que la API no lo distingue. **Por eso UP3 afirma pares que no existen** |
 
 **Inalcanzables (se tachan, ERR-19):**
-- ZP11-ZP13, ZP17 y ZP18 × AP: los AP no corren el alta.
-- ZP2-ZP10 × UP2: puro.
-- ZP14 y ZP15 × OP: el alta no valida JWT.
+- ZP11-ZP13 y ZP17-ZP19 × AP y SP1: los AP no corren el alta.
+- ZP2-ZP10, ZP14, ZP15 y ZP20 × UP2: es pura.
+- ZP14 y ZP15 × OP: el alta no valida JWT; los `/auth/me` de OP usan tokens válidos.
+- ZP7, ZP10, ZP16 y ZP20 × integ: son no-integ y solo corren su diagonal.
 
-**Matriz a medir antes de aceptar:** 18 tramposos × 38 columnas = **684 celdas**. Las columnas son:
-- los 23 nuevos no tramposos: AP1-AP11, SP1, UP1-UP3, OP1-OP7 y HP1 (RP1 y RP2 se tachan: van con bandera);
+**Matriz a medir antes de aceptar:** 20 tramposos × 39 columnas = **780 celdas**. Las columnas son:
+- los 24 nuevos no tramposos: AP1-AP11, SP1, UP1-UP3, OP1-OP8 y HP1 (RP1 y RP2 se tachan: van con bandera);
 - los 13 de `tests/auth`;
 - `test_u4_guardas_de_las_rutas_existentes`;
 - `test_a1_auth_me_no_expone_pin_hash`.
@@ -351,26 +393,26 @@ Si no escribe el archivo, no hay corrida grande.
 - Esto último es una medición, no un criterio: el límite por IP de GoTrue detrás de Caddy es configuración del despliegue (`ESPEC_despliegue_piloto.md` §10). Si da algún 429, es un bloqueo del piloto que se reporta a ARQUITECTO.
 
 ## 5. Cuentas (ERR-10: la suma a la vista)
-**Base: la meta final de BUG-13 a 15, 311 passed + 12 skipped y 100 no-integ.** No está medida. Si cierra con N, S y M, las metas pasan a N + 41, S + 2 y M + 6.
+**Base: la meta final de BUG-13 a 15, 311 passed + 12 skipped y 100 no-integ.** No está medida. Si cierra con N, S y M, las metas pasan a N + 44, S + 2 y M + 7. *(Antes de H-3 y H-4: N + 41 y M + 6.)*
 
 | Grupo | integ | no-integ |
 |---|---|---|
 | AP1-AP11 | 11 | — |
 | SP1 | 1 | — |
-| OP1-OP7 | 7 | — |
+| OP1-OP8 | 8 | — |
 | HP1 | 1 | — |
 | UP1, UP2 y UP3 | — | 3 |
-| ZP1-ZP6, ZP8, ZP9, ZP11-ZP15, ZP17 y ZP18 | 15 | — |
-| ZP7, ZP10 y ZP16 | — | 3 |
-| **Nuevos** | **35** | **6** |
+| ZP1-ZP6, ZP8, ZP9, ZP11-ZP15 y ZP17-ZP19 | 16 | — |
+| ZP7, ZP10, ZP16 y ZP20 | — | 4 |
+| **Nuevos** | **37** | **7** |
 | RP1 y RP2 (saltados sin bandera) | 2 skipped | — |
 
-- **passed:** 311 + 35 + 6 = **352**;
+- **passed:** 311 + 37 + 7 = **355**;
 - **skipped:** 12 + 2 = **14**;
-- **no-integ:** 100 + 6 = **106**;
+- **no-integ:** 100 + 7 = **107**;
 - ruff 0 y mypy 0; ningún archivo nuevo pasa de 400 líneas.
-- Con `ENGRAMA_REPLICA_LOGIN_PILOTO=1`: 354 passed + 12 skipped.
-- **Con BUG-16** (`ESPEC_bug16.md` §4, +11 y +2 no-integ, en cualquier orden): **363 passed + 14 skipped y 108 no-integ.**
+- Con `ENGRAMA_REPLICA_LOGIN_PILOTO=1`: 357 passed + 12 skipped.
+- **Con BUG-16** (`ESPEC_bug16.md` §4, +11 y +2 no-integ, en cualquier orden): 355 + 11 = **366 passed + 14 skipped** y 107 + 2 = **109 no-integ**. *(`ESPEC_bug16.md` §4 todavía dice 363 y 108; su errata va aparte, porque este encargo solo toca esta espec.)*
 
 ## 6. Plan de commits (cada uno con 0 failed; después de que BUG-13 a 15 estén commiteados)
 0. **P0** (§1.1): medición de ARQUITECTO, sin commit en este repo. Si falla, se aplica la alternativa preregistrada **antes** del paso 6.
@@ -382,17 +424,17 @@ Si no escribe el archivo, no hay corrida grande.
    - Esperado: 316 + 2 + 3 = **321 + 3 xfailed**.
 3. **`fix(auth)`, colegio activo y nombre:** el `ORDER BY`, `active_tenant_id`, `full_name` y `memberships[].full_name`; ZP3, ZP4 y ZP5. Se quita el xfail de AP7 y AP8.
    - Esperado: 321 + 2 + 3 = **326 + 1 xfailed**.
-4. **`feat(auth)`, contraseña temporal:** `must_change_password`, el bloqueo en `get_current_user`, `POST /auth/contrasena`, `src/auth/cuentas.py`, `gotrue_url` en la configuración y la entrada en `test_access.py`. Tests AP9, AP10 y UP3, y tramposos ZP6, ZP7 y ZP8.
-   - Esperado: 326 + 6 = **332 + 1 xfailed**; no-integ 100 + 2 = **102**.
+4. **`feat(auth)`, contraseña temporal:** `must_change_password`, el bloqueo en `get_current_user`, `POST /auth/contrasena`, `src/auth/cuentas.py`, `gotrue_url` en la configuración y la entrada en `test_access.py`. Tests AP9, AP10 y UP3, y tramposos ZP6, ZP7, ZP8 y ZP20.
+   - Esperado: 326 + 7 = **333 + 1 xfailed**; no-integ 100 + 3 (UP3, ZP7 y ZP20) = **103**.
 5. **`fix(teachers)`, D1:** `DOC_ID_PATRON` como única fuente y el `pattern` en M3; UP1, ZP9 y ZP10. Se quita el xfail de AP11.
-   - Esperado: 332 + 1 + 3 = **336**; no-integ **104**.
-6. **`feat(onboarding)`:** `src/onboarding/` y `tests/cuentas_falsas.py`. Tests OP1-OP7 y UP2; tramposos ZP1, ZP11, ZP12, ZP13, ZP16, ZP17 y ZP18.
-   - Suma: 7 OP + 1 UP2 + 7 tramposos = 15.
-   - Esperado: 336 + 15 = **351**; no-integ 104 + 2 (UP2 y ZP16) = **106**.
+   - Esperado: 333 + 1 + 3 = **337**; no-integ **105**.
+6. **`feat(onboarding)`:** `src/onboarding/` y `tests/cuentas_falsas.py`. Tests OP1-OP8 y UP2; tramposos ZP1, ZP11, ZP12, ZP13, ZP16, ZP17, ZP18 y ZP19.
+   - Suma: 8 OP + 1 UP2 + 8 tramposos = 17.
+   - Esperado: 337 + 17 = **354**; no-integ 105 + 2 (UP2 y ZP16) = **107**.
 7. **`test(login-piloto)`:** HP1, RP1-RP2, `tests/manual/humo_login_piloto_gotrue.py` y el `.gitignore`.
-   - Esperado: 351 + 1 = **352 passed + 14 skipped**; 106 no-integ.
+   - Esperado: 354 + 1 = **355 passed + 14 skipped**; 107 no-integ.
 
-La suma de los pasos es 5 + 5 + 5 + 6 + 4 + 15 + 1 = **41**, igual que en §5.
+La suma de los pasos es 5 + 5 + 5 + 7 + 4 + 17 + 1 = **44**, igual que en §5.
 8. **`docs(login-piloto)`:**
    - la matriz medida en §3;
    - la sección "Antes del piloto con estudiantes reales" en `docs/PRODUCCION_030.md` (§7);
@@ -443,7 +485,7 @@ Checklist, que va a `PRODUCCION_030.md`:
 2. `/auth/me` ya trae `active_tenant_id`, `full_name` (de la membresía) y `must_change_password`. La 008 **agrega** `active_tenant {…}`, `needs_onboarding` y `modules` sin quitar esos campos.
 3. Sus rutas nuevas deciden si entran en `RUTAS_CON_CONTRASENA_TEMPORAL`. Por defecto, no.
 4. §6 "Qué NO se toca": el piloto sí toca `src/teachers/schemas.py` y `roster.py` (D1).
-5. Base de sus cuentas: 352 (o 363 con BUG-16).
+5. Base de sus cuentas: 355 (o 366 con BUG-16).
 6. El "Candidato a BUG: M3 reusa perfiles entre colegios por `documento_id`" queda resuelto por D1: la identidad es global a propósito.
 
 ## 10. Qué NO se toca, avisos y "para después"
@@ -478,8 +520,8 @@ Checklist, que va a `PRODUCCION_030.md`:
 
 ## 11. Verificación y veredicto
 ```
-poetry run pytest -m "not integ" -q        # 106 passed
-poetry run pytest -q                       # 352 passed, 14 skipped
+poetry run pytest -m "not integ" -q        # 107 passed
+poetry run pytest -q                       # 355 passed, 14 skipped
 poetry run ruff check . && poetry run mypy src
 ```
 - **FUNCIONA:**
