@@ -1,0 +1,4 @@
+{
+  "congelado_en": "c9fd7d3",
+  "me": "{\"id\":\"P1\",\"documento_id\":\"SINT-LP-0001\",\"full_name\":\"Sara Sintética\",\"role\":\"student\",\"current_streak\":0,\"longest_streak\":0,\"xp\":0,\"level\":1,\"is_active\":true,\"last_attendance_date\":null,\"memberships\":[{\"tenant_id\":\"T1\",\"tenant_name\":\"Institución Sintética SP1\",\"tenant_slug\":\"inst-sp1\",\"role\":\"student\",\"group_code\":\"G1\",\"is_active\":true}]}"
+}
