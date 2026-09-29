@@ -14,10 +14,14 @@ un docente también marca y cobra.
   S14    C13  controles, verdes antes y después: E1 (G1) en G1 -> 200, 50 y
               racha 1; código inexistente -> 404; otro colegio -> 404.
 
-A14-1..3 afirman por la API: por eso corren en el commit 1, sobre el código
-viejo, con `xfail(strict=True, raises=AssertionError)`. El cuerpo de
-referencia sale, en el mismo test, de un check-in con un código inexistente.
-La siembra que no da lo esperado es `PruebaRota`, no AssertionError.
+A14-1..3 afirman por la API: por eso corrieron en el commit 1 (508d568),
+sobre el código viejo, con `xfail(strict=True, raises=AssertionError)`, y el
+hueco se vio en rojo. Con `_buscar_sesion` (filtro de grupo y rol) el xfail
+se quitó. El cuerpo de referencia sale, en el mismo test, de un check-in con
+un código inexistente. La siembra que no da lo esperado es `PruebaRota`, no
+AssertionError.
+
+Tramposos Y7, Y8, Y9 e Y14: `tests/tramposos/test_tramposos_bug14.py`.
 """
 from __future__ import annotations
 
@@ -34,8 +38,6 @@ from tests.seguridad.veredictos import PruebaRota
 
 pytestmark = pytest.mark.integ
 client = TestClient(app)
-
-XFAIL_BUG14 = pytest.mark.xfail(strict=True, raises=AssertionError, reason="BUG-14")
 
 POOL = 1000
 CODIGO_INEXISTENTE = "NOEXST"
@@ -94,7 +96,6 @@ def _nada_se_movio(integ: Any, esc: Escena) -> None:
 # =============================================================================
 # A14-1 — C10: sesión activa de otro grupo
 # =============================================================================
-@XFAIL_BUG14
 def test_a14_1_checkin_de_otro_grupo_da_404(integ) -> None:
     """E2 (G2) con el código de una sesión activa de G1: 404 idéntico, nada se mueve."""
     esc = _sembrar(integ)
@@ -112,7 +113,6 @@ def test_a14_1_checkin_de_otro_grupo_da_404(integ) -> None:
 # =============================================================================
 # A14-2 — C11: sesión expirada de otro grupo
 # =============================================================================
-@XFAIL_BUG14
 def test_a14_2_sesion_expirada_de_otro_grupo_no_delata_que_existe(integ) -> None:
     """La sesión EXPIRADA de G1, con E2: 404 (hoy 410), con el mismo cuerpo."""
     esc = _sembrar(integ)
@@ -128,7 +128,6 @@ def test_a14_2_sesion_expirada_de_otro_grupo_no_delata_que_existe(integ) -> None
 # =============================================================================
 # A14-3 — C12: solo estudiantes con grupo
 # =============================================================================
-@XFAIL_BUG14
 def test_a14_3_solo_estudiantes_del_grupo_marcan(integ) -> None:
     """Docente con `group_code = G1` en la sesión de G1 -> 404; E0 (sin grupo) -> 404."""
     esc = _sembrar(integ)

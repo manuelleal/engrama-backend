@@ -136,6 +136,9 @@ async def check_in(
         session_code=payload.session_code,
         latitude=payload.latitude,
         longitude=payload.longitude,
+        # BUG-14: solo un estudiante, y solo en una sesión de SU grupo.
+        group_code=auth.group_code,
+        es_estudiante=(auth.role == "student"),
     )
     # Persistimos attendance + ledger + balances + streak en una sola tx.
     await db.commit()

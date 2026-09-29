@@ -221,6 +221,39 @@ async def list_active_sessions(
 # =============================================================================
 # 4.2 check_in
 # =============================================================================
+async def _buscar_sesion(
+    db: AsyncSession,
+    *,
+    session_code: str,
+    tenant_id: UUID,
+    group_code: str | None,
+    es_estudiante: bool,
+) -> AttendanceSession | None:
+    """La sesión con ese código, SOLO si es del grupo del estudiante (BUG-14).
+
+    Identifica al titular del JWT por su membresía del tenant activo: su rol
+    y su `group_code` (docs/ESPEC_bug13a15.md §1.2). Devuelve None (→ el
+    mismo 404 de un código inexistente, nunca 403) si:
+      - quien marca no es estudiante (el personal no marca asistencia);
+      - el estudiante no tiene grupo;
+      - la sesión es de otro grupo (o de otro colegio, o no existe).
+    Así un código filtrado a otro grupo no sirve ni delata que existe.
+    """
+    if not es_estudiante or group_code is None:
+        return None
+    stmt = (
+        select(AttendanceSession)
+        .join(Group, Group.id == AttendanceSession.group_id)
+        .where(
+            AttendanceSession.session_code == session_code,
+            AttendanceSession.tenant_id == tenant_id,
+            Group.tenant_id == tenant_id,
+            Group.group_code == group_code,
+        )
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
 async def check_in(
     db: AsyncSession,
     *,
@@ -229,14 +262,20 @@ async def check_in(
     session_code: str,
     latitude: float | None,
     longitude: float | None,
+    group_code: str | None,
+    es_estudiante: bool,
 ) -> CheckInResult:
     """Registra check-in del estudiante; otorga coins y actualiza streak."""
-    # 1. Buscar la sesión por código, exige mismo tenant (defensa en profundidad).
-    stmt = select(AttendanceSession).where(
-        AttendanceSession.session_code == session_code,
-        AttendanceSession.tenant_id == tenant_id,
+    # 1. Buscar la sesión por código, en el tenant Y en el grupo del
+    # estudiante (BUG-14). La visibilidad se decide ANTES del 410: una
+    # sesión expirada de otro grupo da 404, no 410 (no delata que existe).
+    session = await _buscar_sesion(
+        db,
+        session_code=session_code,
+        tenant_id=tenant_id,
+        group_code=group_code,
+        es_estudiante=es_estudiante,
     )
-    session = (await db.execute(stmt)).scalar_one_or_none()
     if session is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
