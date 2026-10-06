@@ -119,8 +119,18 @@ _AUTORREGISTRO: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/teachers/groups/{gid}/solicitudes/{sid}/rechazar", frozenset({"POST"})): "teacher",
 }
 
+# -----------------------------------------------------------------------------
+# docs/ESPEC_solicitud_datos.md: el canal de derechos sobre los datos (Ley 1581).
+# -----------------------------------------------------------------------------
+_SOLICITUD_DATOS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/auth/solicitudes-datos", frozenset({"POST"})): "user",
+    ("/auth/solicitudes-datos", frozenset({"GET"})): "user",
+    ("/admin/solicitudes-datos", frozenset({"GET"})): "admin",
+    ("/admin/solicitudes-datos/{sid}", frozenset({"PUT"})): "admin",
+}
+
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
-    **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO}
+    **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:

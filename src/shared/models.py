@@ -1095,6 +1095,7 @@ __all__ = [
     "Consentimiento",
     "CodigoInscripcion",
     "SolicitudInscripcion",
+    "SolicitudDatos",
 ]
 
 
@@ -1210,4 +1211,51 @@ class SolicitudInscripcion(Base):
             name="solicitudes_inscripcion_decision_check",
         ),
         Index("idx_solicitudes_inscripcion_grupo", "group_id", "estado"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# 036 — solicitudes sobre datos personales (docs/ESPEC_solicitud_datos.md)
+# -----------------------------------------------------------------------------
+class SolicitudDatos(Base):
+    """Alguien pidió conocer, actualizar, rectificar o suprimir sus datos (Ley 1581).
+
+    Solo registro y traza: quién respondió (`respondida_por`) y cuándo. Si el
+    perfil se borra, la solicitud queda sin la persona (`SET NULL`).
+    """
+
+    __tablename__ = "solicitudes_datos"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    profile_id: Mapped[Any | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True
+    )
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    tipo: Mapped[str] = mapped_column(Text, nullable=False)
+    mensaje: Mapped[str] = mapped_column(Text, nullable=False)
+    estado: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'abierta'"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    respuesta: Mapped[str | None] = mapped_column(Text, nullable=True)
+    respondida_por: Mapped[Any | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True
+    )
+    respondida_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("tipo IN ('conocer','actualizar','rectificar','suprimir')",
+                        name="solicitudes_datos_tipo_check"),
+        CheckConstraint("estado IN ('abierta','en_tramite','resuelta','rechazada')",
+                        name="solicitudes_datos_estado_check"),
+        CheckConstraint("char_length(mensaje) BETWEEN 1 AND 1000",
+                        name="solicitudes_datos_mensaje_check"),
+        CheckConstraint("respuesta IS NULL OR char_length(respuesta) BETWEEN 1 AND 1000",
+                        name="solicitudes_datos_respuesta_check"),
+        CheckConstraint("(estado = 'abierta') = (respondida_en IS NULL AND respuesta IS NULL)",
+                        name="solicitudes_datos_traza_check"),
+        Index("idx_solicitudes_datos_perfil", "profile_id"),
+        Index("idx_solicitudes_datos_tenant", "tenant_id", "estado"),
     )

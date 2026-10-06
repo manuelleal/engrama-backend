@@ -30,7 +30,7 @@ REPLICA = os.environ.get("ENGRAMA_REPLICA_CONSENTIMIENTO") == "1"
 
 # Contenido exacto (ESPEC §3). Si difiere se reporta; no se ajusta para que pase.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "035_autorregistro", "semilla": 34, "antes": [None, None, None],
+    "alembic_version": "036_solicitudes_datos", "semilla": 34, "antes": [None, None, None],
     "aceptan": [200, 200, 200], "despues": ["2026-10-v1", "2026-10-v1", "2026-10-v1"],
     "repite": {"status": 200, "misma_fecha": True}, "vacia": 422, "filas": 3, "auditorias": 3,
     "en_su_otra_institucion": "2026-10-v1", "sin_bloqueo": 200,

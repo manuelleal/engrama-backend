@@ -2,6 +2,8 @@ from fastapi import FastAPI
 
 from src.auth.router import router as auth_router
 from src.challenge_engine.router import router as challenges_router
+from src.datos.router import admin as datos_admin_router
+from src.datos.router import usuario as datos_usuario_router
 from src.engrama_core.router import router as core_router
 from src.registro.router import docente as registro_docente_router
 from src.registro.router import publico as registro_publico_router
@@ -23,6 +25,9 @@ app.include_router(teachers_router, prefix="/teachers", tags=["teachers"])
 # pública en /auth y las del profe en /teachers.
 app.include_router(registro_publico_router, prefix="/auth", tags=["registro"])
 app.include_router(registro_docente_router, prefix="/teachers", tags=["registro"])
+# Solicitudes sobre datos personales, Ley 1581 (docs/ESPEC_solicitud_datos.md).
+app.include_router(datos_usuario_router, prefix="/auth", tags=["datos"])
+app.include_router(datos_admin_router, prefix="/admin", tags=["datos"])
 
 
 @app.get("/health")

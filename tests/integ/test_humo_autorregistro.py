@@ -32,7 +32,7 @@ REPLICA = os.environ.get("ENGRAMA_REPLICA_AUTORREGISTRO") == "1"
 
 # Contenido exacto (ESPEC §4). Si difiere se reporta; no se ajusta para que pase.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "035_autorregistro", "semilla": 35, "registros_201": 40, "sin_cupo": 403,
+    "alembic_version": "036_solicitudes_datos", "semilla": 35, "registros_201": 40, "sin_cupo": 403,
     "menor": 422, "usos": 40, "cuenta_igual_perfil": 40, "pendientes_bloqueados": 40,
     "aprobadas": 38, "rechazadas": 2, "entran_200": 38, "perfiles": 38,
     "membresias_activas": 38, "cuentas": 38, "consentimientos": 38,
