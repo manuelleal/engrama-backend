@@ -297,6 +297,53 @@ Los tramposos apuntan al test que absorbió su criterio: ZE1, ZE4, ZE5 y ZE17 �
 - Si lo anterior cierra con N, S y M: N + 32, S + 1 y M + 3.
 - **Matriz a medir:** 17 tramposos integ × 12 columnas (los 10 tests de arriba, MG37 y HE1) = **204 celdas**, más RE1 con la bandera. (Reemplaza la cifra de §3.)
 
+### Matriz medida: 204 celdas, más RE1 (paso 3; ERR-19 y ERR-23)
+**Cómo se midió** (2026-10-06, sobre `8acb00d`): una corrida de pytest por tramposo, aplicado a las 12 columnas por una fixture `autouse`, en dos contenedores de prueba propios. La fila base dio 12 verdes.
+
+**Resultado: 44 rojas, todas por aserción; 0 por excepción; 160 verdes.**
+
+| Id | Rojas medidas | RE1 (con la bandera) |
+|---|---|---|
+| ZE1 | EV3 y **HE1** | verde |
+| ZE2 | EV1, EV6, EV9, NV1 y HE1 | roja (as) |
+| ZE3 | EV1, EV9, HE1, **EV6**, **NV1** y **MC1** | verde |
+| ZE4 | EV3 y **las otras 10 que firman** (todas menos MG37) | roja (as) |
+| ZE5 | EV3 | verde |
+| ZE6 | EV5 | verde |
+| ZE7 | EV6, **EV1**, **EV9**, **NV1** y **HE1** | roja (as) |
+| ZE8 | EV7 y **NV3** | verde |
+| ZE9 | EV9 | verde |
+| ZE10 | NV3 y EV7 | verde |
+| ZE11 | NV1 | verde |
+| ZE12 | NV3 | verde |
+| ZE13 | NV3 | verde |
+| ZE14 | NV5 y **HE1** | verde |
+| ZE15 | MC1 | verde |
+| ZE16 | MC1 | verde |
+| ZE17 | EV3 | verde |
+
+**Cruces que la predicción no tenía (en negrita; ERR-23; ningún test se tocó para que calzara):**
+- **ZE4 × casi todo:** si la firma se comprueba sobre el JSON vuelto a escribir, **ningún satélite que serialice distinto entra**: los tests firman un JSON compacto y el backend roto lo reescribe con espacios. La predicción solo miró el caso de EV3. Es, en la práctica, un rojo de la preparación (todo envío da 401).
+- **ZE3 × EV6, NV1 y MC1:** los tres tienen algún duplicado (el evento repetido dentro del lote, el reenvío del nivel), y el efecto repetido se ve. Se había predicho EV6 verde.
+- **ZE7 × EV1, EV9, NV1 y HE1:** al "sobrescribir", el tramposo cuenta todo duplicado como aceptado.
+- **ZE8 × NV3** (su lote con cuatro inválidos) y **ZE1 y ZE14 × HE1** (la firma falsa del humo y los niveles que aparecen).
+
+**Lo que la medición corrigió en el código antes del commit (regla 8; los criterios no se movieron):**
+- **Una paga que el libro ya tenía no cuenta como acreditada.** `award_coins` devuelve `None` cuando su llave ya pagó; la primera versión del efecto lo anotaba igual como `coins_credited`. Ahora queda `none`. Lo encontró el diseño de ZE2 (el libro frena la segunda paga aunque la fila sea nueva).
+- **Cada evento se lee en modo estricto por JSON:** un número no pasa por texto ni un booleano por número.
+- **Entre evento y evento la sesión olvida lo cargado** (`expire_all`): las billeteras se releen de la base, no de la memoria del lote anterior.
+
+**Los números del humo (se fijaron con la primera medición, como decía §3): N = 42 eventos, M = 24 monedas y K = 12 filas en el libro; la bolsa queda en 976.** Cuadran entre sí: 12 aciertos × 2 monedas = 24, y 1000 − 24 = 976.
+
+**Medido (2026-10-06, `8acb00d`): 485 passed + 18 skipped; 128 no-integ; `ruff check .` 0 y `mypy .` 0 (264 archivos).** Igual a §4. HE1 escribió su archivo. **RE1 pasó en su primera corrida** (entradas nuevas). Los 19 tramposos, rojos por su razón en la primera corrida. Las ediciones a lo existente fueron las de §1.9.
+
+**No medido:**
+- **Contra el EVA y el SET reales.** Todo se midió con un satélite simulado en los tests (`tests/webhooks/_ayuda.py`), que firma por su cuenta. Sus dobles (`EVAGAME/tests/servidor/doble_backend.py` y `SET/local/doble_backend.js`) hablan el contrato anterior a §9: **no se corrieron contra este backend**.
+- **El número 20** del tope por sesión sale del encargo de EVA, no de su código.
+- El `downgrade` por la CLI de Alembic (MG37 corre las mismas tuplas de SQL).
+- Carga: un lote de 200 hace 200 transacciones; no se midió cuánto tarda con la base del piloto.
+- La suite con las cuatro banderas de réplica a la vez (cada réplica nueva se corrió por separado, y pasó).
+
 ## 5. Plan de commits
 1. `docs`: esta espec.
 2. `feat(eventos)`: la 037, los modelos, `shared/events.py`, `webhooks/`, `engrama_core/service/level.py`, `confirmed_level` en `/auth/me`, los tests, los tramposos, el humo, la réplica y las ediciones de §1.9.

@@ -222,3 +222,16 @@ Origen: `docs/ESPEC_endurecimiento_piloto.md` y la auditoría `investigacion/seg
 - Lo que lo cubre hoy: los tests de aislamiento por ruta y la barrera de grupo en una sola fuente (`src/teachers/service/access.py`).
 - Plan: (1) un rol `engrama_app` con `NOBYPASSRLS`, que no sea dueño de las tablas; (2) `get_db` fija por transacción `SET LOCAL app.tenant_id` y `app.profile_id`; (3) políticas para ese rol sobre esas variables; (4) las rutas sin usuario (registro, eventos del anillo) y las migraciones, con un rol aparte; (5) se mide corriendo la suite entera como `engrama_app`. Es la ADR-003, sin decidir.
 
+# Antes de aplicar la 037 y de abrir la puerta de eventos del anillo
+
+Origen: `docs/ESPEC_eventos_anillo.md`, 2026-10-06. Medido solo en local, con satélites simulados. Requiere el sí de Christiam.
+
+- [ ] **Respaldo** antes de migrar. La 037 no se baja en producción (se perderían el expediente y los niveles confirmados).
+- [ ] **La 037 va ANTES o junto con el código:** sin `confirmed_levels`, `/auth/me` da 500 y **nadie entra**.
+- [ ] **`EVENTS_SECRET_LIVE` y `EVENTS_SECRET_SET`** en el entorno del backend: 32 caracteres o más, al azar, distintos entre sí y distintos por entorno. Vacías = ese origen apagado (401). El mismo valor va en el satélite (`EVA_SECRETO_EVENTOS`, `SET_EVENTS_SECRET`). Nunca en un archivo del repo.
+- [ ] **El secreto de EVA vive en el portátil del profe** y vale para todas las instituciones: quien lo tenga acredita monedas (hasta 20 por estudiante y sesión, hasta agotar la bolsa). Antes de un segundo colegio, un secreto por instancia.
+- [ ] **EVA y SET ajustados** a `ESPEC_eventos_anillo.md` §9 y probados contra este backend (hoy sus dobles hablan el contrato anterior).
+- [ ] **El proxy deja pasar `/events/batch`** hacia el backend y limita el tamaño del cuerpo (el backend corta en 262.144 bytes).
+- [ ] **Relojes en hora:** la firma vale ±300 s, y un evento fechado más de 10 minutos en el futuro se rechaza.
+- [ ] Qué ve el estudiante cuando sus monedas de la clase no se acreditaron (`not_credited`) y cuando su nivel es `provisional` (ERR-16).
+
