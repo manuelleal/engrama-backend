@@ -287,3 +287,18 @@ Sumas:
   - H2 falla solo por llegar ES256;
   - o H3b no se puede montar porque `email_sent` exige el SMTP y Mailpit no se deja apuntar. H3a sigue siendo obligatoria.
 - **NO:** A1-A8 dan 2xx, un tramposo queda verde, un PIN en claro o cambia algo previo.
+
+## 10. Erratas por el login del piloto (`ESPEC_login_piloto.md` §9; aplicar ANTES de implementar la 008)
+El subconjunto del piloto ya está en el código. Esta espec se escribió antes y supone cosas que ya no son ciertas. Nada de la 008 se implementa sin corregir primero estos puntos en su texto:
+
+1. **`get_or_create_profile` ya no existe.** `get_profile` nunca escribe, y un JWT válido sin perfil recibe 403 `Account has no ENGRAMA profile`.
+   - La 008 crea el perfil explícitamente en `POST /auth/onboarding`.
+   - Su `/auth/me` "sin exigir membresía" debe aceptar también "sin perfil" como `needs_onboarding`.
+   - Si genera un `documento_id`, nunca `sub[:8]` (era el choque que daba 500). Se sugiere el `sub` completo sin guiones: 32 caracteres, cabe en `DOC_ID_PATRON` y solo choca con otro `sub`.
+2. **`/auth/me` ya trae `active_tenant_id`, `must_change_password`, `memberships[].full_name` y `full_name` de la membresía activa.** La 008 **agrega** `active_tenant {…}`, `needs_onboarding` y `modules` sin quitar esos campos.
+3. **Rutas con contraseña temporal.** Toda ruta nueva de la 008 queda bloqueada con 403 `must_change_password` mientras la bandera esté puesta, salvo que entre a `RUTAS_CON_CONTRASENA_TEMPORAL` (`src/auth/service.py`) con su `(path, método)`. Por defecto, no entra. `test_up3_permitidas_por_path_y_metodo` se pone rojo si alguien la agrega sin decidirlo.
+4. **§6 "Qué NO se toca":** el piloto sí tocó `src/teachers/schemas.py` y `roster.py` (D1: M3 valida `documento_id` con `DOC_ID_PATRON`).
+5. **Base de sus cuentas:** la suite ya no parte de la cifra de §4; parte de la que deje el login del piloto con BUG-16 (ver `ESPEC_login_piloto.md` §5 y `ESPEC_bug16.md` §4, medidas).
+6. **"Candidato a BUG: M3 reusa perfiles entre colegios por `documento_id`"** queda resuelto por D1: la identidad es global a propósito, y `documento_id` es opaco (documento nacional o código con el prefijo de la institución).
+7. **`034_login_vendible` sigue siendo de la 008.** El piloto no usó ninguna migración.
+8. **El alta del operador (`python -m src.onboarding`) y el CSV ENGRAMA v1 (§2) son cosas distintas.** El del alta tiene `nombre, correo, documento, tipo_documento, grupo, rol` y lo corre el operador; el v1 lo sube un admin de colegio por HTTP. La 008 decide si conviven o si uno reemplaza al otro.

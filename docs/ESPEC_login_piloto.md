@@ -359,6 +359,54 @@ Cada fila recorre **todas** las columnas que pasan por el mismo camino de datos 
 
 Un cruce no previsto se corrige por ERR en esta espec antes de aceptar; el test no se toca (regla 8).
 
+### Matriz medida: 780 celdas, con el origen de cada rojo (paso 8; ERR-19 y ERR-23)
+**Cómo se midió** (2026-10-06, sobre `80bc515`): una corrida de pytest por tramposo, con el tramposo aplicado a las 39 columnas por una fixture `autouse` que llama al mismo `aplicar` del registro `TRAMPOSOS` de cada archivo. La fila base (sin tramposo) dio 39 verdes.
+
+**Resultado: 50 rojas (46 por aserción, 4 por excepción y 0 por preparación) y 730 verdes.**
+
+| Id | Rojas medidas (as, salvo que se diga) |
+|---|---|
+| ZP1 | OP2, OP3, OP4, OP6, OP7, OP8 y HP1 |
+| ZP2 | AP3 y AP4 |
+| ZP3 | AP7, AP8 y HP1 |
+| ZP4 | AP7, OP4 y HP1 |
+| ZP5 | AP6, AP7 y HP1 |
+| ZP6 | AP9, OP2 y HP1 |
+| ZP7 | UP3, AP9 y HP1 |
+| ZP8 | AP10 y HP1 |
+| ZP9 | AP11 y HP1 |
+| ZP10 | UP1 |
+| ZP11 | OP1 y HP1 |
+| ZP12 | OP5 |
+| ZP13 | OP3, OP4, OP8 y HP1 |
+| ZP14 | AP1; `test_me_with_invalid_signature_returns_401` (ex) y `test_invalid_signature_raises_401` (ex) |
+| ZP15 | AP2; `test_me_with_expired_token_returns_401` (ex) y `test_expired_jwt_raises_401` (ex) |
+| ZP16 | UP2 y HP1 |
+| ZP17 | OP7 y HP1 |
+| ZP18 | OP3 y OP4 |
+| ZP19 | OP8 |
+| ZP20 | UP3 |
+
+**Contra la predicción: ninguna celda de más ni de menos.** Lo que la medición precisa:
+- **ZP7 × AP9 y HP1, y ZP16 × HP1** estaban predichas y "no medidas". Ya están medidas: rojas por aserción.
+- **ZP14 y ZP15 × `test_me_*`:** la excepción es `InvalidPasswordError`, no `ConnectionRefusedError`. En esta máquina hay un Postgres de otro proyecto en `localhost:5432` y responde. Sigue siendo una excepción antes de la aserción (ex).
+- **ZP16:** el mecanismo es el de la errata del paso 6 (§1.7).
+- **ZP12 × HP1 salió roja UNA vez y no es un cruce.** En la corrida de la matriz, HP1 dio `docente_compartido.sin_encabezado = "B"`. Repetida 4 veces con ZP12, verde las 4. La causa es el intermitente del reloj (abajo), no el tramposo. Se cuenta verde, como estaba predicha.
+- **Ninguna celda roja sale de la preparación,** como se predijo.
+
+**Fuera de las 39 columnas:**
+- **RP1 y RP2 (réplica, con la bandera), contra los 20 tramposos: 40 celdas, 8 rojas.** ZP1 × RP1 y RP2 (as); ZP3, ZP4, ZP8 y ZP16 × RP1 (as); ZP5 × RP1 (**ex**, `AttributeError`: el arnés lee `detail` de una lista cuando el tramposo deja entrar); ZP13 × RP1 (**ex**, `PruebaRota`: el alta de B sale con 1 en la preparación). No estaban predichas (la espec las tachó "van con bandera").
+- **La suite completa con ZP9 y con ZP10** (los dos que tocan M3, que usan muchos tests): solo AP11 y HP1 con ZP9, y solo UP1 con ZP10. Ningún otro test cruza.
+- **ZP1, ZP11-ZP13 y ZP17-ZP19 contra el resto de la suite:** inalcanzable. Solo parchean `src.onboarding`, que nada más importa.
+- **Los cruces de ZP4 y ZP5 con los tests de grupos y de BUG-11** son los de la errata del paso 3. No se volvieron a medir.
+
+**El intermitente del reloj (medido; candidato a ERR).**
+- **Qué pasa:** `test_f4_cerrar_expira_y_bloquea_checkin` falló en 2 de 7 corridas completas (404 al cerrar la sesión), y HP1 una vez en la matriz. En los tres casos un docente con dos membresías cayó, sin encabezado, en la institución **más nueva**.
+- **Por qué:** el colegio por defecto es la membresía con el `created_at` más antiguo (§1.3), y `created_at` es el reloj de la base. En el contenedor de pruebas de esta máquina (Docker Desktop sobre WSL2) ese reloj **retrocede**: 9.520 lecturas de `clock_timestamp()` en 150 s mostraron 10 retrocesos, de 0,74 s y 1,95 s, cada 27 s. Dos membresías creadas con menos de 2,7 s de diferencia pueden quedar en el orden inverso.
+- **A quién toca:** a todo test que cree dos membresías seguidas y dependa del orden sin fijar `created_at`: los actores de `tests/teachers/_actores.py` (D está en A y en B), OP4, HP1 y RP1. AP7 no: fija `created_at` por SQL.
+- **No es un defecto del código medido aquí,** pero el orden "determinista" de §1.3 vale lo que valga el reloj de la base. En un servidor Linux con NTP no se esperan retrocesos; **no está medido.**
+- **Para después** (§10): que esos tests fijen `created_at`, y decidir si el desempate debe salir de algo que no dependa del reloj.
+
 ## 4. Humo y réplica
 **HP1** (`tests/integ/test_humo_login_piloto.py`, integ) escribe `tests/_salida/humo_login_piloto.json` **antes** de afirmar (el archivo va al `.gitignore`).
 
@@ -443,6 +491,7 @@ Si no escribe el archivo, no hay corrida grande.
 - **skipped:** 12 + 2 = **14**;
 - **no-integ:** 100 + 7 = **107**;
 - ruff 0 y mypy 0; ningún archivo nuevo pasa de 400 líneas.
+- **Medido (2026-10-06, `80bc515`): 355 passed + 14 skipped; con la bandera, 357 passed + 12 skipped; 107 no-integ; `ruff check .` 0 y `mypy .` 0 (202 archivos).** Cada paso dio su cifra predicha: 337, 354 y 355.
 - Con `ENGRAMA_REPLICA_LOGIN_PILOTO=1`: 357 passed + 12 skipped.
 - **Con BUG-16** (`ESPEC_bug16.md` §4, +11 y +2 no-integ, en cualquier orden): 355 + 11 = **366 passed + 14 skipped** y 107 + 2 = **109 no-integ**. *(`ESPEC_bug16.md` §4 todavía dice 363 y 108; su errata va aparte, porque este encargo solo toca esta espec.)*
 
@@ -548,6 +597,9 @@ Checklist, que va a `PRODUCCION_030.md`:
 - `profiles.account_locked` (existe y no se usa) para suspender una cuenta.
 - Revocar las sesiones de GoTrue al restablecer.
 - El límite por IP de GoTrue, si HP2 da 429.
+- **El intermitente del reloj** (§3, medido): fijar `created_at` en los tests que crean dos membresías seguidas (`_actores.armar`, OP4, HP1 y RP1), y decidir si el colegio por defecto debe depender del reloj de la base.
+- Comprobar que GoTrue responde **antes** de escribir la base en el alta (hoy, si GoTrue está caído, quedan perfiles con bandera y sin cuenta hasta la corrida siguiente).
+- Tests del adaptador `GoTrueAdmin` contra respuestas HTTP grabadas: hoy solo lo cubre HP2, que es manual.
 - Mover a un estudiante de grupo (no hay ruta).
 
 ## 11. Verificación y veredicto

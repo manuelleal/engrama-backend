@@ -127,3 +127,33 @@ No crea tablas, vistas, secuencias ni funciones. No toca las políticas, los pri
   - En la bajada no existen ni la columna, ni el UNIQUE, ni su índice.
   - D12 da 0 y 0 y hay 51 políticas en las tres etapas.
   - La prueba se hizo con `coin_ledger` vacío; el backfill con datos lo cubren B1 y B2 (`tests/integ/test_migracion_033.py`).
+
+# Antes del piloto con estudiantes reales (login del piloto, `ESPEC_login_piloto.md` §7)
+
+**El piloto con estudiantes reales ES producción.** Nada de esto se hace en el servidor de la UIS ni con datos reales sin **el sí de Christiam en esa sesión**: construir el backend desde esta rama, correr `python -m src.onboarding` con el CSV real y fondear las billeteras.
+
+- [ ] **Ley 1581.**
+  - UIS, SENA y UNAD son responsables del dato y ENGRAMA es encargado: hace falta un acuerdo de encargo con cada una y la autorización de los titulares.
+  - Dato mínimo: nombre, correo institucional y documento. El documento **no sale** en el archivo de credenciales.
+  - Lo revisa un abogado antes del primer estudiante real. Esto no es un concepto jurídico.
+- [ ] **Secretos.**
+  - `SUPABASE_SERVICE_ROLE_KEY` solo en el entorno del operador, y solo mientras corre la CLI. **El proceso web no la necesita**: `POST /auth/contrasena` usa el Bearer del propio usuario.
+  - `SUPABASE_JWT_SECRET` solo en el `.env` del servidor.
+  - El backend necesita `GOTRUE_URL` (en el piloto, `http://gotrue:9999`). Sin ella y sin `SUPABASE_URL`, `POST /auth/contrasena` responde 503 y nadie puede salir de la contraseña temporal.
+- [ ] **El archivo de credenciales (`--salida`).**
+  - Se genera en el servidor, **fuera del repo** (la CLI sale con 2 si la ruta cae dentro del repo del backend), se entrega a mano y se borra.
+  - Es el único lugar donde queda una contraseña temporal: no está en la base, ni en el resumen, ni en los logs.
+- [ ] **Las monedas de cada institución (`--monedas`).** No tiene valor por defecto: la cifra la decide Christiam (hoy 200.000, provisional) y la revisa el pedagogo. Solo se usa cuando la institución nace; una segunda corrida **no** recarga la billetera. Si se agota, el check-in da 402 y el estudiante lo ve.
+- [ ] **Base limpia.** El volumen de pruebas tiene perfiles stub (`documento_id = sub[:8]`) del respaldo que ya no existe. No se migran: el piloto real arranca con un volumen nuevo.
+- [ ] **Respaldo (`pg_dump`) antes de cada alta** y de cada actualización del backend. El alta es todo o nada en la base, pero las cuentas de GoTrue se crean después del commit y no se deshacen solas.
+- [ ] **Signup cerrado en GoTrue** y `/auth/v1/admin*` cerrado en el proxy. Con el signup abierto, cualquiera crea una cuenta; el backend le responde 403 `Account has no ENGRAMA profile`, pero no debe poder crearla.
+- [ ] **Límite de login por IP medido** con `tests/manual/humo_login_piloto_gotrue.py` (HP2) contra el stack de prueba, antes de la primera clase: un salón entero entra desde una sola IP. Si da algún 429, es un bloqueo del despliegue.
+- [ ] **HP2 corrido contra el GoTrue de la versión del piloto.** El adaptador `GoTrueAdmin` solo está probado contra un doble: P0 (la cuenta con el `id` del perfil) se midió a mano, pero la CLI completa contra un GoTrue real no.
+- [ ] **Ningún estudiante real antes de que cierren BUG-13, 14 y 15** (cerrados en `c9fd7d3`).
+- [ ] **Un perfil por documento, en todas las instituciones.** La racha, el XP y la billetera son globales por perfil: un estudiante de UIS y de SENA verá una sola racha y un solo saldo. Y una CE y una CC con los mismos dígitos son **el mismo perfil** (`ESPEC_login_piloto.md` §1.6): revisar el CSV antes de correr el alta.
+- [ ] **Después del alta:**
+  - el resumen JSON trae `errores: []` y la salida del proceso es 0;
+  - el archivo de credenciales tiene una fila por cada cuenta nueva (`cuentas_nuevas`);
+  - `select count(*) from profiles where force_password_reset` es igual a las cuentas creadas que aún no cambiaron su contraseña;
+  - una segunda corrida con el mismo CSV da `cuentas_nuevas: 0` y `membresias_nuevas: 0`.
+- **Medido en local** (contenedor desechable del fixture y el doble de GoTrue; `tests/integ/test_humo_login_piloto.py`, semilla 8): 3 instituciones, 19 cuentas con `id == profiles.id`, 19 primeros ingresos bloqueados con 403 y desbloqueados tras cambiar la contraseña, y la segunda corrida sin cambios.
