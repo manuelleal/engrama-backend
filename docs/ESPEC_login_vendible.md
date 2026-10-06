@@ -300,5 +300,6 @@ El subconjunto del piloto ya está en el código. Esta espec se escribió antes 
 4. **§6 "Qué NO se toca":** el piloto sí tocó `src/teachers/schemas.py` y `roster.py` (D1: M3 valida `documento_id` con `DOC_ID_PATRON`).
 5. **Base de sus cuentas:** la suite ya no parte de la cifra de §4; parte de la que deje el login del piloto con BUG-16 (ver `ESPEC_login_piloto.md` §5 y `ESPEC_bug16.md` §4, medidas).
 6. **"Candidato a BUG: M3 reusa perfiles entre colegios por `documento_id`"** queda resuelto por D1: la identidad es global a propósito, y `documento_id` es opaco (documento nacional o código con el prefijo de la institución).
-7. **`034_login_vendible` sigue siendo de la 008.** El piloto no usó ninguna migración.
+7. **La 034 ya no es de la 008.** El login del piloto no usó ninguna migración, pero el registro del consentimiento tomó `034_consentimiento` (`ESPEC_consentimiento.md`). La 008 usa la siguiente libre, sobre esa, y enumera con `git grep -n alembic_version -- tests` lo que fija la versión (ERR-25).
+   - **`/auth/me` también trae `consent_version`,** y existe `POST /auth/consentimiento`. El consentimiento de un menor (tutor) es de la 008 y no está resuelto.
 8. **El alta del operador (`python -m src.onboarding`) y el CSV ENGRAMA v1 (§2) son cosas distintas.** El del alta tiene `nombre, correo, documento, tipo_documento, grupo, rol` y lo corre el operador; el v1 lo sube un admin de colegio por HTTP. La 008 decide si conviven o si uno reemplaza al otro.

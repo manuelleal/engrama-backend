@@ -250,6 +250,7 @@ Solo se **agregan** campos; ninguno previo desaparece:
 Nada de esto cambia el esquema: `force_password_reset` existe desde la 002, `Membership.full_name` desde la 032 y `created_at` desde la 003.
 - **El piloto no toma la 034.**
 - **`034_login_vendible` sigue reservada para la 008** completa, sobre `033_una_paga_por_reto` (`ESPEC_bug13a15.md` §6).
+  - **Errata (2026-10-06):** la 034 la tomó `034_consentimiento` (`ESPEC_consentimiento.md`). La 008 usa la siguiente libre, sobre esa.
 - `HUMO_ESPERADO` no cambia.
 
 ## 2. Criterios (medibles)

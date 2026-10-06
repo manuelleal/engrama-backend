@@ -123,6 +123,30 @@ ALTER TABLE consentimientos ENABLE ROW LEVEL SECURITY;
 
 Matriz a medir antes de aceptar: 4 tramposos × 7 columnas (CN1-CN5, MG1 y HC1) = 28 celdas, más RC1 con la bandera.
 
+### Matriz medida: 28 celdas, más RC1 (paso 3; ERR-19 y ERR-23)
+**Cómo se midió** (2026-10-06, sobre el código del paso 2): una corrida de pytest por tramposo, con el tramposo aplicado a todas las columnas por una fixture `autouse` que llama al mismo `aplicar` del registro `TRAMPOSOS`. La fila base dio todo verde.
+
+**Resultado en las 28 celdas: 10 rojas, todas por aserción; 0 por excepción y 0 por preparación.**
+
+| Id | Rojas medidas | RC1 (con la bandera) |
+|---|---|---|
+| XC1 | CN1, CN2, CN3, **CN4** y HC1 | roja |
+| XC2 | CN4 y HC1 | verde |
+| XC3 | CN3 y HC1 | roja |
+| XC4 | CN3 | roja |
+
+- **Un cruce que la predicción no tenía (ERR-23; el test no se tocó): XC1 × CN4.** La predicción decía "CN4 no llega a escribir", pero su control (32 caracteres → 200) sí escribe. Con XC1 no hay otro perfil a quien atribuírselo y la ruta da 500.
+- CN5 y MG1 quedan verdes con los cuatro, como se predijo.
+- RC1 no estaba predicha: roja con XC1, XC3 y XC4, por aserción.
+
+**Medido además:**
+- **Alembic real** (no solo el SQL de MG1), en el contenedor del fixture: `alembic downgrade 033_una_paga_por_reto` y `alembic upgrade head` salen con 0. Antes y después: versión `034_consentimiento`, la tabla existe, 51 políticas, 27 tablas con RLS, **0 privilegios de `anon` o `authenticated`** sobre `consentimientos` y 7 de `service_role`. En la bajada: sin tabla, 51 políticas y 26 tablas con RLS.
+- **Las ediciones a lo existente fueron exactamente las de §1.5.** La medición no encontró ninguna otra.
+- **HC1** escribió el archivo con el contenido exacto de arriba.
+
+**Medido (2026-10-06): 377 passed + 15 skipped; con las dos banderas de réplica, 380 passed + 12 skipped (en la primera de dos corridas con banderas, 379 + 1 failed: RP1 del login piloto, también por el intermitente del reloj; sola pasó 3 de 3); 109 no-integ; `ruff check .` 0 y `mypy .` 0 (211 archivos).**
+- La primera corrida completa dio 375 passed + 2 failed: `test_tramposos_bug11[Y1]` y `test_tramposos_grupos[X21]`, los dos con `Group not found` para el docente que está en dos instituciones. Es **el intermitente del reloj** (`ESPEC_login_piloto.md` §3), no este cambio: esos dos archivos pasaron completos dos veces seguidas (20 passed) y la corrida completa siguiente dio la cifra de arriba.
+
 ## 4. Cuentas (ERR-10)
 | Grupo | integ | no-integ |
 |---|---|---|

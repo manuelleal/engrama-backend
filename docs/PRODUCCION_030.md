@@ -157,3 +157,20 @@ No crea tablas, vistas, secuencias ni funciones. No toca las políticas, los pri
   - `select count(*) from profiles where force_password_reset` es igual a las cuentas creadas que aún no cambiaron su contraseña;
   - una segunda corrida con el mismo CSV da `cuentas_nuevas: 0` y `membresias_nuevas: 0`.
 - **Medido en local** (contenedor desechable del fixture y el doble de GoTrue; `tests/integ/test_humo_login_piloto.py`, semilla 8): 3 instituciones, 19 cuentas con `id == profiles.id`, 19 primeros ingresos bloqueados con 403 y desbloqueados tras cambiar la contraseña, y la segunda corrida sin cambios.
+
+# Antes de aplicar la 034 (registro del consentimiento, `ESPEC_consentimiento.md`)
+
+**Aplicarla en el piloto es producción: necesita el sí de Christiam en esa sesión.**
+
+- [ ] **Respaldo previo** (`pg_dump`).
+- [ ] **La migración va antes del código, o junto con él. Nunca después.** Con el código nuevo y sin la tabla, `/auth/me` consulta `consentimientos` y da 500: **nadie entra**. (Por lectura; no se midió con la tabla quitada.)
+- [ ] **Sin downgrade en producción.** Bajar la 034 borra la tabla y, con ella, la prueba de quién aceptó qué. Si hay que volver atrás, se restaura el respaldo.
+- [ ] **El texto del aviso, el responsable y el contacto** los revisa un abogado antes del primer estudiante real. El backend solo guarda la versión que el cliente le manda (`AVISO_VERSION`); **no valida** que sea la vigente.
+- [ ] **Una versión nunca se reutiliza.** Si `AVISO_VERSION` vuelve a un valor ya usado, quien aceptó una posterior no podrá entrar (repetir una versión vieja no la vuelve "la última").
+- [ ] **El servidor no bloquea por falta de consentimiento.** Lo exige la web. Quien llame a la API sin la web puede usarla sin aceptar; para el piloto se aceptó así (`ESPEC_consentimiento.md` §1.4).
+- [ ] **Después de aplicar:**
+  - `select version_num from alembic_version` da `034_consentimiento`;
+  - la consulta de D12 (sección de la 031) da 0 y 0;
+  - `select count(*) from pg_policies where schemaname = 'public'` sigue en 51;
+  - `select relrowsecurity from pg_class where relname = 'consentimientos'` da `true`.
+- **Medido en local** (contenedor desechable del fixture, 2026-10-06): `alembic downgrade 033_una_paga_por_reto` y `alembic upgrade head` corren con rc 0; antes y después hay 51 políticas, 27 tablas con RLS, 0 privilegios de clientes sobre la tabla y 7 de `service_role`. La prueba se hizo con la tabla vacía.
