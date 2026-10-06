@@ -174,3 +174,19 @@ No crea tablas, vistas, secuencias ni funciones. No toca las políticas, los pri
   - `select count(*) from pg_policies where schemaname = 'public'` sigue en 51;
   - `select relrowsecurity from pg_class where relname = 'consentimientos'` da `true`.
 - **Medido en local** (contenedor desechable del fixture, 2026-10-06): `alembic downgrade 033_una_paga_por_reto` y `alembic upgrade head` corren con rc 0; antes y después hay 51 políticas, 27 tablas con RLS, 0 privilegios de clientes sobre la tabla y 7 de `service_role`. La prueba se hizo con la tabla vacía.
+
+# Antes de aplicar la 035 y de abrir el autorregistro
+
+Origen: `docs/ESPEC_autorregistro.md` §7 y §1.9, 2026-10-06. Medido solo en local y con un doble de GoTrue. **Todo esto requiere el sí de Christiam** (011: D1, D7 y D8).
+
+- [ ] **Respaldo** (`pg_dump`) antes de migrar. La 035 no se baja en producción.
+- [ ] **La 035 va antes o junto con el código.** Sin sus tablas, quien no tenga membresía activa recibe 500 en vez de 403.
+- [ ] **`SUPABASE_SERVICE_ROLE_KEY` y `GOTRUE_URL` en el entorno del backend** (errata a la regla "solo la CLI"): la usa un solo módulo, `src/registro/cuentas.py`. Sin ellas, `POST /auth/registro` responde 503 y lo demás funciona.
+- [ ] **`PROXIES_DE_CONFIANZA`** = cuántos proxies propios hay delante del backend (con solo Caddy, `1`), y Caddy con el túnel declarado como proxy de confianza. Medirlo: dos visitantes de redes distintas deben contar como dos IP. Con `0` detrás de un proxy, la IP sale de lo que el visitante escriba.
+- [ ] **El puerto del backend no se publica:** solo se llega por el proxy.
+- [ ] **HA2 corrido** contra el GoTrue del stack de prueba (`python -m tests.manual.humo_autorregistro_gotrue`): `difieren_de_lo_supuesto` vacío.
+- [ ] **El límite de intentos es por proceso** (`--workers 2` = hasta el doble) y se pierde al reiniciar.
+- [ ] **El registro de GoTrue sigue cerrado** (`GOTRUE_DISABLE_SIGNUP`) y `/auth/v1/admin*` sigue en 403 por el proxy: la cuenta la crea el backend por dentro.
+- [ ] **Los textos** del aviso, de "soy mayor de edad" y del 201 ("tu profe debe aprobarte; si ya tenías cuenta con ese correo…"), aprobados (ERR-16). El autorregistro es **solo para mayores de edad**.
+- [ ] **Auditoría** de la ruta pública antes del túnel (011, encargo 1.7).
+

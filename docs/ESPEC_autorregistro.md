@@ -311,6 +311,61 @@ ALTER TABLE solicitudes_inscripcion ENABLE ROW LEVEL SECURITY;
 
 **Matriz a medir:** 19 tramposos integ × 13 columnas (AR1-AR11, MG35 y HA1) = **247 celdas**, más RA1 con la bandera.
 
+### Matriz medida: 247 celdas, más RA1 (paso 3; ERR-19 y ERR-23)
+**Cómo se midió** (2026-10-06, sobre `d5fabae`): una corrida de pytest por tramposo, con el tramposo aplicado a las 13 columnas por una fixture `autouse` que llama al mismo `aplicar` del registro `TRAMPOSOS`. La fila base (sin tramposo) dio 13 verdes. Se midió en dos contenedores de prueba propios (`engrama-test-pg-opus` y `-opus1`, puertos 55433 y 55434), porque el contenedor compartido `engrama-test-pg` lo estaban usando otras sesiones.
+
+**Resultado: 50 rojas, todas por aserción; 0 por excepción; 197 verdes.**
+
+| Id | Rojas medidas | RA1 (con la bandera) |
+|---|---|---|
+| ZR1 | AR1 y AR3 | roja (as) |
+| ZR2 | AR3, AR4 y **HA1** | verde |
+| ZR3 | AR10 | verde |
+| ZR4 | AR10 | verde |
+| ZR5 | AR2, AR8, HA1, **AR7** y **AR6** | roja (as) |
+| ZR6 | AR7 y **AR8** | verde |
+| ZR7 | AR3 | verde |
+| ZR8 | AR2, AR5, AR8, HA1 y **AR11** | verde |
+| ZR9 | AR9 y HA1 | verde |
+| ZR10 | AR6 | verde |
+| ZR11 | AR6 | verde |
+| ZR12 | AR11 y **AR6** | roja (ex, `IndexError`) |
+| ZR13 | AR2, AR7 y **AR8** | verde |
+| ZR14 | AR7 y AR8 | verde |
+| ZR15 | AR7 | verde |
+| ZR16 | AR1 y **las otras 11 que usan un código** (todas menos MG35) | roja (ex, `IndexError`) |
+| ZR17 | AR5, AR8 y **HA1** | verde |
+| ZR18 | AR6 y HA1 | verde |
+| ZR19 | AR4 | verde |
+
+**Cruces que la predicción no tenía (en negrita; ERR-23; ningún test se tocó para que calzara):**
+- **ZR16 × todo:** si la huella no se puede guardar, crear el código da 500 y todo test que necesita un código cae. El rojo sale de la **preparación** (el código queda vacío), aunque el arnés lo vea como aserción. La predicción solo miró el test que afirma sobre la huella (AR1), no los que dependen de ella (la regla de ERR-23).
+- **ZR5 × AR7 y AR6:** sin el id del perfil, "la cuenta no cambió" (AR7) y "borrar deja sin cuenta" (AR6) miran un id que no tiene cuenta.
+- **ZR6 × AR8:** el reintento antes de 60 s choca con la solicitud que ya existe (409).
+- **ZR8 × AR11:** su aserción incluye `is_active` de la membresía.
+- **ZR12 × AR6:** sus dos grupos son de la misma institución, así que el segundo código inscribe en el primero.
+- **ZR13 × AR8, ZR2 × HA1 y ZR17 × HA1:** comparan el cuerpo exacto, el 403 del cupo y el 403 `pending_approval`.
+- **ZR12 × HA1:** verde, como estaba condicionado (una sola institución con un grupo).
+
+**Lo que la medición corrigió en el código antes del commit (regla 8; los criterios no se movieron):**
+- **`mayor_de_edad`:** con `Literal[True]`, Pydantic acepta el número `1`. Quedó `bool` estricto más un validador. UR2 y AR9 lo afirman (`1` → 422), un caso más estricto que C9.
+- **Solo un UNIQUE es "ocupado":** la primera versión atrapaba todo `IntegrityError` como "código estudiantil ocupado", y con ZR2 el CHECK del cupo salía como un 201 sin escribir. Ahora solo se atrapa el `23505`; lo demás se propaga (500). El mecanismo de ZR2 volvió a ser el predicho.
+- **El huérfano recogido:** después del UPDATE que devuelve el uso, la fila del código se relee (`refresh`); sin eso, el registro siguiente daba 500 (`MissingGreenlet`). Lo encontró AR8.
+
+**Erratas de §1.10 y §3 (ediciones que la espec no listó):**
+- `tests/registro/conftest.py` y una fixture `autouse` igual en `test_humo_autorregistro.py` y en `test_tramposos_autorregistro.py`: sueltan el doble de GoTrue al terminar cada test. `app.dependency_overrides` es global, y el canario `test_h3_sin_overrides_de_dependencias_filtrados` falló en la primera corrida completa (417 + 1 failed) porque el doble quedaba puesto. Es la única vez que un test previo se puso rojo, y no se editó: se corrigió el arnés nuevo.
+- `src/registro/` quedó con `schemas.py` y `decision.py` además de los módulos que la espec nombraba (una responsabilidad por archivo; ninguno pasa de 400 líneas y ninguna función de `src/` pasa de 40).
+- SR1 vigila también el nombre de la variable de entorno (`SUPABASE_SERVICE_ROLE_KEY`), permitido solo en `src/onboarding/`.
+- Varios tests nuevos pasan de 40 líneas (el estilo "lo observado en un dict"), como ya pasa con HP1 y OP5. No se partieron.
+
+**Medido (2026-10-06, `d5fabae`): 418 passed + 16 skipped; 118 no-integ; `ruff check .` 0 y `mypy .` 0 (234 archivos).** Igual a §5. HA1 escribió el archivo con el contenido exacto de §4. **RA1 pasó en su primera corrida** (entradas que no se usaron al desarrollar).
+
+**No medido:**
+- **HA2** (GoTrue real): `DELETE /admin/users/{id}`, la respuesta a un correo repetido y los tiempos. El doble los imita según lo que supone esta espec.
+- **Alembic real** `downgrade` y `upgrade`: MG35 corre las mismas tuplas de SQL, y `alembic upgrade head` desde cero corre en cada sesión de pruebas; el `downgrade` por la CLI de Alembic no se corrió.
+- **La IP detrás del túnel** y el valor correcto de `PROXIES_DE_CONFIANZA`.
+- **La suite con el contenedor compartido** `engrama-test-pg`: todas las corridas de esta tanda usaron un contenedor propio con otro nombre y otro puerto; el código y los tests son los mismos.
+
 ## 4. Humo y réplica
 **HA1** escribe `tests/_salida/humo_autorregistro.json` **antes** de afirmar. Semilla `random.Random(35)`: elige los códigos estudiantiles y a quiénes rechaza el profe. Todo sintético, por la API y con el doble.
 - una institución, un grupo, un código con cupo 40;
