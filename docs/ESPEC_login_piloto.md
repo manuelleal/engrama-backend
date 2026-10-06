@@ -214,6 +214,7 @@ Solo se **agregan** campos; ninguno previo desaparece:
 - **Credenciales:**
   - `DATABASE_URL`, `GOTRUE_URL` y `SUPABASE_SERVICE_ROLE_KEY` solo por variable de entorno;
   - **la clave de servicio solo la usa la CLI**, nunca el proceso web;
+    - **Errata (2026-10-06, `ESPEC_autorregistro.md` §1.9):** con el autorregistro, el proceso web la usa en **un solo módulo** (`src/registro/cuentas.py`), para crear y borrar la cuenta de quien se registra con un código de grupo. Necesita el sí de Christiam (011, D7). El resto del proceso web sigue sin usarla.
   - nunca aparece en un archivo del repo, en el resumen ni en un log.
 - **Puerto:** `CuentasAdmin` (protocolo: `buscar(id) -> correo | None`, `crear(id, correo, clave) -> "creada" | "correo_en_uso"` y `cambiar_clave(id, clave)`), con el adaptador httpx `GoTrueAdmin`.
   - `main(argv, *, cuentas=None, sesiones=None) -> int` permite inyectar el doble y la sesión del fixture.
@@ -535,6 +536,7 @@ Checklist, que va a `PRODUCCION_030.md`:
   - lo revisa un abogado antes del primer estudiante real (como en la 008 §7).
 - **Secretos:**
   - `SUPABASE_SERVICE_ROLE_KEY` solo en el entorno del operador cuando corre la CLI. **El proceso web no la necesita** (§1.5);
+    - **Errata (2026-10-06):** con el autorregistro activado, el backend también la necesita (`ESPEC_autorregistro.md` §1.9). Sin ella, `POST /auth/registro` responde 503 y lo demás funciona igual.
   - `SUPABASE_JWT_SECRET` solo en el `.env` del servidor;
   - el archivo de credenciales se genera en el servidor fuera del repo, se entrega a mano y se borra.
 - **Base limpia:** el volumen de pruebas de ARQUITECTO tiene perfiles stub (`documento_id = sub[:8]`). No se migran: el piloto real arranca con un volumen nuevo.
