@@ -30,6 +30,15 @@ ALFABETO_CLAVE = "abcdefghjkmnpqrstuvwxyz23456789"
 ROL_EN_ESPANOL = {"student": "estudiante", "teacher": "profe", "admin": "admin"}
 
 
+# H-12: un campo que empieza así, Excel lo ejecuta como fórmula al abrir el CSV.
+_EMPIEZA_FORMULA = ("=", "+", "-", "@", "\t", "\r")
+
+
+def neutralizar(celda: str) -> str:
+    """Antepone `'` si el campo empezaría una fórmula (`=HYPERLINK(...)` en un nombre)."""
+    return "'" + celda if celda.startswith(_EMPIEZA_FORMULA) else celda
+
+
 def clave_temporal() -> str:
     """3 bloques de 4 caracteres: 14 con los guiones (el mínimo de la API es 10)."""
     return "-".join("".join(secrets.choice(ALFABETO_CLAVE) for _ in range(4))
@@ -64,8 +73,9 @@ def anotar(ruta: Path, *, nombre: str, correo: str, rol: str, grupos: tuple[str,
         escritor = csv.writer(archivo)
         if nuevo:
             escritor.writerow(COLUMNAS_SALIDA)
-        escritor.writerow([nombre, correo, ROL_EN_ESPANOL.get(rol, rol), " | ".join(grupos),
-                           clave, datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")])
+        fila = [nombre, correo, ROL_EN_ESPANOL.get(rol, rol), " | ".join(grupos),
+                clave, datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")]
+        escritor.writerow([neutralizar(celda) for celda in fila])
     try:
         os.chmod(ruta, 0o600)  # en Windows no restringe; en el servidor (Linux), sí
     except OSError as exc:  # no es motivo para perder la credencial ya escrita
