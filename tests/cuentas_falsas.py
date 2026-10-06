@@ -49,6 +49,11 @@ class CuentasFalsas:
 
     def __init__(self, *, sesiones: Any = None, fallar_en: set[str] | None = None,
                  observador: Observador | None = None) -> None:
+        # Para el autorregistro: con `fallar_crear` o `fallar_borrar`, esa
+        # llamada falla como un GoTrue caído (`ErrorCuenta`).
+        self.fallar_crear = False
+        self.fallar_borrar = False
+        self.borradas: list[UUID] = []                       # cada `borrar` pedido
         self.cuentas: dict[UUID, dict[str, str]] = {}
         self.creadas: list[tuple[UUID | None, str]] = []    # (id pedido, correo), cada intento
         self.cambios: list[tuple[UUID, str]] = []            # (id, clave nueva)
@@ -66,6 +71,8 @@ class CuentasFalsas:
         self.creadas.append((id, correo))
         if self.observador is not None:
             self.observado.append(await self.observador(id))
+        if self.fallar_crear:
+            raise ErrorCuenta("fallo sintético de crear")
         if self.fallar_en and await self._documento_de(id) in self.fallar_en:
             raise ErrorCuenta("fallo sintético de crear")
         if id is not None and id in self.cuentas:
@@ -74,6 +81,13 @@ class CuentasFalsas:
             return CORREO_EN_USO
         self.cuentas[id if id is not None else uuid4()] = {"correo": correo, "clave": clave}
         return CREADA
+
+    async def borrar(self, id: UUID) -> None:
+        """Como GoTrue: borrar una cuenta que no existe no es un error."""
+        self.borradas.append(id)
+        if self.fallar_borrar:
+            raise ErrorCuenta("fallo sintético de borrar")
+        self.cuentas.pop(id, None)
 
     async def cambiar_clave(self, id: UUID, clave: str) -> None:
         if id not in self.cuentas:

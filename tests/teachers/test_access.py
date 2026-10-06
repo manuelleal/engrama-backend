@@ -106,8 +106,21 @@ _LOGIN_PILOTO: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/auth/consentimiento", frozenset({"POST"})): "user",
 }
 
+# -----------------------------------------------------------------------------
+# docs/ESPEC_autorregistro.md: la única ruta pública que escribe, y las del profe.
+# -----------------------------------------------------------------------------
+_AUTORREGISTRO: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/auth/registro", frozenset({"POST"})): "public",
+    ("/teachers/groups/{gid}/codigo-inscripcion", frozenset({"POST"})): "teacher",
+    ("/teachers/groups/{gid}/codigo-inscripcion", frozenset({"GET"})): "teacher",
+    ("/teachers/groups/{gid}/codigo-inscripcion", frozenset({"DELETE"})): "teacher",
+    ("/teachers/groups/{gid}/solicitudes", frozenset({"GET"})): "teacher",
+    ("/teachers/groups/{gid}/solicitudes/{sid}/aprobar", frozenset({"POST"})): "teacher",
+    ("/teachers/groups/{gid}/solicitudes/{sid}/rechazar", frozenset({"POST"})): "teacher",
+}
+
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
-    **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO}
+    **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:

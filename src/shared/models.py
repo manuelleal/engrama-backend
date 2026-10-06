@@ -1093,6 +1093,8 @@ __all__ = [
     "AIUsageLog",
     "AuditLog",
     "Consentimiento",
+    "CodigoInscripcion",
+    "SolicitudInscripcion",
 ]
 
 
@@ -1123,4 +1125,89 @@ class Consentimiento(Base):
             "char_length(version) BETWEEN 1 AND 32 AND version = btrim(version)",
             name="consentimientos_version_check",
         ),
+    )
+
+
+# -----------------------------------------------------------------------------
+# 035 — autorregistro (docs/ESPEC_autorregistro.md)
+# -----------------------------------------------------------------------------
+class CodigoInscripcion(Base):
+    """El código que un profe genera para que su grupo se registre.
+
+    Solo se guarda la huella (`codigo_hash`, HMAC-SHA256 en hexadecimal); el
+    código en claro existe únicamente en la respuesta de crearlo.
+    """
+
+    __tablename__ = "codigos_inscripcion"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    group_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("groups.id", ondelete="CASCADE"), nullable=False
+    )
+    codigo_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    cupo: Mapped[int] = mapped_column(Integer, nullable=False)
+    usos: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_by: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("codigo_hash", name="codigos_inscripcion_hash_key"),
+        CheckConstraint("codigo_hash ~ '^[0-9a-f]{64}$'", name="codigos_inscripcion_hash_check"),
+        CheckConstraint("cupo BETWEEN 1 AND 200", name="codigos_inscripcion_cupo_check"),
+        CheckConstraint("usos BETWEEN 0 AND cupo", name="codigos_inscripcion_usos_check"),
+        Index("codigos_inscripcion_uno_activo", "group_id", unique=True,
+              postgresql_where=text("activo")),
+    )
+
+
+class SolicitudInscripcion(Base):
+    """Alguien pidió entrar a un grupo con un código: `creando`, `pendiente` o `aprobada`.
+
+    Rechazar borra el perfil y esta fila cae en cascada: no hay `rechazada`.
+    """
+
+    __tablename__ = "solicitudes_inscripcion"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    group_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("groups.id", ondelete="CASCADE"), nullable=False
+    )
+    codigo_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("codigos_inscripcion.id", ondelete="CASCADE"), nullable=False
+    )
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    estado: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'creando'"))
+    declaro_mayor_de_edad: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    decidida_por: Mapped[Any | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id"), nullable=True
+    )
+    decidida_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("profile_id", name="solicitudes_inscripcion_perfil_key"),
+        CheckConstraint("estado IN ('creando','pendiente','aprobada')",
+                        name="solicitudes_inscripcion_estado_check"),
+        CheckConstraint("declaro_mayor_de_edad", name="solicitudes_inscripcion_mayor_check"),
+        CheckConstraint(
+            "(estado = 'aprobada') = (decidida_por IS NOT NULL AND decidida_en IS NOT NULL)",
+            name="solicitudes_inscripcion_decision_check",
+        ),
+        Index("idx_solicitudes_inscripcion_grupo", "group_id", "estado"),
     )

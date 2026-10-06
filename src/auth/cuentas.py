@@ -7,8 +7,8 @@ llamadas (`app.dependency_overrides`).
 
 Menor privilegio: se llama a `PUT /user` de GoTrue con el MISMO Bearer del
 usuario (y `apikey: supabase_anon_key` si está configurada). GoTrue valida el
-token por su cuenta. La clave de servicio NO se usa aquí: el proceso web no la
-necesita (solo la CLI del operador, §1.7).
+token por su cuenta. La clave de servicio NO se usa aquí: en el proceso web la
+usa solo `src/registro/cuentas.py` (ESPEC_autorregistro §1.9).
 """
 from __future__ import annotations
 

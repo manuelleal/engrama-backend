@@ -17,6 +17,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 _STRICT = ConfigDict(strict=True, extra="forbid")
 
+# La política de contraseña, en UNA sola fuente: la usan `POST /auth/contrasena`
+# y `POST /auth/registro`. 72 bytes es el límite de bcrypt (en GoTrue).
+CLAVE_MIN = 10
+CLAVE_MAX = 72
+
 
 class MembershipOut(BaseModel):
     """Una membresía activa del usuario en un tenant específico."""
@@ -92,7 +97,7 @@ class CambioDeClaveIn(BaseModel):
 
     model_config = _STRICT
 
-    nueva: str = Field(min_length=10, max_length=72)
+    nueva: str = Field(min_length=CLAVE_MIN, max_length=CLAVE_MAX)
 
 
 class AuthContext(BaseModel):

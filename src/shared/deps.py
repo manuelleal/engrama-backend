@@ -30,6 +30,7 @@ from src.auth.service import (
     get_profile,
     validate_jwt,
 )
+from src.registro.pendiente import ESPERA_APROBACION, espera_aprobacion
 from src.shared.db import get_db
 
 
@@ -89,6 +90,11 @@ async def get_current_user(
     ruta = request.scope.get("route")
     exigir_clave_definitiva(profile, getattr(ruta, "path", None), request.method)
     memberships = await get_memberships(db, profile_id)
+    # Sin membresías activas: si se registró con un código y su profe todavía
+    # no lo aprueba, el 403 lo dice (ESPEC_autorregistro §1.8). Solo se
+    # consulta aquí: quien tiene membresía no paga esta consulta.
+    if not memberships and await espera_aprobacion(db, profile_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ESPERA_APROBACION)
     return build_auth_context(profile, memberships, tenant_id_header=x_tenant_id)
 
 

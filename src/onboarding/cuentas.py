@@ -8,8 +8,9 @@ que el `sub` del JWT ES `profiles.id` y no hay nada que enlazar después.
 `CuentasAdmin` es el protocolo; `GoTrueAdmin`, el adaptador httpx. Los tests
 usan el doble `tests/cuentas_falsas.py`.
 
-La clave de servicio (`SUPABASE_SERVICE_ROLE_KEY`) SOLO la usa esta CLI, y
-solo desde el entorno del operador: el proceso web no la necesita (§1.5).
+La clave de servicio (`SUPABASE_SERVICE_ROLE_KEY`) la usa esta CLI, desde el
+entorno del operador. En el proceso web la usa UN solo módulo,
+`src/registro/cuentas.py`, para el autorregistro (ESPEC_autorregistro §1.9).
 Nunca se escribe en un archivo, en el resumen ni en un mensaje de error.
 """
 from __future__ import annotations
@@ -98,6 +99,17 @@ class GoTrueAdmin:
                                      or "already been registered" in r.text):
             return CORREO_EN_USO
         raise ErrorCuenta(f"crear: GoTrue respondió {r.status_code} {codigo}")
+
+    async def borrar(self, id: UUID) -> None:
+        """Borra la cuenta. Un 404 (no existe) cuenta como borrada: es idempotente.
+
+        La usa solo el autorregistro: para deshacer un registro que no terminó
+        y cuando el profe rechaza una solicitud (ESPEC_autorregistro §1.5 y §1.7).
+        """
+        r = await self._pedir("DELETE", f"/admin/users/{id}")
+        if r.status_code not in (200, 204, 404):
+            raise ErrorCuenta(
+                f"borrar: GoTrue respondió {r.status_code} {_codigo_de_error(r)}")
 
     async def cambiar_clave(self, id: UUID, clave: str) -> None:
         r = await self._pedir("PUT", f"/admin/users/{id}", {"password": clave})

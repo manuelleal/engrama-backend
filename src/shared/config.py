@@ -46,9 +46,15 @@ class Settings(BaseSettings):
     supabase_anon_key: str = Field(default="")
     # GoTrue, para `POST /auth/contrasena` (ESPEC_login_piloto §1.5). Vacía:
     # se usa `supabase_url + "/auth/v1"`. En el piloto: http://gotrue:9999.
-    # El proceso web NO necesita la clave de servicio: cambia la clave con el
-    # mismo Bearer del usuario.
+    # Para cambiar la contraseña NO se usa la clave de servicio: se usa el
+    # mismo Bearer del usuario. La clave de servicio la usa UN solo módulo,
+    # `src/registro/cuentas.py` (ESPEC_autorregistro §1.9); sin ella,
+    # `POST /auth/registro` responde 503 y lo demás funciona igual.
     gotrue_url: str = Field(default="")
+    # Cuántos proxies PROPIOS hay delante del backend (Caddy = 1). Con 0 no se
+    # lee `X-Forwarded-For`; con n, la IP del visitante es el valor n-ésimo
+    # desde el final (ESPEC_autorregistro §1.6). La usa el límite de intentos.
+    proxies_de_confianza: int = Field(default=0, ge=0, le=5)
 
     # --- Database ---
     database_url: str = Field(
