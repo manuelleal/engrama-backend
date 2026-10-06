@@ -71,6 +71,30 @@ En `src/challenge_engine/schemas.py`:
 
 La matriz se mide completa antes de aceptar: 5 tramposos × 6 tests (A16-1, A16-2, S16, U16-1, U16-2 y H16) = **30 celdas**. Lo no medido no es "no cruza" (ERR-15 y ERR-19).
 
+### Matriz medida: 30 celdas (paso 3; ERR-19 y ERR-23)
+**Cómo se midió** (2026-10-06, sobre el código del paso 2): una corrida de pytest por tramposo, con el tramposo aplicado a las 6 columnas por una fixture `autouse` que llama al mismo `aplicar` del registro `TRAMPOSOS`. La fila base dio 6 verdes.
+
+**Resultado: 9 rojas, todas por aserción; 0 por excepción y 0 por preparación.**
+
+| Id | Rojas medidas |
+|---|---|
+| Y16-1 | A16-1 y H16 |
+| Y16-2 | S16 y **H16** |
+| Y16-3 | A16-2 y H16 |
+| Y16-4 | U16-2 y **H16** |
+| Y16-5 | U16-1 |
+
+**Dos cruces que la predicción no tenía (en negrita; ERR-23). Los tests no se tocaron.**
+- **Y16-2 × H16:** el humo crea un reto de cada tipo válido, y sin `"listening"` su `tipos_validos` sale `[201, 201, 201, 422]`. La predicción solo miró a S16.
+- **Y16-4 × H16:** el humo también llama a `/challenges/generate` con `B3`; con la ruta rota llega al generador y `generate_B3` sale 503. La predicción decía "los demás no llaman a `/generate`", y H16 sí.
+
+**Precisiones del paso 2 (ningún criterio cambia):**
+- **El mecanismo del tramposo:** `monkeypatch.setitem` no sirve para una lista. Se reemplaza `app.router.routes` entera por una copia con la ruta cambiada (`setattr`), y la `APIRoute` nueva lleva `dependency_overrides_provider`; sin él ignoraría el `get_db` del fixture. Es lo mismo que ZP9 del login piloto.
+- **U16-1** compara, además de los dos campos de `ChallengeCreate`, el `cefr_level` de `ChallengeGenerateRequest` y las tuplas exportadas `CHALLENGE_TYPES` y `CEFR_LEVELS`.
+- **S16** afirma también que, sin `challenge_type`, el reto nace `multiple_choice`.
+- **Medido en la base viva:** `challenges` tiene exactamente un CHECK que nombra `challenge_type` y uno que nombra `cefr_level`, con los valores y el orden de la 010.
+- **U16-2 y H16 nunca llaman a la red:** vacían `anthropic_api_key` antes de pedir.
+
 ## 4. Cuentas (ERR-10: la suma a la vista)
 **Base:** la meta final de BUG-13 a 15, **311 passed + 12 skipped y 100 no-integ**. No está medida; si cierra con N, S y M, las metas pasan a N + 11, S y M + 2.
 
@@ -87,6 +111,7 @@ La matriz se mide completa antes de aceptar: 5 tramposos × 6 tests (A16-1, A16-
 - **skipped:** 12 (no hay réplica con bandera: esta espec no tiene estado ni concurrencia, y la réplica con entradas nuevas es S16, que recorre **todos** los valores válidos);
 - **no-integ:** 100 + 2 = **102**;
 - ruff 0 y mypy 0.
+- **Medido (2026-10-06), con el login del piloto ya adentro: 366 passed + 14 skipped y 109 no-integ; `ruff check .` 0 y `mypy .` 0 (205 archivos).** Es la suma prevista abajo. El paso 1 se midió en su archivo (2 passed + 3 xfailed) y en no-integ (107 passed + 1 xfailed); la suite completa de ese paso no se corrió.
 
 Si `ESPEC_login_piloto.md` entra antes, las dos metas se suman: 355 + 11 = **366 passed**, 14 skipped y 107 + 2 = **109 no-integ** (§5 de esa espec, corregida en 73dbbfd).
 
