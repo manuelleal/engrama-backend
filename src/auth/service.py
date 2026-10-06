@@ -38,6 +38,9 @@ from .schemas import AuthContext, MembershipOut, ProfileOut
 # 3.1 validate_jwt
 # =============================================================================
 _JWT_ALGORITHM = "HS256"
+# H-10 (auditoría 02): sin esto, python-jose acepta un token bien firmado al
+# que le falte `exp` (no vence nunca) o `aud`. Los tres son obligatorios.
+_CLAIMS_OBLIGATORIOS = {"require_exp": True, "require_aud": True, "require_sub": True}
 
 
 def validate_jwt(token: str) -> dict[str, Any]:
@@ -61,6 +64,7 @@ def validate_jwt(token: str) -> dict[str, Any]:
             settings.supabase_jwt_secret,
             algorithms=[_JWT_ALGORITHM],
             audience="authenticated",
+            options=_CLAIMS_OBLIGATORIOS,
         )
     except JWTError as exc:
         raise HTTPException(
