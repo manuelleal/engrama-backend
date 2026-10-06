@@ -292,7 +292,8 @@ def test_ap8_nombre_de_la_membresia(integ) -> None:
 # =============================================================================
 # Las claves que agrega esta espec (§1.4); SP1 las quita antes de comparar.
 # `consent_version` la agrega docs/ESPEC_consentimiento.md.
-CLAVES_NUEVAS_RAIZ = ("active_tenant_id", "must_change_password", "consent_version")
+CLAVES_NUEVAS_RAIZ = ("active_tenant_id", "must_change_password", "consent_version",
+                      "confirmed_level")  # docs/ESPEC_eventos_anillo.md §1.7
 CLAVES_NUEVAS_MEMBRESIA = ("full_name",)
 
 

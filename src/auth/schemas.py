@@ -39,6 +39,21 @@ class MembershipOut(BaseModel):
     full_name: str | None = None
 
 
+class ConfirmedLevelOut(BaseModel):
+    """El nivel MCER confirmado por quien mide (hoy SET), para el escudo.
+
+    Es el de la institución ACTIVA. El juego y la clase en vivo no lo mueven
+    (docs/ESPEC_eventos_anillo.md §1.7).
+    """
+
+    model_config = _STRICT
+
+    cefr: str
+    source: str
+    provisional: bool
+    assessed_at: datetime
+
+
 class ProfileOut(BaseModel):
     """Respuesta de /auth/me y /auth/session: perfil + todas sus memberships.
 
@@ -68,6 +83,8 @@ class ProfileOut(BaseModel):
     # (docs/ESPEC_consentimiento.md). El cliente la compara con su versión
     # vigente; el servidor no bloquea por esto.
     consent_version: str | None = None
+    # El nivel confirmado en la institución activa, o None ("Por confirmar").
+    confirmed_level: ConfirmedLevelOut | None = None
 
 
 class ConsentimientoIn(BaseModel):

@@ -31,7 +31,7 @@ TIPOS = ("conocer", "actualizar", "rectificar", "suprimir")
 
 # Contenido exacto (ESPEC §3). Si difiere se reporta; no se ajusta para que pase.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "036_solicitudes_datos", "semilla": 36, "creadas_201": 6, "de_1001": 422,
+    "alembic_version": "037_eventos_anillo", "semilla": 36, "creadas_201": 6, "de_1001": 422,
     "tipo_invalido": 422, "del_usuario": [2, 2, 1, 1], "del_admin": [4, 2],
     "cruce_de_institucion": 404, "respondidas": 2, "con_traza": 2,
     "auditorias": {"creada": 6, "respondida": 2}, "perfiles_borrados": 0,

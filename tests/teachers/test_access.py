@@ -129,8 +129,13 @@ _SOLICITUD_DATOS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/admin/solicitudes-datos/{sid}", frozenset({"PUT"})): "admin",
 }
 
+# docs/ESPEC_eventos_anillo.md: sin JWT; la autentica la firma HMAC del satélite.
+_EVENTOS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/events/batch", frozenset({"POST"})): "public",
+}
+
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
-    **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS}
+    **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS, **_EVENTOS}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:

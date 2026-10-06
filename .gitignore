@@ -21,6 +21,7 @@ tests/_salida/humo_consentimiento.json
 tests/_salida/humo_autorregistro.json
 tests/_salida/humo_autorregistro_gotrue.json
 tests/_salida/humo_solicitudes_datos.json
+tests/_salida/humo_eventos_anillo.json
 
 # Salidas sueltas de herramientas
 *_output.txt

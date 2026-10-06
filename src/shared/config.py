@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     # despliegue debe contener el AVISO_VERSION del cliente: si no, nadie
     # puede aceptar el aviso.
     aviso_versiones_validas: str = Field(default="")
+    # Secretos HMAC de la puerta de eventos del anillo, UNO POR ORIGEN
+    # (ESPEC_eventos_anillo §1.2): EVA firma como `live` y SET como `set`. 32
+    # caracteres o más, al azar. Vacío = ese origen está apagado (401). No son
+    # el secreto JWT ni la clave de servicio.
+    events_secret_live: str = Field(default="")
+    events_secret_set: str = Field(default="")
 
     # --- Database ---
     database_url: str = Field(

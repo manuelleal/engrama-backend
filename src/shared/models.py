@@ -1096,6 +1096,8 @@ __all__ = [
     "CodigoInscripcion",
     "SolicitudInscripcion",
     "SolicitudDatos",
+    "LearningEvent",
+    "ConfirmedLevel",
 ]
 
 
@@ -1258,4 +1260,96 @@ class SolicitudDatos(Base):
                         name="solicitudes_datos_traza_check"),
         Index("idx_solicitudes_datos_perfil", "profile_id"),
         Index("idx_solicitudes_datos_tenant", "tenant_id", "estado"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# 037 — eventos del anillo (docs/ESPEC_eventos_anillo.md)
+# -----------------------------------------------------------------------------
+class LearningEvent(Base):
+    """Un evento que entregó un satélite (EVA, SET). De solo agregar.
+
+    El UNIQUE `(tenant_id, event_id)` es la idempotencia. `effect` y `coins`
+    dicen qué efecto tuvo, y se escriben en la misma transacción que la fila.
+    """
+
+    __tablename__ = "learning_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    event_id: Mapped[str] = mapped_column(Text, nullable=False)
+    origin: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    type: Mapped[str] = mapped_column(Text, nullable=False)
+    subject_id: Mapped[Any | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=True
+    )
+    item_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    body_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    batch_id: Mapped[str] = mapped_column(Text, nullable=False)
+    instance: Mapped[str] = mapped_column(Text, nullable=False)
+    session_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    effect: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'none'"))
+    coins: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "event_id", name="learning_events_tenant_event_key"),
+        CheckConstraint("char_length(event_id) BETWEEN 1 AND 256",
+                        name="learning_events_event_id_check"),
+        CheckConstraint(
+            "effect IN ('none','coins_credited','pool_exhausted','session_cap_exceeded',"
+            "'level_set','level_older')", name="learning_events_effect_check"),
+        CheckConstraint("coins >= 0 AND (coins = 0) = (effect <> 'coins_credited')",
+                        name="learning_events_coins_check"),
+        Index("idx_learning_events_subject", "tenant_id", "subject_id", "type"),
+        Index("idx_learning_events_session", "tenant_id", "session_id"),
+    )
+
+
+class ConfirmedLevel(Base):
+    """El nivel MCER confirmado de una persona EN una institución.
+
+    Solo lo escribe `engrama_core/service/level.py`. `source` no admite `live`
+    ni `game`: el juego y la clase en vivo no mueven el nivel.
+    """
+
+    __tablename__ = "confirmed_levels"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    cefr: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    provisional: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("FALSE")
+    )
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    assessed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    event_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("learning_events.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "profile_id", name="confirmed_levels_tenant_profile_key"),
+        CheckConstraint("cefr IN ('A1','A2','B1','B2','C1','C2')",
+                        name="confirmed_levels_cefr_check"),
+        CheckConstraint("source IN ('set','grader','teacher')",
+                        name="confirmed_levels_source_check"),
+        CheckConstraint("score IS NULL OR score BETWEEN 0 AND 100",
+                        name="confirmed_levels_score_check"),
     )

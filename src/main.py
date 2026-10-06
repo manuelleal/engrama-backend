@@ -9,6 +9,7 @@ from src.registro.router import docente as registro_docente_router
 from src.registro.router import publico as registro_publico_router
 from src.teachers.admin_router import router as admin_router
 from src.teachers.router import router as teachers_router
+from src.webhooks.router import router as events_router
 
 app = FastAPI(
     title="Engrama 2.0 API",
@@ -28,6 +29,9 @@ app.include_router(registro_docente_router, prefix="/teachers", tags=["registro"
 # Solicitudes sobre datos personales, Ley 1581 (docs/ESPEC_solicitud_datos.md).
 app.include_router(datos_usuario_router, prefix="/auth", tags=["datos"])
 app.include_router(datos_admin_router, prefix="/admin", tags=["datos"])
+# La puerta de entrada del anillo: EVA y SET entregan eventos firmados
+# (docs/ESPEC_eventos_anillo.md). Sin JWT: la autentica la firma HMAC.
+app.include_router(events_router, prefix="/events", tags=["eventos"])
 
 
 @app.get("/health")

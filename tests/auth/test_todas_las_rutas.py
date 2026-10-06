@@ -32,7 +32,8 @@ pytestmark = pytest.mark.integ
 client = TestClient(app, raise_server_exceptions=False)
 
 # Las únicas rutas sin usuario. Agregar una aquí es una decisión, no un descuido.
-PUBLICAS = {("/health", "GET"), ("/auth/registro", "POST")}
+# `/events/batch` no lleva usuario: la autentica la firma HMAC (ESPEC_eventos_anillo).
+PUBLICAS = {("/health", "GET"), ("/auth/registro", "POST"), ("/events/batch", "POST")}
 BLOQUEO = (403, "must_change_password")
 _RELLENO = "11111111-1111-4111-8111-111111111111"
 

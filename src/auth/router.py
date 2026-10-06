@@ -22,6 +22,7 @@ from src.auth import consentimiento
 from src.auth.consentimiento import registrar_consentimiento, ultima_version
 from src.auth.schemas import (
     AuthContext,
+    ConfirmedLevelOut,
     CambioDeClaveIn,
     ConsentimientoIn,
     ConsentimientoOut,
@@ -36,6 +37,7 @@ from src.auth.service import (
     profile_to_schema,
     quitar_contrasena_temporal,
 )
+from src.engrama_core.service import level
 from src.shared.db import get_db
 from src.shared.deps import _extract_bearer_token, get_current_user
 
@@ -53,8 +55,18 @@ async def _build_profile_payload(
     rows = await get_memberships(db, auth.profile_id)
     payload = profile_to_schema(profile, Membresias(memberships_to_schema(rows), auth.tenant_id))
     # El consentimiento es de la persona: no depende del colegio activo.
-    return payload.model_copy(
-        update={"consent_version": await ultima_version(db, auth.profile_id)})
+    return payload.model_copy(update={
+        "consent_version": await ultima_version(db, auth.profile_id),
+        "confirmed_level": await _nivel_confirmado(auth, db)})
+
+
+async def _nivel_confirmado(auth: AuthContext, db: AsyncSession) -> ConfirmedLevelOut | None:
+    """El nivel confirmado en la institución ACTIVA (cada institución tiene el suyo)."""
+    nivel = await level.read_confirmed_level(db, auth.profile_id, auth.tenant_id)
+    if nivel is None:
+        return None
+    return ConfirmedLevelOut(cefr=nivel.cefr, source=nivel.source,
+                             provisional=nivel.provisional, assessed_at=nivel.assessed_at)
 
 
 @router.post("/session", response_model=ProfileOut, status_code=status.HTTP_200_OK)
