@@ -50,8 +50,27 @@ def _corrida(capsys: Any, argv: list[str], integ: Any, doble: CuentasFalsas) -> 
     return Corrida(codigo, resumen if isinstance(resumen, dict) else {}, stdout)
 
 
+def envejecer_membresias(integ: Any) -> None:
+    """Todas las membresías que ya existen pasan a ser 1 hora más viejas.
+
+    Se llama ANTES de cada `alta`: lo que cree esa corrida queda al menos una
+    hora después de lo anterior, así que "la membresía más antigua" (el
+    colegio por defecto) no depende de que dos `now()` seguidos salgan en
+    orden. El reloj del contenedor de pruebas retrocede hasta 1,95 s.
+    """
+    from sqlalchemy import text
+
+    async def _envejecer() -> None:
+        async with integ.engine.begin() as conn:
+            await conn.execute(text(
+                "update memberships set created_at = created_at - interval '1 hour'"))
+
+    integ.run(_envejecer())
+
+
 def alta(integ: Any, doble: CuentasFalsas, capsys: Any, *, slug: str, csv_: Path,
          salida: Path, monedas: int = 1000, nombre: str | None = None) -> Corrida:
+    envejecer_membresias(integ)
     return _corrida(capsys, [
         "alta", "--nombre", nombre or f"Institución Sintética {slug}", "--slug", slug,
         "--monedas", str(monedas), "--csv", str(csv_), "--salida", str(salida),

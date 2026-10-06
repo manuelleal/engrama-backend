@@ -112,6 +112,19 @@ class Integ(ComoMixin):
         self.run(_t())
 
     # ------------------------------------------------------------ fábricas
+    @staticmethod
+    def _fecha(creada_hace: timedelta | None) -> dict[str, Any]:
+        """`created_at` EXPLÍCITO para una membresía, o nada (la pone la base).
+
+        El colegio por defecto es la membresía más antigua, y el reloj del
+        contenedor de pruebas retrocede (hasta 1,95 s): quien tenga dos
+        membresías fija la fecha de la primera en vez de fiarse de `now()`
+        (ESPEC_endurecimiento_piloto, el intermitente del reloj).
+        """
+        if creada_hace is None:
+            return {}
+        return {"created_at": datetime.now(UTC) - creada_hace}
+
     def crear_tenant(self, *, pool: int = 1000) -> UUID:
         """Tenant + su wallet (banco central) con `pool` monedas."""
         from src.shared.models import CoinWallet, Tenant
@@ -134,6 +147,7 @@ class Integ(ComoMixin):
         racha: int = 0,
         ultima_asistencia: date | None = None,
         saldo: int | None = None,
+        creada_hace: timedelta | None = None,
     ) -> UUID:
         """Perfil + membership activa en el tenant. `saldo` crea su wallet."""
         from src.shared.models import CoinWallet, Membership, Profile
@@ -156,7 +170,8 @@ class Integ(ComoMixin):
             # existentes vean lo mismo que antes. Docente y admin: NULL.
             Membership(tenant_id=tenant_id, profile_id=pid, role=rol,
                        group_code=group_code, is_active=True,
-                       full_name=nombre if rol == "student" else None),
+                       full_name=nombre if rol == "student" else None,
+                       **self._fecha(creada_hace)),
         ]
         if saldo is not None:
             objs.append(CoinWallet(tenant_id=tenant_id, owner_type="profile",
@@ -171,6 +186,7 @@ class Integ(ComoMixin):
         rol: str = "teacher",
         *,
         group_code: str | None = None,
+        creada_hace: timedelta | None = None,
     ) -> None:
         """Agrega una membership MÁS a un perfil ya existente, en otro tenant.
 
@@ -182,7 +198,8 @@ class Integ(ComoMixin):
 
         self._insertar(
             Membership(tenant_id=tenant_id, profile_id=perfil, role=rol,
-                       group_code=group_code, is_active=True)
+                       group_code=group_code, is_active=True,
+                       **self._fecha(creada_hace))
         )
 
     def crear_grupo(

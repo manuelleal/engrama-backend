@@ -15,6 +15,7 @@ No empieza por `test_`: pytest no lo recolecta (mismo patrón que
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from uuid import UUID
 
 from src.shared.models import TeacherGroup
@@ -59,7 +60,9 @@ def armar(integ: Integ, *, codigo_a: str = "GA", codigo_b: str = "GB") -> Escuel
     grupo_a = integ.crear_grupo(tenant_a, codigo_a)
     grupo_b = integ.crear_grupo(tenant_b, codigo_b)
 
-    d = integ.crear_perfil(tenant_a, rol="teacher")
+    # La membresía de D en A, un día antes que la de B: el colegio por defecto
+    # de D (el más antiguo) no depende del reloj del contenedor.
+    d = integ.crear_perfil(tenant_a, rol="teacher", creada_hace=timedelta(days=1))
     e = integ.crear_perfil(tenant_a, group_code=codigo_a)
     do = integ.crear_perfil(tenant_a, rol="teacher")
     dt = integ.crear_perfil(tenant_b, rol="teacher")
