@@ -12,11 +12,15 @@
 
 Por U16-2 la marca `integ` va en cada test y no en `pytestmark`.
 
-Paso 1 del plan (ESPEC §5): A16-1, A16-2 y U16-2 corren con
-`xfail(strict=True, raises=AssertionError)`: hoy el valor inválido llega a la
-base y el CHECK lo rechaza con un 500 (o, en `/generate`, se gasta la llamada
-a la IA). El cliente usa `raise_server_exceptions=False` para que ese 500 sea
-una respuesta, y por tanto un `AssertionError`, y no una excepción suelta.
+A16-1, A16-2 y U16-2 corrieron en el paso 1 (`5c9210c`) con
+`xfail(strict=True, raises=AssertionError)`: el valor inválido llegaba a la
+base y el CHECK lo rechazaba con un 500 (o, en `/generate`, se gastaba la
+llamada a la IA). En el paso 2 dejan el xfail. El cliente usa
+`raise_server_exceptions=False` para que un 500 sea una respuesta, y por tanto
+un `AssertionError`, y no una excepción suelta.
+
+U16-1 lee el `Literal` de `model_fields` (en el paso 1 leía las tuplas), para
+que un tramposo que reemplace el campo (Y16-5) lo alcance.
 
 Los valores válidos están escritos AQUÍ a mano (copiados de la migración 010),
 no importados del esquema: si se importaran, S16 pasaría con cualquier enum.
@@ -24,7 +28,7 @@ no importados del esquema: si se importaran, S16 pasaría con cualquier enum.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal, get_args, get_origin
 from uuid import UUID, uuid4
 
 import httpx
@@ -91,8 +95,6 @@ def _esperado(campo: str) -> dict[str, Any]:
 # A16-1, A16-2 — C1, C2: el valor fuera del enum
 # =============================================================================
 @pytest.mark.integ
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="BUG-16, paso 1: challenge_type no se valida y el CHECK da 500")
 def test_a16_1_challenge_type_fuera_del_enum_da_422(integ) -> None:
     """A16-1 (C1): `practice` -> 422 con el campo exacto, y nada en la base."""
     observado = _rechazo(integ, "challenge_type", "practice")
@@ -100,8 +102,6 @@ def test_a16_1_challenge_type_fuera_del_enum_da_422(integ) -> None:
 
 
 @pytest.mark.integ
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="BUG-16, paso 1: cefr_level no se valida y el CHECK da 500")
 def test_a16_2_cefr_level_fuera_del_enum_da_422(integ) -> None:
     """A16-2 (C2): `B3` -> 422 con el campo exacto, y nada en la base."""
     observado = _rechazo(integ, "cefr_level", "B3")
@@ -152,10 +152,23 @@ def _valores_del_check(integ: Any, columna: str) -> list[tuple[str, ...]]:
     return [tuple(re.findall(r"'([^']+)'::text", d)) for d in integ.run(_q()) if columna in d]
 
 
-def enum_del_esquema() -> dict[str, tuple[str, ...]]:
-    """El enum que valida el esquema de entrada. En el paso 1 son las tuplas."""
-    return {"challenge_type": tuple(esquemas.CHALLENGE_TYPES),
-            "cefr_level": tuple(esquemas.CEFR_LEVELS)}
+def _literal(modelo: Any, campo: str) -> tuple[str, ...]:
+    """Los valores del `Literal` del campo (también dentro de `Literal | None`)."""
+    anotacion = modelo.model_fields[campo].annotation
+    for candidata in (anotacion, *get_args(anotacion)):
+        if get_origin(candidata) is Literal:
+            return tuple(get_args(candidata))
+    return ()
+
+
+def enum_del_esquema() -> dict[str, Any]:
+    """El enum que valida cada esquema de entrada, y las tuplas exportadas."""
+    return {
+        "challenge_type": _literal(esquemas.ChallengeCreate, "challenge_type"),
+        "cefr_level": _literal(esquemas.ChallengeCreate, "cefr_level"),
+        "cefr_level_de_generate": _literal(esquemas.ChallengeGenerateRequest, "cefr_level"),
+        "tuplas": (tuple(esquemas.CHALLENGE_TYPES), tuple(esquemas.CEFR_LEVELS)),
+    }
 
 
 @pytest.mark.integ
@@ -165,7 +178,8 @@ def test_u16_1_el_enum_del_esquema_es_el_check_de_la_base(integ) -> None:
     observado = {"base": en_la_base, "esquema": enum_del_esquema()}
     assert observado == {
         "base": {"challenge_type": [TIPOS], "cefr_level": [NIVELES]},
-        "esquema": {"challenge_type": TIPOS, "cefr_level": NIVELES},
+        "esquema": {"challenge_type": TIPOS, "cefr_level": NIVELES,
+                    "cefr_level_de_generate": NIVELES, "tuplas": (TIPOS, NIVELES)},
     }, f"U16-1: {observado}"
 
 
@@ -184,8 +198,6 @@ def generar_b3(monkeypatch: pytest.MonkeyPatch, **cabeceras: Any) -> int:
         "cefr_level": "B3", "skill": "grammar", "topic": "sintético"}).status_code
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="BUG-16, paso 1: /generate acepta cualquier cefr_level")
 def test_u16_2_generate_rechaza_el_nivel_antes_de_la_ia(monkeypatch) -> None:
     """U16-2 (C5): 422 sin llamar a la IA (si no, sería el 503 local)."""
     docente = AuthContext(profile_id=uuid4(), role="teacher", tenant_id=uuid4(),

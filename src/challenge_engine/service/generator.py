@@ -31,6 +31,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.challenge_engine.schemas import (
+    CefrLevel,
     ChallengeCreate,
     ChallengeQuestionIn,
 )
@@ -128,7 +129,7 @@ def parse_model_output(raw_text: str) -> dict[str, Any]:
 # =============================================================================
 async def generate_challenge(
     *,
-    cefr_level: str,
+    cefr_level: CefrLevel,
     skill: str,
     topic: str,
     num_questions: int = 3,

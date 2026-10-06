@@ -13,7 +13,7 @@ REGLA CRÍTICA (spec §9):
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal, get_args
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, Strict
@@ -28,11 +28,18 @@ _STRICT = ConfigDict(strict=True, extra="forbid")
 # "10" también pasaría a int y "yes" a bool (medido en la espec).
 UUIDIn = Annotated[UUID, Strict(False)]
 
-# CEFR levels aceptados por el CHECK constraint de challenges.cefr_level.
-_CEFR_LEVELS = (
-    "A1", "A1+", "A2", "A2+", "B1-", "B1", "B1+", "B2", "B2+", "C1", "C1+",
-)
-_CHALLENGE_TYPES = ("multiple_choice", "open", "fill_blank", "listening")
+# BUG-16 (docs/ESPEC_bug16.md): los valores con CHECK de enum en `challenges`
+# se validan en el esquema de ENTRADA, con el mismo enum y en el mismo orden
+# que la migración 010. Antes eran `str`: un valor fuera del enum llegaba a la
+# base, el CHECK lo rechazaba y la API respondía 500. Ahora es un 422 con el
+# campo exacto, antes de tocar la base o la IA.
+# Una sola fuente: las tuplas de abajo salen del Literal. `U16-1` compara el
+# Literal con el CHECK de la base viva: si alguien cambia uno sin el otro, rojo.
+ChallengeType = Literal["multiple_choice", "open", "fill_blank", "listening"]
+CefrLevel = Literal["A1", "A1+", "A2", "A2+", "B1-", "B1", "B1+", "B2", "B2+", "C1", "C1+"]
+
+_CEFR_LEVELS: tuple[str, ...] = get_args(CefrLevel)
+_CHALLENGE_TYPES: tuple[str, ...] = get_args(ChallengeType)
 _CHALLENGE_STATUSES = ("active", "inactive", "archived")
 
 
@@ -62,8 +69,8 @@ class ChallengeCreate(BaseModel):
 
     title: str
     description: str
-    challenge_type: str = "multiple_choice"
-    cefr_level: str | None = None
+    challenge_type: ChallengeType = "multiple_choice"
+    cefr_level: CefrLevel | None = None
     skill: str | None = None
     topic: str | None = None
     specific_instructions: str | None = None
@@ -80,7 +87,8 @@ class ChallengeGenerateRequest(BaseModel):
 
     model_config = _STRICT
 
-    cefr_level: str
+    # Literal y no `str`: un nivel inválido se rechaza ANTES de llamar a la IA.
+    cefr_level: CefrLevel
     skill: str  # grammar | vocabulary | reading | listening | writing
     topic: str
     num_questions: int = Field(default=3, ge=1, le=10)
