@@ -186,7 +186,10 @@ TRAMPOSOS: dict[str, tuple[Aplicar, list[tuple[Callable[..., None], str]]]] = {
         (lp.test_ap1_jwt_de_otro_proyecto_da_401,
          r"/auth/me con el token de otro proyecto: 200"),
     ]),
-    "ZP15": (_parche(auth_service, "jwt", _JoseSin(verify_exp=False)), [
+    # H-10 (ESPEC_endurecimiento_piloto): `validate_jwt` ahora pide `require_exp`, y
+    # python-jose vuelve a encender `verify_exp` cuando un claim es obligatorio. Para
+    # seguir siendo "sin verificar exp", el tramposo apaga las dos.
+    "ZP15": (_parche(auth_service, "jwt", _JoseSin(verify_exp=False, require_exp=False)), [
         (lp.test_ap2_jwt_vencido_da_401, r"/auth/me con el token vencido: 200"),
     ]),
     "ZP3": (_parche(auth_service, "nombre_visible", _nombre_del_perfil), [
