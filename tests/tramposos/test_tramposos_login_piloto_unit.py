@@ -8,8 +8,8 @@ que usa el código (en su módulo), se corre el cuerpo del test real y se exige
   ZP20  la lista indexada solo por path, sin el método (H-4)       -> UP3
   ZP10  `StudentEnrollIn.model_fields["documento_id"]` con un
         `pattern` que admite `:`                                  -> UP1
-
-ZP16 llega con su paso (ESPEC §6).
+  ZP16  `leer_csv` no antepone el prefijo de la institución a
+        un `CODIGO`                                               -> UP2
 """
 from __future__ import annotations
 
@@ -19,8 +19,10 @@ import pytest
 from pydantic.fields import FieldInfo
 
 from src.auth import service as auth_service
+from src.onboarding import csv_personas as csv_mod
 from src.teachers.schemas import StudentEnrollIn
 from tests.auth import test_permitidas_unit as up
+from tests.onboarding import test_csv_personas as csvp
 from tests.teachers import test_m3_documento as m3d
 
 Aplicar = Callable[[pytest.MonkeyPatch], None]
@@ -44,6 +46,11 @@ def _campo_con_dos_puntos(mp: pytest.MonkeyPatch) -> None:
                FieldInfo(annotation=str, pattern=_PATRON_CON_DOS_PUNTOS))
 
 
+def _codigo_sin_prefijo(mp: pytest.MonkeyPatch) -> None:
+    """ZP16: el código interno queda tal cual, sin `<slug>_` (el `001` de todas es el mismo)."""
+    mp.setattr(csv_mod, "con_prefijo", lambda _slug, codigo: codigo)
+
+
 TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[], None], str]] = {
     "ZP7": (_permitidas(lambda *_: True), up.test_up3_permitidas_por_path_y_metodo,
             r"\('/auth/me', 'POST'\): True"),
@@ -51,6 +58,8 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[], None], str]] = {
              r"\('/auth/me', 'POST'\): True"),
     "ZP10": (_campo_con_dos_puntos, m3d.test_up1_una_sola_fuente_de_la_regex,
              r"'m3': '\^\[A-Za-z0-9_:-\]"),
+    "ZP16": (_codigo_sin_prefijo, csvp.test_up2_csv_del_alta,
+             r"'codigo_con_prefijo': \{'filas': \[\], 'errores': \[1\]\}"),
 }
 
 
