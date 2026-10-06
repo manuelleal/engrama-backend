@@ -3,6 +3,8 @@
     python -m src.onboarding alta --nombre "<institución>" --slug <slug> \\
         --monedas <n> --csv <ruta> --salida <ruta>
     python -m src.onboarding restablecer --slug <slug> --documento <doc> --salida <ruta>
+    python -m src.onboarding suspender --slug <slug> --documento <doc> [--solo-institucion]
+    python -m src.onboarding reactivar --slug <slug> --documento <doc>
 
 Credenciales, SOLO por variable de entorno: `DATABASE_URL`, `GOTRUE_URL` y
 `SUPABASE_SERVICE_ROLE_KEY`. La clave de servicio la usa únicamente esta CLI.
@@ -37,8 +39,11 @@ from src.onboarding.alta import Sesiones, correr_alta
 from src.onboarding.cuentas import CuentasAdmin, ErrorDeConfiguracion, gotrue_admin_del_entorno
 from src.onboarding.restablecer import correr_restablecer
 from src.onboarding.salida import dentro_del_repo
+from src.onboarding.suspension import correr_suspension
 
 SALIDA_OK, SALIDA_CON_ERRORES, SALIDA_NO_CORRIO = 0, 1, 2
+# Órdenes que solo tocan la base: no usan GoTrue ni escriben credenciales.
+SOLO_BASE = ("suspender", "reactivar")
 
 
 def _monedas(texto: str) -> int:
@@ -66,6 +71,14 @@ def argumentos(argv: Sequence[str]) -> argparse.Namespace:
     rest.add_argument("--slug", required=True)
     rest.add_argument("--documento", required=True, help="el documento_id tal como está en la base")
     rest.add_argument("--salida", required=True, type=Path)
+    susp = sub.add_parser("suspender", help="corta el acceso de una persona (403 en todo)")
+    susp.add_argument("--solo-institucion", action="store_true",
+                      help="desactiva solo la membresía; el perfil (global) no se toca")
+    react = sub.add_parser("reactivar", help="deshace una suspensión")
+    for orden in (susp, react):
+        orden.add_argument("--slug", required=True)
+        orden.add_argument("--documento", required=True,
+                           help="el documento_id tal como está en la base")
     return p.parse_args(argv)
 
 
@@ -86,9 +99,15 @@ def sesiones_del_entorno() -> Sesiones:
                               autoflush=False)
 
 
-async def _correr(a: argparse.Namespace, cuentas: CuentasAdmin,
+async def _correr(a: argparse.Namespace, cuentas: CuentasAdmin | None,
                   sesiones: Sesiones) -> tuple[dict[str, Any], bool]:
     """(resumen, ¿hubo errores?)."""
+    if a.orden in SOLO_BASE:
+        datos = await correr_suspension(
+            slug=a.slug, documento_id=a.documento, activo=a.orden == "reactivar",
+            solo_institucion=getattr(a, "solo_institucion", False), sesiones=sesiones)
+        return datos, "error" in datos
+    assert cuentas is not None  # `main` ya lo exigió para estas órdenes
     if a.orden == "alta":
         resumen = await correr_alta(nombre=a.nombre, slug=a.slug, monedas=a.monedas,
                                     contenido=a.csv.read_bytes(), salida=a.salida,
@@ -104,7 +123,8 @@ def main(argv: Sequence[str] | None = None, *, cuentas: CuentasAdmin | None = No
     """Punto de entrada. `cuentas` y `sesiones` se inyectan en los tests."""
     a = argumentos(sys.argv[1:] if argv is None else argv)
     # Antes de TODO lo demás: una contraseña nunca debe poder caer en el repo.
-    if dentro_del_repo(a.salida):
+    con_credenciales = a.orden not in SOLO_BASE
+    if con_credenciales and dentro_del_repo(a.salida):
         print("--salida no puede quedar dentro del repo del backend: no se escribió nada",
               file=sys.stderr)
         return SALIDA_NO_CORRIO
@@ -112,7 +132,8 @@ def main(argv: Sequence[str] | None = None, *, cuentas: CuentasAdmin | None = No
         print(f"no existe el CSV {a.csv}", file=sys.stderr)
         return SALIDA_NO_CORRIO
     try:
-        cuentas = cuentas if cuentas is not None else gotrue_admin_del_entorno()
+        if con_credenciales and cuentas is None:
+            cuentas = gotrue_admin_del_entorno()
         sesiones = sesiones if sesiones is not None else sesiones_del_entorno()
     except ErrorDeConfiguracion as exc:
         print(str(exc), file=sys.stderr)

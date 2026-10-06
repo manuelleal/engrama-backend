@@ -25,6 +25,7 @@ from src.auth.schemas import AuthContext
 from src.auth.service import (
     build_auth_context,
     exigir_clave_definitiva,
+    exigir_cuenta_activa,
     exigir_perfil,
     get_memberships,
     get_profile,
@@ -85,6 +86,7 @@ async def get_current_user(
         ) from exc
 
     profile = exigir_perfil(await get_profile(db, profile_id))
+    exigir_cuenta_activa(profile)  # suspendida por el operador: 403 en todo (H-8)
     # La plantilla de la ruta (p. ej. "/auth/me"), no la URL concreta. FastAPI
     # la pone en el scope al elegir la ruta; si faltara, no se permite.
     ruta = request.scope.get("route")

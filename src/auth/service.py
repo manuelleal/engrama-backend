@@ -119,6 +119,17 @@ def exigir_perfil(profile: Profile | None) -> Profile:
     return profile
 
 
+# H-8 (ESPEC_endurecimiento_piloto): `profiles.is_active = false` corta el acceso
+# en TODA ruta, al instante (se lee de la base en cada petición).
+SUSPENDIDA = "account_suspended"
+
+
+def exigir_cuenta_activa(profile: Profile) -> None:
+    """403 `account_suspended` si el operador suspendió la cuenta."""
+    if not profile.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=SUSPENDIDA)
+
+
 # =============================================================================
 # 3.2b Contraseña temporal (ESPEC_login_piloto §1.5)
 # =============================================================================
