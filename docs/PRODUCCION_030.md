@@ -190,3 +190,21 @@ Origen: `docs/ESPEC_autorregistro.md` §7 y §1.9, 2026-10-06. Medido solo en lo
 - [ ] **Los textos** del aviso, de "soy mayor de edad" y del 201 ("tu profe debe aprobarte; si ya tenías cuenta con ese correo…"), aprobados (ERR-16). El autorregistro es **solo para mayores de edad**.
 - [ ] **Auditoría** de la ruta pública antes del túnel (011, encargo 1.7).
 
+# Antes de aplicar la 036 y de ofrecer el canal de solicitudes de datos
+
+Origen: `docs/ESPEC_solicitud_datos.md`, 2026-10-06. **No es un concepto jurídico.** Requiere el sí de Christiam.
+
+- [ ] **Respaldo** antes de migrar. La 036 no se baja en producción (se perderían las solicitudes y su traza).
+- [ ] **La 036 va antes o junto con el código** (sin la tabla, las 4 rutas dan 500).
+- [ ] **Alguien mira la bandeja.** El backend no avisa: el admin de cada institución debe revisar `GET /admin/solicitudes-datos`. Los plazos los fija la ley, no el sistema.
+- [ ] **Responder no ejecuta nada.** Suprimir, rectificar o entregar los datos es un trámite manual del operador, que después deja la respuesta en la solicitud.
+- [ ] **Procedimiento manual de supresión** (borrador; lo revisa un abogado y se prueba en local antes):
+  1. respaldo;
+  2. `python -m src.onboarding suspender --slug … --documento …` (corta el acceso al instante);
+  3. borrar la cuenta en GoTrue;
+  4. `audit_logs.user_id` referencia al perfil **sin** `ON DELETE`: antes de borrar el perfil, poner en nulo ese `user_id` en sus filas de auditoría (o decidir conservarlas). Sin eso, el `DELETE` del perfil falla (medido);
+  5. borrar el perfil: caen en cascada sus membresías, consentimientos y solicitudes de inscripción; sus `solicitudes_datos` **se conservan sin la persona**. Las tablas de juego (intentos, asistencia, billetera) tienen sus propias referencias: **no está medido** cuáles bloquean el borrado;
+  6. vaciar el `mensaje` de sus solicitudes si trae datos personales;
+  7. responder la solicitud (`resuelta`), con lo que se hizo.
+- [ ] **Quien no puede entrar no tiene canal en la app** (contraseña temporal sin cambiar, sin membresía activa, suspendido): hace falta decir en el aviso a quién acudir.
+

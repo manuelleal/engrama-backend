@@ -139,6 +139,33 @@ ALTER TABLE solicitudes_datos ENABLE ROW LEVEL SECURITY;
 
 Matriz a medir antes de aceptar: 9 tramposos × 8 columnas (SD1-SD6, MG36 y HS1) = **72 celdas**, más RS1 con la bandera.
 
+### Matriz medida: 72 celdas, más RS1 (paso 3; ERR-19 y ERR-23)
+**Cómo se midió** (2026-10-06, sobre el código del paso 2): una corrida de pytest por tramposo, aplicado a las 8 columnas por una fixture `autouse`. La fila base dio 8 verdes.
+
+**Resultado: 20 rojas, todas por aserción; 0 por excepción; 52 verdes.**
+
+| Id | Rojas medidas | RS1 (con la bandera) |
+|---|---|---|
+| XS1 | SD2, HS1 y **SD5** | verde |
+| XS2 | SD1, SD2, **SD3**, **SD5** y **HS1** | roja (as) |
+| XS3 | SD5 y HS1 | roja (as) |
+| XS4 | SD5 y HS1 | verde |
+| XS5 | SD3 y HS1 | verde |
+| XS6 | SD3 y HS1 | verde |
+| XS7 | SD4 | roja (as) |
+| XS8 | SD6 | verde |
+| XS9 | SD5 y HS1 | verde |
+
+**Contra la predicción (ERR-23; ningún test se tocó para que calzara):**
+- **XS2 × SD4 salió verde** (se predijo roja): el tramposo cuenta y bloquea con el mismo perfil equivocado, así que el tope sigue cortando en la sexta.
+- **XS2 × SD3, SD5 y HS1, y XS1 × SD5,** no estaban: el control de SD3 (1000 caracteres) sí escribe, y sin otro perfil da 500; SD5 y HS1 leen la lista del usuario.
+- **XS8 cambió de mecanismo antes del commit.** Borrar el perfil no se puede: `audit_logs.user_id` referencia a `profiles` sin `ON DELETE`, y la persona tiene la auditoría de su propia solicitud, así que la base responde 500. El tramposo quedó como "resolver un `suprimir` **desactiva** el perfil", que sí llega a la aserción de SD6. **Hallazgo para el operador:** hoy un perfil con auditoría a su nombre no se borra con un `DELETE` simple (abajo, en `PRODUCCION_030.md`).
+- XS8 × HS1: verde, como estaba condicionado.
+
+**Medido (2026-10-06): 435 passed + 17 skipped; 118 no-integ; `ruff check .` 0 y `mypy .` 0 (244 archivos).** Igual a §4. HS1 escribió el archivo con el contenido exacto de §3. **RS1 pasó en su primera corrida.** Las ediciones a lo existente fueron exactamente las de §1.7.
+
+**No medido:** el `downgrade` por la CLI de Alembic (MG36 corre las mismas tuplas de SQL); dos envíos realmente simultáneos contra el tope de 5 (el candado está, sin test de concurrencia).
+
 ## 4. Cuentas (ERR-10)
 | Grupo | integ | no-integ |
 |---|---|---|
