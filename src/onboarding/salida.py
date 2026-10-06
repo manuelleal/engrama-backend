@@ -7,8 +7,10 @@ el operador entrega a mano y después borra. Reglas:
   - Se abre en modo *append*: una corrida nueva no borra lo anterior.
   - Cada cuenta se anota apenas se crea, para que una caída a mitad de camino
     no deje una cuenta cuya contraseña nadie conoce.
-  - Si la ruta queda DENTRO del repo del backend, la CLI sale con 2 antes de
-    escribir nada: una contraseña nunca debe poder terminar en un commit.
+  - Si la ruta queda DENTRO del repo del backend o de cualquier repositorio
+    git, la CLI sale con 2 antes de escribir nada: una contraseña nunca debe
+    poder terminar en un commit.
+  - El archivo nace con permiso 0600.
 """
 from __future__ import annotations
 
@@ -34,9 +36,20 @@ def clave_temporal() -> str:
                     for _ in range(3))
 
 
+def _tiene_git_arriba(ruta: Path) -> bool:
+    """¿Alguna carpeta, desde la del archivo hacia la raíz, tiene un `.git`?"""
+    return any((carpeta / ".git").exists() for carpeta in ruta.parents)
+
+
 def dentro_del_repo(ruta: Path) -> bool:
-    """¿La ruta, ya resuelta (sin `..` ni enlaces), cae dentro del repo del backend?"""
-    return ruta.resolve().is_relative_to(RAIZ_BACKEND)
+    """¿La ruta, ya resuelta, cae dentro del backend o de CUALQUIER repositorio git?
+
+    H-11: sin excepción para rutas ignoradas. Saber si una ruta está ignorada
+    exige ejecutar git y confiar en un `.gitignore` que puede cambiar; lo
+    simple y seguro es que las contraseñas nunca vivan dentro de un repo.
+    """
+    resuelta = ruta.resolve()
+    return resuelta.is_relative_to(RAIZ_BACKEND) or _tiene_git_arriba(resuelta)
 
 
 def anotar(ruta: Path, *, nombre: str, correo: str, rol: str, grupos: tuple[str, ...],
@@ -44,7 +57,10 @@ def anotar(ruta: Path, *, nombre: str, correo: str, rol: str, grupos: tuple[str,
     """Agrega UNA fila al archivo de credenciales (con cabecera si el archivo nace)."""
     ruta.parent.mkdir(parents=True, exist_ok=True)
     nuevo = not ruta.exists() or ruta.stat().st_size == 0
-    with ruta.open("a", encoding="utf-8", newline="") as archivo:
+    # H-11: el archivo NACE con permiso 0600 (antes nacía con el umask y se
+    # cerraba después). En Windows el modo no restringe; en el servidor, sí.
+    descriptor = os.open(ruta, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    with open(descriptor, "a", encoding="utf-8", newline="") as archivo:
         escritor = csv.writer(archivo)
         if nuevo:
             escritor.writerow(COLUMNAS_SALIDA)

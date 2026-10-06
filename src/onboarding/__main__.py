@@ -125,7 +125,7 @@ def main(argv: Sequence[str] | None = None, *, cuentas: CuentasAdmin | None = No
     # Antes de TODO lo demás: una contraseña nunca debe poder caer en el repo.
     con_credenciales = a.orden not in SOLO_BASE
     if con_credenciales and dentro_del_repo(a.salida):
-        print("--salida no puede quedar dentro del repo del backend: no se escribió nada",
+        print("--salida no puede quedar dentro de un repositorio git: no se escribió nada",
               file=sys.stderr)
         return SALIDA_NO_CORRIO
     if a.orden == "alta" and not a.csv.is_file():
