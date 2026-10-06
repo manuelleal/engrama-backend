@@ -223,6 +223,29 @@ Solo se **agregan** campos; ninguno previo desaparece:
     - acepta `fallar_en: set[documento]`, para que `crear` falle en OP8;
     - acepta un observador asíncrono que, **al entrar a `crear`**, lee `force_password_reset` del perfil **desde otra conexión** (el engine `NullPool` del fixture). Así solo ve lo que ya está commiteado.
 
+**Errata y precisiones del paso 6 (escritas antes de commitear el código; regla 8).** Ningún criterio (C14, C16-C24) cambia.
+
+*Erratas (la espec decía otra cosa):*
+- **Archivos del paquete.** Además de `csv_personas.py`, `alta.py` y `__main__.py`, `src/onboarding/` lleva `cuentas.py` (el puerto `CuentasAdmin`, `ErrorCuenta` y el adaptador `GoTrueAdmin`), `salida.py` (la contraseña temporal y el archivo de credenciales) y `restablecer.py`. Motivo: una responsabilidad por archivo y ninguno pasa de 400 líneas (§5); además, ZP17 parchea `restablecer.marcar_clave_temporal` sin tocar el alta.
+- **Archivo de los tramposos del alta.** ZP1, ZP11-ZP13 y ZP17-ZP19 viven en `tests/tramposos/test_tramposos_login_piloto_alta.py`, no en `test_tramposos_login_piloto.py`: los tests del alta piden `tmp_path` y `capsys`, y el archivo original pasaría de 400 líneas. ZP16 sí va en `..._unit.py`. Las cuentas no cambian.
+- **Mecanismo de ZP16 (medido, ERR-23).** Sin el prefijo, el código `7` **no** queda como documento `7`: no cumple `DOC_ID_RE` (mínimo 3 caracteres) y sale como **error de fila**. UP2 sigue rojo por aserción, con `'codigo_con_prefijo': {'filas': [], 'errores': [1]}`. Además cruza dos casos del mismo UP2: el `CODIGO` de 28 caracteres deja de pasar de 32 y entra como válido.
+- **El doble y `fallar_en`.** `crear` recibe el `id`, no el documento: `CuentasFalsas` recibe también `sesiones` (las del fixture) y traduce `id → documento_id` con una consulta. Con `id = None` (ZP1) no falla a nadie.
+
+*Precisiones (la espec no lo decía; todas fallan cerrado):*
+- **CSV.** También son error de fila: nombre vacío; correo sin exactamente una `@`; **un documento con dos correos** (una persona es un documento y un correo); una fila repetida (mismo documento y grupo). El `grupo` de un `admin` se ignora. Un CSV sin cabecera o al que le faltan columnas es un error en la fila 0. Un CSV con solo la cabecera es válido (0 personas; OP1 lo usa para crear la institución sola).
+- **Número de fila:** cuenta las filas de **datos** desde 1 (sin la cabecera ni las líneas vacías), como M4.
+- **Una sola transacción para la institución y las personas** (más estricto que §1.7 paso 3): si una fila choca con la base, tampoco queda la institución recién creada.
+- **Membresía `admin` o `teacher` que ya existe:** no se pisa su nombre. Si tiene otro rol o está inactiva, es un error de esa fila y ROLLBACK de todo, igual que el 409 de M3.
+- **`profiles.role`** del perfil que crea el alta para un admin o un profe es ese rol (M3 pone `student`). No da permisos: el rol que cuenta es el de la membresía (§1.4).
+- **Salida del proceso:** 0 = todo hecho o ya estaba; 1 = algo no se hizo (el resumen dice qué fila); 2 = no corrió: argumentos inválidos, falta `DATABASE_URL`, `GOTRUE_URL` o `SUPABASE_SERVICE_ROLE_KEY`, no existe el CSV, o `--salida` cae dentro del repo.
+- **Resumen JSON de `alta`** (una línea en stdout): `institucion`, `institucion_creada`, `personas`, `perfiles_nuevos`, `membresias_nuevas`, `grupos_nuevos`, `cuentas_nuevas`, `cuenta_existente`, `cuenta_con_otro_correo` y `errores: [{fila, motivo}]`. `cuenta_existente` cuenta **todas** las cuentas que ya existían; `cuenta_con_otro_correo` es el subconjunto cuyo correo difiere del CSV (C19).
+- **Resumen de `restablecer`:** `{"institucion", "restablecidas": 1}` o `{"institucion", "restablecidas": 0, "error"}`.
+- **`restablecer --documento`** es el `documento_id` tal como está en la base (opaco): los dígitos, o el código ya con su prefijo (`sena_7`). Un documento que no existe y uno de otra institución dan el **mismo** mensaje.
+- **`--salida`:** el `rol` va en español (`estudiante`, `profe`, `admin`) y un profe con varios grupos los lleva unidos con ` | `.
+- **La CLI no pasa por `src.shared.config`:** arma sus sesiones con `DATABASE_URL`, así que no necesita `SUPABASE_JWT_SECRET`.
+- **GoTrue caído o clave de servicio mala:** la base ya se escribió cuando se llega a las cuentas. Cada persona queda como error de su fila (salida 1), en el estado "perfil con bandera, sin cuenta" de arriba, y la próxima corrida la completa.
+- **Arnés:** OP1-OP8 y UP2 afirman con mensaje (`f"OP2: {observado}"`). El diff de pytest para dos dicts recorta y no tiene orden fijo, y la regex de cada tramposo necesita ver el mecanismo completo.
+
 ### 1.8 Migración: **ninguna**
 Nada de esto cambia el esquema: `force_password_reset` existe desde la 002, `Membership.full_name` desde la 032 y `created_at` desde la 003.
 - **El piloto no toma la 034.**
