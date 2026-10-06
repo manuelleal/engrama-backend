@@ -41,7 +41,7 @@ SEMILLA = 13
 
 # Contenido exacto (ESPEC §5). Si difiere se reporta; no se ajusta para que pase.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "038_catalogo_nodos", "semilla": 13, "estudiantes": [4, 4],
+    "alembic_version": "039_grader", "semilla": 13, "estudiantes": [4, 4],
     "reto_propio": [200, 200, 200, 200], "reto_otro_grupo": [404, 404, 404, 404],
     "intento_otro_grupo": [404, 404, 404, 404], "intentos_otro_grupo_en_base": 0,
     "primera_victoria": [20, 20, 20, 20], "segunda_victoria": [0, 0, 0, 0],

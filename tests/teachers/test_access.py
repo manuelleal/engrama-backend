@@ -139,9 +139,16 @@ _CATALOGO: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/teachers/curriculo/nodos", frozenset({"GET"})): "teacher",
 }
 
+# docs/ESPEC_grader_anillo.md: la puerta del Grader, con el Bearer del profe.
+_GRADER: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/grader/grupos/{group_code}/lista", frozenset({"GET"})): "teacher",
+    ("/grader/examenes/{codigo}", frozenset({"PUT"})): "teacher",
+    ("/grader/resultados", frozenset({"POST"})): "teacher",
+}
+
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS, **_EVENTOS,
-    **_CATALOGO}
+    **_CATALOGO, **_GRADER}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:

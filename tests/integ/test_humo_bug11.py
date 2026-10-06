@@ -32,7 +32,7 @@ APELLIDOS = ("Rojas", "Pardo", "Mejía", "Ortiz", "Lozano", "Castro", "Vargas", 
 
 # Contenido exacto (ESPEC §5). Si difiere se reporta; no se ajusta para que pase.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "038_catalogo_nodos", "semilla": 11, "documentos": 5,
+    "alembic_version": "039_grader", "semilla": 11, "documentos": 5,
     "perfiles": 5, "inscritos": [5, 5], "nombres_propios": [5, 5],
     "nombres_ajenos": [0, 0], "nombre_en_profiles": 0,
 }

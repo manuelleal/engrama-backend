@@ -33,7 +33,7 @@ NIVELES = ("a1", "a2", "a2p", "b1", "b1p", "b2", "b2p", "c1")
 
 # Contenido exacto (ESPEC §3). Si difiere se reporta; no se ajusta para que pase.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "038_catalogo_nodos", "semilla": 38,
+    "alembic_version": "039_grader", "semilla": 38,
     "primera": {"vigentes": 40, "reemplazados": 0, "nuevos": 40},
     "segunda": {"vigentes": 39, "reemplazados": 4, "nuevos": 3},
     "filas": 43, "api_nodos": 39, "fusionados_resuelven": True, "desconocido": 422,

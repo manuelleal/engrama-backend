@@ -6,6 +6,7 @@ from src.curriculo.router import router as curriculo_router
 from src.datos.router import admin as datos_admin_router
 from src.datos.router import usuario as datos_usuario_router
 from src.engrama_core.router import router as core_router
+from src.grader.router import router as grader_router
 from src.registro.router import docente as registro_docente_router
 from src.registro.router import publico as registro_publico_router
 from src.teachers.admin_router import router as admin_router
@@ -36,6 +37,9 @@ app.include_router(events_router, prefix="/events", tags=["eventos"])
 # El catálogo de nodos del mapa curricular, para el selector del profe
 # (docs/ESPEC_catalogo_nodos.md).
 app.include_router(curriculo_router, prefix="/teachers", tags=["curriculo"])
+# La puerta del Grader: lista numerada, examen impreso y hojas calificadas, con el
+# Bearer del profe (docs/ESPEC_grader_anillo.md).
+app.include_router(grader_router, prefix="/grader", tags=["grader"])
 
 
 @app.get("/health")

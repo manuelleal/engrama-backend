@@ -38,7 +38,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -1384,4 +1384,159 @@ class CurriculumNode(Base):
         CheckConstraint("char_length(id) BETWEEN 1 AND 128", name="curriculum_nodes_id_check"),
         CheckConstraint("replaced_by IS NULL OR replaced_by <> id",
                         name="curriculum_nodes_replaced_check"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# 039 — la puerta del Grader (docs/ESPEC_grader_anillo.md §1.5 y §9.4)
+# -----------------------------------------------------------------------------
+class GraderListNumber(Base):
+    """El número de lista de un estudiante en un grupo. Estable; no se reutiliza."""
+
+    __tablename__ = "grader_list_numbers"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    group_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("groups.id", ondelete="CASCADE"), nullable=False
+    )
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    numero: Mapped[int] = mapped_column(Integer, nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("group_id", "numero", name="grader_list_numbers_group_numero_key"),
+        UniqueConstraint("group_id", "profile_id", name="grader_list_numbers_group_profile_key"),
+        CheckConstraint("numero BETWEEN 1 AND 9999", name="grader_list_numbers_numero_check"),
+    )
+
+
+class GraderExam(Base):
+    """Un examen impreso que registró el profe. Idempotente por `(tenant_id, codigo)`."""
+
+    __tablename__ = "grader_exams"
+
+    id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    group_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("groups.id", ondelete="CASCADE"), nullable=False
+    )
+    codigo: Mapped[str] = mapped_column(Text, nullable=False)
+    huella: Mapped[str] = mapped_column(Text, nullable=False)
+    titulo: Mapped[str] = mapped_column(Text, nullable=False)
+    nivel: Mapped[str] = mapped_column(Text, nullable=False)
+    n_items: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_by: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "codigo", name="grader_exams_tenant_codigo_key"),
+        CheckConstraint("huella ~ '^[0-9a-f]{64}$'", name="grader_exams_huella_check"),
+        CheckConstraint("n_items BETWEEN 1 AND 200", name="grader_exams_n_items_check"),
+    )
+
+
+class GraderExamItem(Base):
+    """Un ítem del examen, con sus nodos del mapa (ids vigentes del catálogo)."""
+
+    __tablename__ = "grader_exam_items"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    exam_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("grader_exams.id", ondelete="CASCADE"), nullable=False
+    )
+    posicion: Mapped[int] = mapped_column(Integer, nullable=False)
+    item_id: Mapped[str] = mapped_column(Text, nullable=False)
+    origen: Mapped[str] = mapped_column(Text, nullable=False)
+    nivel: Mapped[str] = mapped_column(Text, nullable=False)
+    destreza: Mapped[str] = mapped_column(Text, nullable=False)
+    tema: Mapped[str] = mapped_column(Text, nullable=False)
+    enunciado: Mapped[str] = mapped_column(Text, nullable=False)
+    correcta_texto: Mapped[str] = mapped_column(Text, nullable=False)
+    explicacion: Mapped[str] = mapped_column(Text, nullable=False)
+    nodos: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'")
+    )
+
+    __table_args__ = (
+        UniqueConstraint("exam_id", "item_id", name="grader_exam_items_exam_item_key"),
+        CheckConstraint("origen IN ('oficial','docente')",
+                        name="grader_exam_items_origen_check"),
+        Index("idx_grader_exam_items_nodos", "nodos", postgresql_using="gin"),
+    )
+
+
+class GraderSheet(Base):
+    """Una hoja calificada. Una por `(examen, numero)`: reenviarla la reemplaza."""
+
+    __tablename__ = "grader_sheets"
+
+    id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    exam_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("grader_exams.id", ondelete="CASCADE"), nullable=False
+    )
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    numero: Mapped[int] = mapped_column(Integer, nullable=False)
+    forma: Mapped[str] = mapped_column(Text, nullable=False)
+    calificado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    aciertos: Mapped[int] = mapped_column(Integer, nullable=False)
+    total: Mapped[int] = mapped_column(Integer, nullable=False)
+    enviada_por: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id"), nullable=False
+    )
+    recibida_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("exam_id", "numero", name="grader_sheets_exam_numero_key"),
+        CheckConstraint("aciertos BETWEEN 0 AND total", name="grader_sheets_aciertos_check"),
+        Index("idx_grader_sheets_profile", "tenant_id", "profile_id"),
+    )
+
+
+class GraderSheetItem(Base):
+    """Lo que el estudiante marcó en un ítem. Nunca `dudosa`; nunca una imagen."""
+
+    __tablename__ = "grader_sheet_items"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    sheet_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("grader_sheets.id", ondelete="CASCADE"), nullable=False
+    )
+    item_id: Mapped[str] = mapped_column(Text, nullable=False)
+    estado: Mapped[str] = mapped_column(Text, nullable=False)
+    correcta: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    elegida_texto: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resuelta_por: Mapped[Any | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id"), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("sheet_id", "item_id", name="grader_sheet_items_sheet_item_key"),
+        CheckConstraint("estado IN ('marcada','vacia','doble')",
+                        name="grader_sheet_items_estado_check"),
+        CheckConstraint("NOT correcta OR estado = 'marcada'",
+                        name="grader_sheet_items_correcta_check"),
     )
