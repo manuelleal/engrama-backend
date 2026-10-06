@@ -13,6 +13,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 _STRICT = ConfigDict(strict=True, extra="forbid")
 
+# D1 (docs/ESPEC_login_piloto.md §1.6): el formato de `documento_id`, en UNA
+# sola fuente. Lo usan M3 (`StudentEnrollIn`, 422 si no cumple) y M4
+# (`roster.DOC_ID_RE`, error de fila). `documento_id` es OPACO: el documento
+# nacional (CC, TI, CE) tal cual o un código interno con el prefijo del tenant
+# (p. ej. `sena_001`, lo pone el alta). El backend nunca parsea el prefijo.
+# Vive aquí y no en `roster.py` porque `roster.py` ya importa de este módulo.
+DOC_ID_PATRON = r"^[A-Za-z0-9_-]{3,32}$"
+
 
 # =============================================================================
 # T1 — GET /teachers/groups
@@ -108,11 +116,16 @@ class TeacherAssignOut(BaseModel):
 # M3 — POST /admin/groups/{gid}/students
 # =============================================================================
 class StudentEnrollIn(BaseModel):
-    """Body de M3/M4: identidad mínima del estudiante (`app.js:3538`)."""
+    """Body de M3/M4: identidad mínima del estudiante (`app.js:3538`).
+
+    `documento_id` se valida con `DOC_ID_PATRON` (422 si no cumple). A
+    diferencia de M4, aquí NO se hace `.strip()`: M3 es JSON y no se limpia a
+    escondidas (`" 123"` da 422).
+    """
 
     model_config = _STRICT
 
-    documento_id: str
+    documento_id: str = Field(pattern=DOC_ID_PATRON)
     nombre_completo: str
 
 

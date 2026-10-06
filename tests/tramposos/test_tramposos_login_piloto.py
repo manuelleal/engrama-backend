@@ -16,6 +16,13 @@ automatiza la DIAGONAL (la negrita de §3); la matriz completa se mide aparte
         primera membresía                                      -> AP6
   ZP6   la bandera se lee del JWT (`user_metadata`), no de la BD -> AP9
   ZP8   `/auth/contrasena` llama a GoTrue y NO limpia la bandera -> AP10
+  ZP9   la ruta de M3 con `documento_id: str` (sin `pattern`)    -> AP11
+
+ZP9 no puede parchear el módulo: el modelo del cuerpo queda fijado al
+decorar la ruta. Reemplaza la `APIRoute` de M3 en `app.router.routes` (como
+`ESPEC_bug16.md` §3, pero con `setattr` de la lista, porque `setitem` no
+sirve para listas): mismo path, método,
+`status_code` y `response_model`; su endpoint llama al ORIGINAL del router.
 
 ZP7 y ZP20 (no-integ) viven en `test_tramposos_login_piloto_unit.py`.
 
@@ -24,7 +31,7 @@ que usa `src/auth/service.py` por uno que apaga UNA verificación. Así el
 tramposo alcanza a todo el que llama a `validate_jwt`, también a los tests
 que la importan por nombre (`tests/auth/test_validate_jwt.py`).
 
-Los tramposos ZP1, ZP9-ZP13 y ZP16-ZP19 llegan con sus pasos (ESPEC §6).
+Los tramposos ZP1, ZP11-ZP13 y ZP16-ZP19 llegan con sus pasos (ESPEC §6).
 """
 from __future__ import annotations
 
@@ -34,16 +41,24 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException, Response
+from fastapi.routing import APIRoute
 from jose import jwt as jose_jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import router as auth_router
 from src.auth import service as auth_service
+from src.auth.schemas import AuthContext
+from src.main import app
 from src.shared import deps as deps_mod
+from src.shared.db import get_db
+from src.shared.deps import require_admin
 from src.shared.models import Membership, Profile
+from src.teachers import admin_router
+from src.teachers.schemas import StudentEnrollIn, StudentEnrollOut
 from tests.auth import test_login_piloto as lp
 from tests.auth import test_login_piloto_clave as lpc
+from tests.teachers import test_m3_documento as m3d
 from tests.tramposos.test_tramposos_bug13 import correr
 
 pytestmark = pytest.mark.integ
@@ -117,6 +132,41 @@ async def _no_limpia(_db: AsyncSession, _profile_id: UUID) -> None:
     """ZP8: GoTrue aceptó la clave, pero la bandera queda como estaba."""
 
 
+class _M3SinPatron(StudentEnrollIn):
+    """ZP9: el cuerpo de M3 como antes de D1: `documento_id` sin `pattern`."""
+
+    documento_id: str
+
+
+_M3_BUENO = admin_router.enroll_student
+_RUTA_M3 = "/admin/groups/{gid}/students"
+
+
+async def _m3_sin_patron(
+    gid: UUID,
+    payload: _M3SinPatron,
+    response: Response,
+    auth: AuthContext = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> StudentEnrollOut:
+    return await _M3_BUENO(gid, payload, response, auth, db)
+
+
+def _ruta_m3_sin_patron(_integ: Any, mp: pytest.MonkeyPatch) -> AbstractContextManager[Any]:
+    # `monkeypatch.setitem` no sirve con una lista (usa `.get`): se reemplaza
+    # la lista entera por una copia con la ruta cambiada, y `undo` la devuelve.
+    rutas = list(app.router.routes)
+    i = next(i for i, r in enumerate(rutas) if isinstance(r, APIRoute)
+             and r.path == _RUTA_M3 and r.methods == {"POST"})
+    # Sin `dependency_overrides_provider`, la ruta nueva ignoraría el `get_db`
+    # de la fixture (iría a la base por defecto).
+    rutas[i] = APIRoute(_RUTA_M3, _m3_sin_patron, methods=["POST"],
+                        response_model=StudentEnrollOut, status_code=201,
+                        dependency_overrides_provider=app.router.dependency_overrides_provider)
+    mp.setattr(app.router, "routes", rutas)
+    return nullcontext()
+
+
 def _parche(objetivo: Any, nombre: str, valor: Any) -> Aplicar:
     def aplicar(_integ: Any, mp: pytest.MonkeyPatch) -> AbstractContextManager[Any]:
         mp.setattr(objetivo, nombre, valor)
@@ -159,6 +209,9 @@ TRAMPOSOS: dict[str, tuple[Aplicar, list[tuple[Callable[..., None], str]]]] = {
         # El diff ordena las claves: 'bandera' sale antes que 'llamadas' (el token).
         (lpc.test_ap10_cambio_de_contrasena,
          r"\{'valida': \{'bandera': True, 'llamadas': .*'mismo_token': 403"),
+    ]),
+    "ZP9": (_ruta_m3_sin_patron, [
+        (m3d.test_ap11_m3_valida_documento, r"'12\.345\.678': \(201, None\)"),
     ]),
 }
 

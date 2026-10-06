@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.shared.models import Group, Membership, Profile, TeacherGroup
-from src.teachers.schemas import GroupCreateIn
+from src.teachers.schemas import DOC_ID_PATRON, GroupCreateIn
 
 
 # =============================================================================
@@ -173,7 +173,8 @@ async def enroll_student(
 # =============================================================================
 # M4 — POST /admin/groups/{gid}/students/import
 # =============================================================================
-DOC_ID_RE = re.compile(r"^[A-Za-z0-9_-]{3,32}$")
+# La misma regex que M3, de una sola fuente (D1, `schemas.DOC_ID_PATRON`).
+DOC_ID_RE = re.compile(DOC_ID_PATRON)
 MAX_FILAS_CSV = 500
 
 

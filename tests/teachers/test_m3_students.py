@@ -69,5 +69,5 @@ def test_m3_d_403(integ) -> None:
 def test_m3_ab_404(integ) -> None:
     esc = armar(integ)
     r = client.post(f"/admin/groups/{esc.grupo_a}/students", headers=esc.h(integ, esc.ab),
-                     json={"documento_id": "x", "nombre_completo": "x"})
+                     json={"documento_id": "SINT-AB-404", "nombre_completo": "x"})
     assert r.status_code == 404, r.text
