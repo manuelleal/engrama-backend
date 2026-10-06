@@ -122,3 +122,96 @@ GR1 (no-integ) + GR2-GR9 (8 integ) + MG + humo + 10 tramposos = **20 integ y 1 n
 ## 8. Veredicto (cuando se implemente)
 - **FUNCIONA:** las cuentas medidas, la matriz medida, el humo escrito y los previos verdes.
 - **NO:** un profe ve o escribe en un grupo que no es suyo; una hoja queda dos veces; entra un `aciertos` falso o una `dudosa`; el nivel se mueve; un tramposo queda verde.
+
+---
+
+## 9. Ajuste del preregistro, escrito ANTES del código (2026-10-06, la sesión que implementa)
+Nada medido se mueve: el código no existe. Donde esta sección y las anteriores difieran, vale esta.
+
+### 9.1 De dónde parte
+Sobre `8e6e277` (el generador apagado y el catálogo de nodos, `ESPEC_catalogo_nodos.md`): **500 passed + 19 skipped y 133 no-integ**. La migración es la **`039_grader`** (la 038 es el catálogo).
+
+### 9.2 Cada ítem del examen lleva sus nodos (decisión 012 §6)
+- `items[].nodos`: lista de 0 a 8 ids del mapa. **Opcional** (si falta, `[]`): un Grader que todavía no los manda sigue funcionando.
+- Pasan por `curriculo.service.canonicos` (la única fuente): se guardan **los vigentes**; un reemplazado se guarda como su destino. Un id desconocido → **422 `nodo_desconocido`** con la lista, y **el examen no se registra** (0 filas). Con el catálogo sin cargar, un examen con nodos da 422; uno sin nodos entra.
+- Se guardan en `grader_exam_items.nodos TEXT[] NOT NULL DEFAULT '{}'`.
+- **Reapuntar:** `grader_exam_items` entra a `src/curriculo/reapuntar.py`. Si una carga posterior fusiona un nodo, los ítems ya guardados pasan al vigente en esa misma transacción.
+- Un ítem sin nodos se guarda y se califica igual; solo no alimentará el refuerzo (`ESPEC_refuerzo.md`).
+
+### 9.3 Precisiones del contrato
+- `codigo`: `^[A-Za-z0-9_-]{1,32}$`. El de la ruta y el del cuerpo deben ser iguales; si no, 422 `codigo_no_coincide`.
+- `huella`: 64 hexadecimales **en minúscula**.
+- `nivel` (del examen y de cada ítem) ∈ A1, A2, B1, B2, C1, C2. `destreza` 1 a 64 caracteres; `tema` hasta 256; `enunciado` 1 a 4.000; `correcta_texto` y `explicacion` hasta 4.000; `titulo` 1 a 200; `forma` 1 a 8; `elegida_texto` hasta 1.000 o `null`.
+- **Motivos de rechazo de una hoja**, en este orden (el primero que falle): `event_id_invalido`, `estado_invalido`, `items_no_coinciden` (los `item_id` no son exactamente los del examen), `total_no_coincide`, `aciertos_no_coinciden`, `resuelta_por_invalido` y `numero_sin_estudiante`.
+- **`numero_sin_estudiante`** = ese número no está asignado en la lista del grupo. Un estudiante que salió del grupo **después** de recibir su número conserva la hoja (el examen se presentó): su número sigue reservado y la hoja entra.
+- `correcta` se guarda como **acierto real**: `true` solo si `estado == "marcada"` y `correcta == true`. Un `doble` o `vacia` con `correcta: true` se guarda `false`.
+- La misma hoja dos veces **en el mismo lote**: la segunda reemplaza a la primera (cuenta en `reemplazadas`).
+- Lista: si el siguiente número pasaría de 9999, 409 `lista_llena`.
+- El `GET` de la lista toma un candado sobre la fila del grupo: dos peticiones a la vez no reparten el mismo número.
+
+### 9.4 Migración `039_grader`
+Las cinco tablas de §1.5, con `grader_exam_items.nodos` (§9.2), `ON DELETE CASCADE` desde el examen y la hoja hacia sus ítems, y un índice GIN sobre `grader_exam_items.nodos`. RLS activo y sin políticas en las cinco.
+
+**Ediciones a lo existente (ERR-25; `git grep -n alembic_version -- tests` de hoy):** `alembic_version` → `039_grader` en `tests/integ_db.py:66` y en los `HUMO_ESPERADO` de `tests/integ/test_humo_bug11.py:35`, `_bug13a15.py:44`, `_consentimiento.py:33`, `_autorregistro.py:35`, `_solicitudes_datos.py:34`, `_eventos_anillo.py:38` y `_catalogo_nodos.py:38`; `tablas_con_rls` 33 → 38; `tests/seguridad/test_sin_acceso.py` 34 y 34 → 39 y 39; `tests/teachers/test_access.py` gana las 3 rutas (`teacher`); `src/shared/models.py` (cinco modelos), `src/main.py` (el router), `src/curriculo/reapuntar.py` (una entrada) y `.gitignore` (el humo).
+
+### 9.5 Tests (reemplaza la tabla de §2 donde difiera)
+| Test | Criterios | Qué agrega este ajuste |
+|---|---|---|
+| GR1 (no-integ) | C1 | — |
+| GR2 | C2 | — |
+| GR3 | C3 | el `codigo` de la ruta distinto al del cuerpo → 422 |
+| GR4 | C4 | `correcta` guardada como acierto real |
+| GR5 | C5 | la misma hoja dos veces en un lote |
+| GR6 | C6 | **el mismo `codigo` registrado en Y → 201 y no choca con el de X** |
+| GR7 | C7 | cada motivo de §9.3 con su hoja; un `doble` con `correcta: true` no suma |
+| GR8 | C8 | — |
+| GR9 | C9 | — |
+| GR10 | **C11 (nuevo):** los nodos de cada ítem se guardan vigentes; el reemplazado, como su destino; un desconocido → 422 y 0 filas; sin nodos, entra; una carga que fusiona un nodo reapunta el ítem | todo |
+| MG39 | C10 | — |
+| HG1 / RG1 | humo y réplica | — |
+
+### 9.6 Tramposos (reemplaza la tabla de §3 donde difiera). Diagonal PREDICHA (ERR-23)
+| Id | Rompe | Parche | Rojo predicho | Verde predicho y por qué |
+|---|---|---|---|---|
+| ZG1 | Acepta al profe que no dicta el grupo | `access._requiere_asignacion` → nunca (la fuente de la barrera, ERR-26) | **GR6** (as: DO recibe 200) | los demás usan al dueño del grupo o al admin |
+| ZG2 | Inserta en vez de reemplazar | `service._guardar_hoja` con INSERT llano | **GR5** (as: 500, el UNIQUE lo frena) | GR4: una sola hoja |
+| ZG3 | Confía en `aciertos` | `reglas.aciertos_de` devuelve lo declarado | **GR7** (as) | GR4 y GR5: sus `aciertos` son honestos |
+| ZG4 | Acepta `dudosa` | `reglas.ESTADOS` con `dudosa` | **GR7** (as: 500; el CHECK de la base lo frena después) | — |
+| ZG5 | Recibir resultados escribe el nivel | `service._guardar_hoja` llama además a `record_confirmed_level` | **GR9** (as) | — |
+| ZG6 | Acepta otra `huella` | `service.misma_huella` → siempre | **GR3** (as: 200 en vez de 409) | — |
+| ZG7 | El número de quien salió se reutiliza | `listas.siguiente_numero` = el menor libre entre los activos | **GR2** (as) | — |
+| ZG8 | El examen se busca sin la institución | `service._examen` sin `tenant_id` | **GR6** (as: el mismo `codigo` en Y da 409 o 200 en vez de 201) | las hojas de Y contra el examen de X siguen en 404 por la barrera del grupo (segunda barrera; se declara) |
+| ZG9 | Un `doble` con `correcta: true` cuenta | `reglas.es_acierto` = `correcta` | **GR7** (as) | GR4: sin dobles marcados correctos |
+| ZG10 | Lote todo o nada | `service.recibir` rechaza el lote si hay una hoja mala | **GR7** (as) | los lotes sin rechazos |
+| ZG11 | Los nodos se guardan sin resolver | el servicio guarda `item.nodos` tal cual | **GR10** (as: queda el reemplazado y entra el desconocido) | GR3-GR9: sus ítems no llevan nodos |
+| ZG12 (no-integ) | `/auth/me` renombra `must_change_password` | `ProfileOut` sin ese campo | **GR1** (as) | — |
+| ZG13 | La carga no reapunta los ítems del examen | la entrada de `reapuntar.TABLAS` no hace nada | **GR10** (as) | MN1-MN3: sin exámenes |
+
+**Tramposos existentes sobre el camino tocado (ERR-26; `git grep -n "access_mod\|level_mod" -- tests/tramposos` de hoy):** ZR10 (`test_tramposos_autorregistro.py:218`) y los dos de `test_tramposos_grupos.py:252` y `:257` parchean `access` (`_requiere_asignacion` y `_base_stmt`); ZE11 y ZE13 (`test_tramposos_eventos.py:229` y `:235`) parchean `level`. Este bloque **no edita** `access.py` ni `level.py`: los usa. Predicción: los cinco siguen rojos por su razón; sus tests no llaman a `/grader`.
+
+**Matriz a medir:** 12 tramposos integ × 11 columnas (GR2-GR10, MG39 y HG1) = **132 celdas**, más RG1 con la bandera.
+
+### 9.7 Cuentas (reemplaza §4)
+| Grupo | integ | no-integ |
+|---|---|---|
+| GR2-GR10 | 9 | — |
+| MG39 y HG1 | 2 | — |
+| GR1 | — | 1 |
+| ZG1-ZG11 y ZG13 | 12 | — |
+| ZG12 | — | 1 |
+| **Nuevos** | **23** | **2** |
+| RG1 (saltado sin bandera) | 1 skipped | — |
+
+**passed:** 500 + 25 = **525**; **skipped:** 19 + 1 = **20**; **no-integ:** 133 + 2 = **135**; ruff 0 y mypy 0.
+
+### 9.8 Humo y réplica (precisa §3)
+**HG1** escribe `tests/_salida/humo_grader.json` antes de afirmar. Semilla `random.Random(39)`: 28 estudiantes, un examen de 15 ítems (5 con nodos del catálogo sintético), 28 hojas con respuestas al azar y 2 reenviadas con una corrección.
+```json
+{"alembic_version":"039_grader","semilla":39,"lista":28,"examen":201,"examen_otra_vez":200,
+ "primer_envio":{"recibidas":28,"reemplazadas":0,"rechazadas":0},
+ "reenvio":{"recibidas":2,"reemplazadas":2,"rechazadas":0},
+ "hojas":28,"items":420,"aciertos_totales":"A","con_nodos":5,"nivel_escrito":0,"monedas_movidas":0}
+```
+`A` sale de la semilla: se fija al medir el humo por primera vez con el código bueno, y desde ahí no se mueve.
+
+**RG1** (`ENGRAMA_REPLICA_GRADER=1`): tres instituciones con el mismo `group_code` y el mismo `codigo`; formas A y B; una hoja con todo `vacia`; un examen de 1 ítem; y un examen de 200 ítems.
