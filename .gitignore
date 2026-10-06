@@ -14,6 +14,8 @@ tests/_salida/humo_integ.json
 tests/_salida/humo_grupos.json
 tests/_salida/humo_bug11.json
 tests/_salida/humo_bug13a15.json
+tests/_salida/humo_login_piloto.json
+tests/_salida/humo_login_piloto_gotrue.json
 
 # Salidas sueltas de herramientas
 *_output.txt
