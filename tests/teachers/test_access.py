@@ -134,8 +134,14 @@ _EVENTOS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/events/batch", frozenset({"POST"})): "public",
 }
 
+# docs/ESPEC_catalogo_nodos.md: el catálogo de nodos para el selector del profe.
+_CATALOGO: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/teachers/curriculo/nodos", frozenset({"GET"})): "teacher",
+}
+
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
-    **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS, **_EVENTOS}
+    **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS, **_EVENTOS,
+    **_CATALOGO}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:

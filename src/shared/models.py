@@ -1353,3 +1353,35 @@ class ConfirmedLevel(Base):
         CheckConstraint("score IS NULL OR score BETWEEN 0 AND 100",
                         name="confirmed_levels_score_check"),
     )
+
+
+# -----------------------------------------------------------------------------
+# 038 — catálogo de nodos del mapa curricular (docs/ESPEC_catalogo_nodos.md)
+# -----------------------------------------------------------------------------
+class CurriculumNode(Base):
+    """Un nodo del mapa (`curriculo/nodos.json`). El `id` es texto opaco.
+
+    Sin `tenant_id`: el catálogo es de todos. `replaced_by` = el nodo vigente
+    cuando este se fusionó en otro (un nodo no se borra). Solo lo escribe la
+    orden `python -m src.curriculo cargar`.
+    """
+
+    __tablename__ = "curriculum_nodes"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    level: Mapped[str] = mapped_column(Text, nullable=False)
+    name_es: Mapped[str] = mapped_column(Text, nullable=False)
+    replaced_by: Mapped[str | None] = mapped_column(
+        Text, ForeignKey("curriculum_nodes.id"), nullable=True
+    )
+    map_version: Mapped[str] = mapped_column(Text, nullable=False)
+    loaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("char_length(id) BETWEEN 1 AND 128", name="curriculum_nodes_id_check"),
+        CheckConstraint("replaced_by IS NULL OR replaced_by <> id",
+                        name="curriculum_nodes_replaced_check"),
+    )

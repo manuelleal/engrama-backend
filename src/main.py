@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from src.auth.router import router as auth_router
 from src.challenge_engine.router import router as challenges_router
+from src.curriculo.router import router as curriculo_router
 from src.datos.router import admin as datos_admin_router
 from src.datos.router import usuario as datos_usuario_router
 from src.engrama_core.router import router as core_router
@@ -32,6 +33,9 @@ app.include_router(datos_admin_router, prefix="/admin", tags=["datos"])
 # La puerta de entrada del anillo: EVA y SET entregan eventos firmados
 # (docs/ESPEC_eventos_anillo.md). Sin JWT: la autentica la firma HMAC.
 app.include_router(events_router, prefix="/events", tags=["eventos"])
+# El catálogo de nodos del mapa curricular, para el selector del profe
+# (docs/ESPEC_catalogo_nodos.md).
+app.include_router(curriculo_router, prefix="/teachers", tags=["curriculo"])
 
 
 @app.get("/health")

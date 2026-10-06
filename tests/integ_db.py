@@ -63,8 +63,8 @@ RUTA_HUMO = RAIZ_BACKEND / "tests" / "_salida" / "humo_integ.json"
 # Valores exactos que el humo debe encontrar (espec §5). Si uno difiere se
 # reporta; NO se ajusta este diccionario para que pase.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "037_eventos_anillo",  # el expediente y el nivel confirmado
-    "tablas_con_rls": 32,  # 30 + las dos del anillo (037), con RLS y sin políticas
+    "alembic_version": "038_catalogo_nodos",  # el catálogo de nodos del mapa
+    "tablas_con_rls": 33,  # 32 + 1 (038), con RLS y sin políticas
     # 19 x 2 + 13 especiales (029); la 030 reemplaza 2, no suma; la 031 no toca políticas
     "politicas_public": 51,
     "auth_uid_existe": True,
