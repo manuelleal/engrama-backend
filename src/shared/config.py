@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     # el secreto JWT ni la clave de servicio.
     events_secret_live: str = Field(default="")
     events_secret_set: str = Field(default="")
+    # El generador viejo de retos con IA (`POST /challenges/generate`) nace
+    # APAGADO (ESPEC_generador_apagado; decisión 012, D6): no revisa créditos
+    # ni calidad. Apagado responde 503 `generador_apagado` sin llamar a la IA.
+    challenges_generate_enabled: bool = Field(default=False)
 
     # --- Database ---
     database_url: str = Field(

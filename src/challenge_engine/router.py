@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.schemas import AuthContext
@@ -42,10 +42,24 @@ from src.challenge_engine.schemas import (
 from src.challenge_engine.service import attempts as attempts_service
 from src.challenge_engine.service import challenges as challenges_service
 from src.challenge_engine.service import generator as generator_service
+from src.shared.config import settings
 from src.shared.db import get_db
 from src.shared.deps import get_current_user, require_teacher
 
 router = APIRouter()
+
+GENERADOR_APAGADO = "generador_apagado"
+
+
+def _exigir_generador_encendido() -> None:
+    """503 si el generador viejo con IA está apagado (lo está por defecto).
+
+    No tiene compuertas de calidad ni revisa créditos (decisión 012, D6): solo
+    corre si alguien lo enciende a propósito con `CHALLENGES_GENERATE_ENABLED`.
+    """
+    if not settings.challenges_generate_enabled:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail=GENERADOR_APAGADO)
 
 
 # =============================================================================
@@ -82,7 +96,8 @@ async def generate_challenge_endpoint(
     auth: AuthContext = Depends(require_teacher),
     db: AsyncSession = Depends(get_db),
 ) -> ChallengeOut:
-    """Genera un challenge con IA (Anthropic) y lo persiste."""
+    """Genera un challenge con IA (Anthropic) y lo persiste. Apagado por defecto: 503."""
+    _exigir_generador_encendido()  # antes de la IA: apagado no gasta ni escribe nada
     draft = await generator_service.generate_challenge(
         cefr_level=payload.cefr_level,
         skill=payload.skill,
