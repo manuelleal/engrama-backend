@@ -5,6 +5,8 @@ Expone:
   - GET  /auth/me       : mismo payload, para refrescar.
   - POST /auth/logout   : 200 OK + audit log (el logout real es frontend).
   - POST /auth/contrasena : cambia la contraseña temporal (ESPEC_login_piloto §1.5).
+  - POST /auth/consentimiento : registra la aceptación del aviso de datos
+    (ESPEC_consentimiento).
 
 Todos requieren un JWT válido vía `get_current_user`. El router no habla
 directamente con la DB salvo para logout (audit_logs).
@@ -16,7 +18,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.cuentas import CambioDeClave, CambioFallido, ClaveRechazada, get_cambio_de_clave
-from src.auth.schemas import AuthContext, CambioDeClaveIn, ProfileOut
+from src.auth.consentimiento import registrar_consentimiento, ultima_version
+from src.auth.schemas import (
+    AuthContext,
+    CambioDeClaveIn,
+    ConsentimientoIn,
+    ConsentimientoOut,
+    ProfileOut,
+)
 from src.auth.service import (
     Membresias,
     exigir_perfil,
@@ -41,7 +50,10 @@ async def _build_profile_payload(
     """
     profile = exigir_perfil(await get_profile(db, auth.profile_id))
     rows = await get_memberships(db, auth.profile_id)
-    return profile_to_schema(profile, Membresias(memberships_to_schema(rows), auth.tenant_id))
+    payload = profile_to_schema(profile, Membresias(memberships_to_schema(rows), auth.tenant_id))
+    # El consentimiento es de la persona: no depende del colegio activo.
+    return payload.model_copy(
+        update={"consent_version": await ultima_version(db, auth.profile_id)})
 
 
 @router.post("/session", response_model=ProfileOut, status_code=status.HTTP_200_OK)
@@ -132,3 +144,22 @@ async def cambiar_contrasena(
     await quitar_contrasena_temporal(db, auth.profile_id)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/consentimiento", response_model=ConsentimientoOut, status_code=status.HTTP_200_OK)
+async def aceptar_consentimiento(
+    payload: ConsentimientoIn,
+    auth: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ConsentimientoOut:
+    """Registra que el usuario autenticado aceptó esa versión del aviso de datos.
+
+    La persona sale del token (nadie registra por otro) y la fecha la pone la
+    base. Repetir la misma versión devuelve la fecha de la primera vez.
+    Con la contraseña temporal responde 403 `must_change_password`, como toda
+    ruta que no está en la lista de permitidas.
+    """
+    accepted_at = await registrar_consentimiento(
+        db, profile_id=auth.profile_id, tenant_id=auth.tenant_id, version=payload.version)
+    await db.commit()
+    return ConsentimientoOut(version=payload.version, accepted_at=accepted_at)

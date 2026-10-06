@@ -23,6 +23,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Identity,
     Boolean,
     CheckConstraint,
     Date,
@@ -1091,4 +1092,35 @@ __all__ = [
     "Announcement",
     "AIUsageLog",
     "AuditLog",
+    "Consentimiento",
 ]
+
+
+# -----------------------------------------------------------------------------
+# 034 — consentimientos (aviso de tratamiento de datos, Ley 1581)
+# -----------------------------------------------------------------------------
+class Consentimiento(Base):
+    """Una persona aceptó una versión del aviso — docs/ESPEC_consentimiento.md.
+
+    Es por perfil, no por institución. `id` es una identidad creciente: la
+    "última aceptada" se decide por `id`, no por la fecha.
+    """
+
+    __tablename__ = "consentimientos"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[str] = mapped_column(Text, nullable=False)
+    accepted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("profile_id", "version", name="consentimientos_perfil_version"),
+        CheckConstraint(
+            "char_length(version) BETWEEN 1 AND 32 AND version = btrim(version)",
+            name="consentimientos_version_check",
+        ),
+    )

@@ -102,6 +102,8 @@ _NUEVAS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
 # -----------------------------------------------------------------------------
 _LOGIN_PILOTO: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/auth/contrasena", frozenset({"POST"})): "user",
+    # docs/ESPEC_consentimiento.md: la aceptación del aviso de datos.
+    ("/auth/consentimiento", frozenset({"POST"})): "user",
 }
 
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]

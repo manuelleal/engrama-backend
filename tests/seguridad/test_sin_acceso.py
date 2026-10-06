@@ -67,13 +67,13 @@ D12_FUNCIONES = f"""
 
 def test_d12_catalogo_sin_privilegios_de_clientes(integ) -> None:
     """D12: 0 relaciones de `public` con privilegios de clientes y 0 funciones ejecutables."""
-    # Control 1: la consulta ve las 27 tablas (26 del modelo + alembic_version).
+    # Control 1: la consulta ve las 28 tablas (27 del modelo + alembic_version).
     tablas = integ.valor(
         "select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace "
         "where n.nspname = 'public' and c.relkind = 'r'"
     )
     # Control 2: el mismo tipo de chequeo SÍ detecta privilegios: service_role
-    # (el backend) tiene SELECT, INSERT, UPDATE y DELETE en las 27.
+    # (el backend) tiene SELECT, INSERT, UPDATE y DELETE en las 28.
     del_backend = integ.valor(
         "select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace "
         "where n.nspname = 'public' and c.relkind = 'r' "
@@ -82,9 +82,9 @@ def test_d12_catalogo_sin_privilegios_de_clientes(integ) -> None:
         "  and has_table_privilege('service_role', c.oid, 'UPDATE') "
         "  and has_table_privilege('service_role', c.oid, 'DELETE')"
     )
-    if (tablas, del_backend) != (27, 27):
+    if (tablas, del_backend) != (28, 28):
         raise PruebaRota(f"control D12: {tablas} tablas y service_role con acceso en "
-                         f"{del_backend}; se esperaban 27 y 27")
+                         f"{del_backend}; se esperaban 28 y 28")
     # Control 3: la consulta de funciones SÍ ve una ejecutable (la de la 030,
     # que `authenticated` ejecuta a propósito, en app_private).
     en_app_private = integ.valor(D12_FUNCIONES, esquema="app_private")

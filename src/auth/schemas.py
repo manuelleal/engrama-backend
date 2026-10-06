@@ -9,7 +9,7 @@ Fuentes de verdad:
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -59,6 +59,32 @@ class ProfileOut(BaseModel):
     # `profiles.force_password_reset`: la contraseña es temporal y hay que
     # cambiarla con `POST /auth/contrasena` antes de usar el resto de la API.
     must_change_password: bool
+    # La última versión del aviso de datos que aceptó esta persona, o None
+    # (docs/ESPEC_consentimiento.md). El cliente la compara con su versión
+    # vigente; el servidor no bloquea por esto.
+    consent_version: str | None = None
+
+
+class ConsentimientoIn(BaseModel):
+    """Body de `POST /auth/consentimiento`: SOLO la versión del aviso.
+
+    No hay `profile_id` ni `accepted_at` (y `extra="forbid"` los rechaza): la
+    persona es la del token y la fecha es la del servidor. 1 a 32 caracteres,
+    sin espacios al principio ni al final.
+    """
+
+    model_config = _STRICT
+
+    version: str = Field(min_length=1, max_length=32, pattern=r"^\S(.*\S)?$")
+
+
+class ConsentimientoOut(BaseModel):
+    """Respuesta: la versión guardada y cuándo se aceptó por primera vez."""
+
+    model_config = _STRICT
+
+    version: str
+    accepted_at: datetime
 
 
 class CambioDeClaveIn(BaseModel):

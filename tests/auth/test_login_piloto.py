@@ -291,7 +291,8 @@ def test_ap8_nombre_de_la_membresia(integ) -> None:
 # SP1 — C12: identidad de `/auth/me` para el caso de siempre
 # =============================================================================
 # Las claves que agrega esta espec (§1.4); SP1 las quita antes de comparar.
-CLAVES_NUEVAS_RAIZ = ("active_tenant_id", "must_change_password")
+# `consent_version` la agrega docs/ESPEC_consentimiento.md.
+CLAVES_NUEVAS_RAIZ = ("active_tenant_id", "must_change_password", "consent_version")
 CLAVES_NUEVAS_MEMBRESIA = ("full_name",)
 
 
