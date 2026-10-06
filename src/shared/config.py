@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     # lee `X-Forwarded-For`; con n, la IP del visitante es el valor n-ésimo
     # desde el final (ESPEC_autorregistro §1.6). La usa el límite de intentos.
     proxies_de_confianza: int = Field(default=0, ge=0, le=5)
+    # H-13: versiones del aviso de datos que se aceptan, separadas por comas
+    # (p. ej. "2026-10-v1"). Vacía = sin restricción (desarrollo). En el
+    # despliegue debe contener el AVISO_VERSION del cliente: si no, nadie
+    # puede aceptar el aviso.
+    aviso_versiones_validas: str = Field(default="")
 
     # --- Database ---
     database_url: str = Field(

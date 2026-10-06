@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth import consentimiento
 from src.auth.schemas import AuthContext
 from src.registro import codigos, decision, limite, service
 from src.registro.cuentas import CuentasDeRegistro, get_cuentas_de_registro
@@ -73,6 +74,8 @@ async def registrarse(
     Orden: cuerpo (422, antes de entrar aquí) -> configuración (503) -> límite
     (429) -> código (403, un solo cuerpo) -> 201 uniforme, o 502 si GoTrue falla.
     """
+    # Depende solo del cuerpo y de la configuración: va antes del límite (H-13).
+    consentimiento.exigir_version_permitida(payload.aviso_version)
     listas = _exigir_cuentas(cuentas)
     ip = limite.ip_del_visitante(request.client.host if request.client else None,
                                  request.headers.get("x-forwarded-for"),

@@ -18,6 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.cuentas import CambioDeClave, CambioFallido, ClaveRechazada, get_cambio_de_clave
+from src.auth import consentimiento
 from src.auth.consentimiento import registrar_consentimiento, ultima_version
 from src.auth.schemas import (
     AuthContext,
@@ -159,6 +160,7 @@ async def aceptar_consentimiento(
     Con la contraseña temporal responde 403 `must_change_password`, como toda
     ruta que no está en la lista de permitidas.
     """
+    consentimiento.exigir_version_permitida(payload.version)
     accepted_at = await registrar_consentimiento(
         db, profile_id=auth.profile_id, tenant_id=auth.tenant_id, version=payload.version)
     await db.commit()
