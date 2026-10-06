@@ -208,3 +208,17 @@ Origen: `docs/ESPEC_solicitud_datos.md`, 2026-10-06. **No es un concepto jurídi
   7. responder la solicitud (`resuelta`), con lo que se hizo.
 - [ ] **Quien no puede entrar no tiene canal en la app** (contraseña temporal sin cambiar, sin membresía activa, suspendido): hace falta decir en el aviso a quién acudir.
 
+# Endurecimiento del piloto: lo que el despliegue debe poner y la deuda que queda
+
+Origen: `docs/ESPEC_endurecimiento_piloto.md` y la auditoría `investigacion/seguridad/02`, 2026-10-06.
+
+- [ ] **`AVISO_VERSIONES_VALIDAS`** en el entorno del backend, con el `AVISO_VERSION` del cliente (H-13). Vacía = cualquier versión se acepta. Si no contiene la del cliente, **nadie puede aceptar el aviso**. Al cambiar de versión: primero el backend, después el cliente.
+- [ ] **`--salida` fuera de cualquier repositorio git** (H-11): la CLI sale con 2 si la ruta cuelga de un `.git`. Toda `INGLES/` es un repo.
+- [ ] **Procedimiento de expulsión** (H-8): `python -m src.onboarding suspender --slug … --documento …`. Corta al instante en toda ruta (403 `account_suspended`). **El perfil es global:** corta a la persona en todas sus instituciones; con `--solo-institucion`, solo en esa. Se deshace con `reactivar`. La cuenta de GoTrue no se bloquea (puede iniciar sesión, pero el backend no le da nada).
+- [ ] El cliente muestra un mensaje para 403 `account_suspended`.
+
+**Deuda declarada, sin fecha (H-7): el backend entra a la base con un rol que se salta la RLS.**
+- El backend se conecta como `postgres` (`BYPASSRLS`). Las 51 políticas y la 031 protegen el acceso directo de clientes; **entre instituciones, dentro del backend, el aislamiento depende solo de los `WHERE tenant_id = …`.** Un `WHERE` olvidado es una fuga que la RLS no detendría.
+- Lo que lo cubre hoy: los tests de aislamiento por ruta y la barrera de grupo en una sola fuente (`src/teachers/service/access.py`).
+- Plan: (1) un rol `engrama_app` con `NOBYPASSRLS`, que no sea dueño de las tablas; (2) `get_db` fija por transacción `SET LOCAL app.tenant_id` y `app.profile_id`; (3) políticas para ese rol sobre esas variables; (4) las rutas sin usuario (registro, eventos del anillo) y las migraciones, con un rol aparte; (5) se mide corriendo la suite entera como `engrama_app`. Es la ADR-003, sin decidir.
+

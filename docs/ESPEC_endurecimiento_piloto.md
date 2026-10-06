@@ -127,6 +127,21 @@ Cada tramposo vive en el archivo de su test (son pocos por punto) y sigue el pat
 - **passed:** 435 + 11 + 7 = **453**; **skipped:** **17**; **no-integ:** 118 + 7 = **125**; ruff 0 y mypy 0.
 - Por commit, en el orden de §5: 437 (H-10), 441 (H-8), 444 (H-11), 446 (H-12), 448 (H-13), 451 (H-19) y 453 (reloj).
 
+### Medido (2026-10-06)
+- **Cada tramposo, rojo por su razón** (la diagonal de §3, automatizada): ZH10, ZH8a, ZH8b, ZH11a, ZH11b, ZH12, ZH13, ZH19a, ZH19b y ZH-reloj.
+- **H-10, antes del arreglo:** UJ1 dio `{'completo': 200, 'sin_exp': 200, 'sin_aud': 200, 'sin_sub': 401}`: el token sin `exp` y el token sin `aud` entraban, como midió la auditoría.
+- **H-19:** con contraseña temporal, **todas** las rutas autenticadas dan 403 `must_change_password` salvo los 4 pares; las públicas son exactamente `/health` y `POST /auth/registro`. No apareció ninguna ruta sin bloquear.
+- **H-11:** `tmp_path` no cuelga de un repo git en esta máquina; OP1-OP8 y HP1 siguen verdes, como estaba condicionado.
+- **Suite completa** (un contenedor de pruebas propio, como en el autorregistro): **452 passed + 1 failed + 17 skipped**, y 125 no-integ; `ruff` 0 y `mypy` 0. El fallo era el tramposo existente ZP15 (abajo). Con su corrección, el archivo de tramposos del login piloto pasa entero; **la cifra 453 sale de 452 más ese test, y la suite completa se vuelve a medir al cerrar la tanda** (`ESPEC_eventos_anillo.md`).
+- **Las cifras por commit de §4 (437, 441…) NO se midieron una por una:** en cada commit se corrieron los tests del punto, los que comparten archivos y la suite no-integ.
+
+**Errata (ERR-26, reincidencia; candidato a ERR): H-10 dejó sin efecto a un tramposo existente.**
+- **Qué pasó:** ZP15 del login piloto ("`validate_jwt` sin verificar `exp`") apaga `verify_exp` en el `jwt` de python-jose. Con `require_exp`, python-jose **vuelve a encender** `verify_exp` (un claim obligatorio siempre se verifica), así que el tramposo ya no rompía nada y dio `DID NOT RAISE`.
+- **Por qué no lo previó esta espec:** §3 cruzó H-10 con los 13 tests de `tests/auth`, pero no enumeró con `git grep` los tramposos que parchean `validate_jwt` o su `jwt` (la regla 2 de ERR-26).
+- **Qué se editó:** ZP15 apaga también `require_exp` (`fix(test)`, commit aparte). El criterio no cambió: AP2 debe ponerse rojo si `exp` no se verifica, y se pone. ZP14 (sin firma) no se vio afectado.
+
+**Otra precisión:** el `suspender` de la CLI audita también cuando se repite (3 filas `cuenta_suspendida` en OH8: dos de la misma persona y una de `--solo-institucion`). Es idempotente en el estado, no en la auditoría.
+
 ## 5. Plan de commits
 1. `docs`: esta espec.
 2. `fix(auth)`: H-10.
