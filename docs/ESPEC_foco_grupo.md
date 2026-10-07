@@ -198,3 +198,54 @@ Una zona horaria por institución; elegir el foco desde una unidad de la alineac
 ## 11. Veredicto
 - **FUNCIONA:** las cuentas de §4, la matriz medida, HF1 escrito, MG40 verde, RF1 verde y los previos verdes con solo las ediciones declaradas.
 - **NO:** el feed pierde, gana o repite un reto; sin foco cambia el orden; el foco de un grupo toca a otro; un docente fija el foco de un grupo ajeno; el estudiante recibe nodos donde antes no; un tramposo queda verde.
+
+---
+
+## 12. Medido (2026-10-06, sobre `9231656`)
+
+### Matriz medida: 84 celdas, más RF1 (ERR-19 y ERR-23)
+**Cómo se midió:** una corrida de pytest por tramposo, aplicado a las 7 columnas por una fixture `autouse`, sobre un export limpio del commit, en un contenedor de prueba propio. La fila base dio 7 verdes.
+
+**Resultado: 16 rojas, todas por aserción; 0 por excepción; 68 verdes.**
+
+| Id | Rojas medidas | RF1 (con la bandera) |
+|---|---|---|
+| ZF1 | FG1 | verde |
+| ZF3 | FG1 | verde |
+| ZF4 | FG1 | verde |
+| ZF5 | FG2 | verde |
+| ZF6 | FG3 y FG2 | roja (as) |
+| ZF7 | FG3 | roja (as) |
+| ZF8 | FG3 y **HF1** | roja (as) |
+| ZF9 | FG5 | verde |
+| ZF10 | FG5 | verde |
+| ZF11 | FG4 y FG1 | verde |
+| ZF12 | FG3 | verde |
+| ZF13 | FG1 y FG2 | verde |
+
+- **Cruce que la predicción no tenía: ZF8 × HF1** (el humo compara el feed sin foco con el orden de creación).
+- Fuera de las 7 columnas: ZF5 y ZF10 también ponen rojo a **UF1** (el test puro), porque parchean la función y las constantes que UF1 mide.
+- Lo demás salió como se predijo (incluidos ZF6 × FG2, ZF11 × FG1 y ZF13 × FG2).
+
+### Lo que la medición corrigió en el código antes del commit (regla 8; los criterios no se movieron)
+**`PUT /teachers/challenges/{cid}/nodos` escribía y después respondía 500.** La primera versión olvidaba toda la sesión tras escribir y luego leía un atributo del reto ya expirado. Lo encontró FG1 en su primera corrida. Ahora la lectura de la respuesta vuelve a consultar las preguntas (`populate_existing`) y no toca el reto.
+
+### Cuentas medidas
+**546 passed + 21 skipped** (suite completa desde un export limpio del commit, 967 s); **137 no-integ**; `ruff check .` 0 y `mypy .` 0 (310 archivos). Igual a §4. Los 13 tramposos, rojos por su razón. Las ediciones a lo existente fueron las de §1.5.
+
+- **HF1** escribió su archivo. Sus números (fijados con la primera medición, como decía §3): **`retos_en_foco` = 5, `items` = 35 y `correct` = 25**.
+- **RF1 pasó en su primera corrida** (dos grupos con focos distintos, un periodo de un día, 12 nodos y el cambio de día de Bogotá).
+- Los tramposos existentes del camino tocado (Y10, A3, Y16-1 a Y16-3, X12, X16 y los de `intentos_del_grupo`) siguieron rojos por su razón (corridos antes del commit, dentro de `tests/tramposos`).
+
+### Se declara
+- **Tras una fusión del mapa, los nodos de un foco quedan en orden alfabético** (el reapuntado quita repetidos ordenando): se pierde el orden en que el profe los puso, solo en los periodos que tenían el nodo fusionado.
+- El logro por nodo **no cuenta los retos globales** (el alcance de T5). RF1 lo afirma; es la pregunta 4 de §9.
+
+### No medido
+- **Contra engrama-web y contra el guion de sembrado** (`ENGRAMA/despliegue`): el contrato de §6 se probó con un sembrador simulado en los tests.
+- Dos `PUT` del foco a la vez (hay un candado sobre el grupo; no hay test con dos hilos).
+- El costo del feed con miles de retos (una consulta más, con índice GIN).
+- El `downgrade` por la CLI de Alembic.
+
+## 13. Antes de aplicar la 040
+Respaldo y el sí de Christiam. **La 040 va antes o junto con el código** (sin `challenge_questions.nodes`, crear o leer un reto da 500). Después: cargar el catálogo y etiquetar los retos (§6).
