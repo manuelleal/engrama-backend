@@ -49,6 +49,7 @@ from src.challenge_engine.schemas import (
 )
 from src.challenge_engine.service import challenges as challenges_service
 from src.engrama_core.service import coins as coins_service
+from src.refuerzo import cola as refuerzo_cola
 from src.shared.models import (
     Challenge,
     ChallengeAttempt,
@@ -298,6 +299,14 @@ async def submit_attempt(
     attempt.coins_earned = coins_earned
     attempt.xp_earned = xp_earned
     attempt.streak_bonus = 0  # reservado para Fase 3
+
+    # 5b. Lo fallado mete sus NODOS a la cola de refuerzo del estudiante
+    # (ESPEC_refuerzo §1.1). No cambia el resultado ni la paga, y con un
+    # reto sin nodos no hace ni una consulta.
+    await refuerzo_cola.desde_intento(
+        db, tenant_id=tenant_id, student_id=student_id, attempt_id=attempt.id,
+        questions=questions, details=details,
+    )
 
     # 6. Contar intentos usados para el payload.
     used_stmt = (

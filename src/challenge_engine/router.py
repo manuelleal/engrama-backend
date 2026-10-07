@@ -44,6 +44,8 @@ from src.challenge_engine.service import challenges as challenges_service
 from src.challenge_engine.service import generator as generator_service
 from src.foco import service as foco_service
 from src.foco.schemas import FocoEstudianteOut
+from src.refuerzo import service as refuerzo_service
+from src.refuerzo.schemas import RefuerzoOut, RespuestaIn, RespuestaOut
 from src.shared.config import settings
 from src.shared.db import get_db
 from src.shared.deps import get_current_user, require_teacher
@@ -213,6 +215,49 @@ async def read_focus(
     return await foco_service.para_el_estudiante(
         db, tenant_id=auth.tenant_id, group_code=auth.group_code, feed=feed
     )
+
+
+@router.get(
+    "/refuerzo",
+    response_model=RefuerzoOut,
+    status_code=status.HTTP_200_OK,
+)
+async def read_reinforcement(
+    auth: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> RefuerzoOut:
+    """Los nodos que le toca reforzar, cada uno con una forma que NO ha visto.
+
+    NOTA: debe declararse antes de `/{challenge_id}`, igual que `/attempts/history`.
+    """
+    return await refuerzo_service.leer(
+        db, tenant_id=auth.tenant_id, profile_id=auth.profile_id, group_code=auth.group_code
+    )
+
+
+@router.post(
+    "/refuerzo/{entrada_id}/respuestas",
+    response_model=RespuestaOut,
+    status_code=status.HTTP_200_OK,
+)
+async def answer_reinforcement(
+    entrada_id: int,
+    payload: RespuestaIn,
+    auth: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> RespuestaOut:
+    """Responde la forma vigente: revela la correcta y mueve el estado. Sin monedas."""
+    result = await refuerzo_service.responder(
+        db,
+        tenant_id=auth.tenant_id,
+        profile_id=auth.profile_id,
+        group_code=auth.group_code,
+        entrada_id=entrada_id,
+        question_id=payload.question_id,
+        answer=payload.answer,
+    )
+    await db.commit()
+    return result
 
 
 @router.get(

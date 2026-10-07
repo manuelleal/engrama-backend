@@ -488,12 +488,21 @@ class ChallengeQuestion(Base):
     nodes: Mapped[list[str]] = mapped_column(
         ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
     )
+    # 041: la IDENTIDAD de la pregunta en el banco, su familia y su rol en ella
+    # (ESPEC_refuerzo §1.2). El mismo `item_ref` en dos retos es la misma pregunta.
+    item_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    family_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    form_role: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     __table_args__ = (
         Index("idx_challenge_questions_nodes", "nodes", postgresql_using="gin"),
+        CheckConstraint("form_role IS NULL OR form_role IN ('original','gemela','repaso')",
+                        name="challenge_questions_form_role_check"),
+        Index("idx_challenge_questions_item_ref", "item_ref",
+              postgresql_where=text("item_ref IS NOT NULL")),
     )
 
 
@@ -1590,4 +1599,95 @@ class GroupFocus(Base):
         CheckConstraint("ends_on >= starts_on AND ends_on - starts_on <= 62",
                         name="group_focus_dates_check"),
         CheckConstraint("cardinality(nodes) BETWEEN 1 AND 12", name="group_focus_nodes_check"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# 041 — la cola de refuerzo (docs/ESPEC_refuerzo.md §1.7)
+# -----------------------------------------------------------------------------
+class ReinforcementQueue(Base):
+    """Un NODO que un estudiante está reforzando en una institución.
+
+    Una fila por `(institución, estudiante, nodo)`. `origin_ref` recuerda de
+    qué hoja o intento vino el último fallo: la misma hoja no cuenta dos veces.
+    """
+
+    __tablename__ = "reinforcement_queue"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    node_id: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'en_refuerzo'")
+    )
+    hits: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    failures: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    reopened: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    family_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin: Mapped[str] = mapped_column(Text, nullable=False)
+    origin_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    next_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    mastered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    entered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "profile_id", "node_id",
+                         name="reinforcement_queue_owner_node_key"),
+        CheckConstraint("status IN ('en_refuerzo','por_repasar','superado')",
+                        name="reinforcement_queue_status_check"),
+        CheckConstraint("origin IN ('grader','reto')", name="reinforcement_queue_origin_check"),
+        CheckConstraint("(status = 'por_repasar') = (next_due_at IS NOT NULL)",
+                        name="reinforcement_queue_due_check"),
+        CheckConstraint("(status = 'superado') = (mastered_at IS NOT NULL)",
+                        name="reinforcement_queue_mastered_check"),
+        CheckConstraint("hits >= 0 AND failures >= 1 AND reopened >= 0",
+                        name="reinforcement_queue_counts_check"),
+    )
+
+
+class ReinforcementAnswer(Base):
+    """Una forma que el estudiante respondió en su refuerzo. Gana la primera respuesta."""
+
+    __tablename__ = "reinforcement_answers"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    queue_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("reinforcement_queue.id", ondelete="CASCADE"), nullable=False
+    )
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    question_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("challenge_questions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    form_key: Mapped[str] = mapped_column(Text, nullable=False)
+    stage: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    is_correct: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    status_after: Mapped[str] = mapped_column(Text, nullable=False)
+    due_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    answered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("queue_id", "question_id",
+                         name="reinforcement_answers_queue_question_key"),
+        CheckConstraint("stage IN ('refuerzo','repaso')",
+                        name="reinforcement_answers_stage_check"),
+        Index("idx_reinforcement_answers_profile", "tenant_id", "profile_id"),
     )

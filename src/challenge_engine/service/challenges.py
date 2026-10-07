@@ -115,6 +115,9 @@ async def create_challenge(
                 correct_answer=q.correct_answer,
                 order_index=q.order_index or i,
                 nodes=nodos[i - 1],
+                item_ref=q.item_ref,
+                family_ref=q.familia,
+                form_role=q.rol,
             )
         )
     await db.flush()

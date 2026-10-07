@@ -157,9 +157,16 @@ _FOCO: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/challenges/foco", frozenset({"GET"})): "user",
 }
 
+# docs/ESPEC_refuerzo.md: la cola de refuerzo del estudiante y el panel del profe.
+_REFUERZO: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/challenges/refuerzo", frozenset({"GET"})): "user",
+    ("/challenges/refuerzo/{entrada_id}/respuestas", frozenset({"POST"})): "user",
+    ("/teachers/groups/{gid}/refuerzo", frozenset({"GET"})): "teacher",
+}
+
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS, **_EVENTOS,
-    **_CATALOGO, **_GRADER, **_FOCO}
+    **_CATALOGO, **_GRADER, **_FOCO, **_REFUERZO}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:

@@ -28,6 +28,7 @@ from src.grader.schemas import (
     ResultadosIn,
     ResultadosOut,
 )
+from src.refuerzo import cola as refuerzo_cola
 from src.shared.models import GraderExam, GraderExamItem, GraderSheet, GraderSheetItem, Group
 from src.teachers.service import access as access_service
 
@@ -150,6 +151,9 @@ async def recibir(db: AsyncSession, auth: AuthContext, lote: ResultadosIn) -> Re
             continue
         nueva = await _guardar_hoja(db, examen, hoja, profile_id=numeros[hoja.numero],
                                     profe_id=auth.profile_id)
+        # En la MISMA transacción de la hoja: lo fallado mete sus nodos a la cola
+        # de refuerzo del estudiante (ESPEC_refuerzo §1.1).
+        await refuerzo_cola.desde_hoja(db, examen, hoja, profile_id=numeros[hoja.numero])
         await db.commit()
         recibidas += 1
         reemplazadas += int(not nueva)

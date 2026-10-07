@@ -8,6 +8,7 @@ from src.datos.router import usuario as datos_usuario_router
 from src.engrama_core.router import router as core_router
 from src.foco.router import router as foco_router
 from src.grader.router import router as grader_router
+from src.refuerzo.router import router as refuerzo_router
 from src.registro.router import docente as registro_docente_router
 from src.registro.router import publico as registro_publico_router
 from src.teachers.admin_router import router as admin_router
@@ -43,6 +44,9 @@ app.include_router(curriculo_router, prefix="/teachers", tags=["curriculo"])
 app.include_router(grader_router, prefix="/grader", tags=["grader"])
 # El foco del grupo y las etiquetas de nodo de los retos (docs/ESPEC_foco_grupo.md).
 app.include_router(foco_router, prefix="/teachers", tags=["foco"])
+# La cola de refuerzo: lo que ve el profe (docs/ESPEC_refuerzo.md). Las rutas
+# del estudiante viven en el router de retos.
+app.include_router(refuerzo_router, prefix="/teachers", tags=["refuerzo"])
 
 
 @app.get("/health")

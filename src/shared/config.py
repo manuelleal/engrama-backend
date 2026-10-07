@@ -74,6 +74,14 @@ class Settings(BaseSettings):
     # Lo usa el foco del grupo, que va por días y no por instantes
     # (ESPEC_foco_grupo §1.2). Una sola para toda la instalación.
     engrama_utc_offset_hours: int = Field(default=-5, ge=-12, le=14)
+    # La regla de "superado" de la cola de refuerzo (ESPEC_refuerzo §1.4). LOS
+    # FIJA EL PEDAGOGO (ERR-16): estos valores son la propuesta de la decisión
+    # 012 §6, no una decisión. Cuántos aciertos en formas no vistas hacen falta
+    # para pasar al repaso, y a cuántos días va el repaso.
+    refuerzo_aciertos_para_repaso: int = Field(default=1, ge=1, le=5)
+    refuerzo_dias_repaso: int = Field(default=7, ge=1, le=60)
+    # Cuántas entradas de la cola se sirven a la vez.
+    refuerzo_max_por_vez: int = Field(default=5, ge=1, le=20)
 
     # --- Database ---
     database_url: str = Field(

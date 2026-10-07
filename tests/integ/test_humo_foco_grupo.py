@@ -36,7 +36,7 @@ REPLICA = os.environ.get("ENGRAMA_REPLICA_FOCO") == "1"
 # Contenido exacto (ESPEC §3). `retos_en_foco` y los tres números del logro
 # salieron de la primera medición con el código bueno y no se mueven.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "040_foco_grupo", "semilla": 40, "retos": 8, "preguntas_con_nodo": 24,
+    "alembic_version": "041_refuerzo", "semilla": 40, "retos": 8, "preguntas_con_nodo": 24,
     "foco": 200, "feed_sin_foco_igual_al_de_antes": True, "retos_en_foco": 5,
     "primeros_del_feed_en_foco": True, "mismos_retos": True,
     "logro": {"nodos": 2, "items": 35, "correct": 25}, "estudiante_ve_nodos": False,

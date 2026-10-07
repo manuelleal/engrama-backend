@@ -46,7 +46,8 @@ async def leer(db: AsyncSession, challenge_id: UUID) -> EtiquetasOut:
             .execution_options(populate_existing=True))
     preguntas = (await db.execute(stmt)).scalars().all()
     return EtiquetasOut(challenge_id=challenge_id, preguntas=[
-        PreguntaNodosOut(question_id=q.id, order_index=q.order_index, nodos=list(q.nodes or []))
+        PreguntaNodosOut(question_id=q.id, order_index=q.order_index, nodos=list(q.nodes or []),
+                         item_ref=q.item_ref, familia=q.family_ref, rol=q.form_role)
         for q in preguntas])
 
 
@@ -61,9 +62,13 @@ async def reetiquetar(db: AsyncSession, reto: Challenge, datos: EtiquetasIn) -> 
     del_reto = {q.id for q in await challenges_service.get_questions(db, reto.id)}
     exigir_que_sean_del_reto([p.question_id for p in datos.preguntas], del_reto)
     # Primero se resuelven TODOS: un nodo desconocido no deja nada a medias.
-    resueltos = [(p.question_id, await curriculo_service.canonicos(db, p.nodos))
-                 for p in datos.preguntas]
-    for question_id, nodos in resueltos:
+    resueltos = [(p, await curriculo_service.canonicos(db, p.nodos)) for p in datos.preguntas]
+    columnas = {"item_ref": "item_ref", "familia": "family_ref", "rol": "form_role"}
+    for pedida, nodos in resueltos:
+        # La identidad, la familia y el rol solo se tocan si VINIERON en el cuerpo.
+        extra = {columna: getattr(pedida, campo) for campo, columna in columnas.items()
+                 if campo in pedida.model_fields_set}
         await db.execute(update(ChallengeQuestion)
-                         .where(ChallengeQuestion.id == question_id).values(nodes=nodos))
+                         .where(ChallengeQuestion.id == pedida.question_id)
+                         .values(nodes=nodos, **extra))
     await db.flush()

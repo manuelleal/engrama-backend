@@ -64,6 +64,11 @@ class ChallengeQuestionIn(BaseModel):
     # pasan por el catálogo. NUNCA salen en `ChallengeQuestionOut`.
     nodos: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(
         default_factory=list, max_length=8)
+    # La identidad de la pregunta en el banco, su familia y su rol en ella
+    # (ESPEC_refuerzo §1.2). Opcionales; tampoco salen al estudiante.
+    item_ref: str | None = Field(default=None, min_length=1, max_length=128)
+    familia: str | None = Field(default=None, min_length=1, max_length=128)
+    rol: Literal["original", "gemela", "repaso"] | None = None
 
 
 class ChallengeCreate(BaseModel):

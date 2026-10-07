@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, Strict, model_validator
@@ -67,6 +67,10 @@ class PreguntaNodosIn(BaseModel):
 
     question_id: UUIDIn
     nodos: list[NodoId] = Field(max_length=MAX_NODOS_POR_PREGUNTA)
+    # ESPEC_refuerzo §1.2. Solo se cambian los que VIENEN en el cuerpo.
+    item_ref: str | None = Field(default=None, min_length=1, max_length=128)
+    familia: str | None = Field(default=None, min_length=1, max_length=128)
+    rol: Literal["original", "gemela", "repaso"] | None = None
 
 
 class EtiquetasIn(BaseModel):
@@ -88,6 +92,9 @@ class PreguntaNodosOut(BaseModel):
     question_id: UUID
     order_index: int
     nodos: list[str]
+    item_ref: str | None = None
+    familia: str | None = None
+    rol: str | None = None
 
 
 class EtiquetasOut(BaseModel):
