@@ -234,3 +234,60 @@ Que un acierto en un reto cuente para la cola; el repaso de grupo a 21 días con
 - **FUNCIONA:** las cuentas de §4, la matriz medida, HR1 escrito con sus cuatro ceros, MG41 verde, RR1 verde y los previos verdes con solo las ediciones declaradas.
 - **HAY ALGO MODESTO:** todo lo anterior, pero la regla de "superado" sigue siendo una propuesta sin el sí del pedagogo, y no se probó con un banco real sembrado.
 - **NO:** se sirve una pregunta ya vista; el refuerzo paga monedas; un nodo queda superado sin el repaso; un estudiante ve o responde la cola de otro; el `/submit` o la hoja del Grader cambian de resultado; un tramposo queda verde.
+
+---
+
+## 12. Medido (2026-10-06, sobre `0d1058b`)
+
+### Matriz medida: 135 celdas, más RR1 (ERR-19 y ERR-23)
+**Cómo se midió:** una corrida de pytest por tramposo, aplicado a las 9 columnas por una fixture `autouse`, sobre un export limpio del commit, en un contenedor de prueba propio. La fila base dio 9 verdes.
+
+**Resultado: 27 rojas (26 por aserción y 1 por excepción); 108 verdes.**
+
+| Id | Rojas medidas | RR1 (con la bandera) |
+|---|---|---|
+| ZC1 | CR3, CR4, **CR5**, **CR6** y **HR1** | verde |
+| ZC2 | CR3 y **HR1** | verde |
+| ZC3 | CR3, CR5 y **HR1** | verde |
+| ZC4 | CR3 | verde |
+| ZC5 | CR3 | verde |
+| ZC6 | CR3 | verde |
+| ZC7 | CR6 | verde |
+| ZC8 | CR1 y **HR1** | verde |
+| ZC9 | CR1 | verde |
+| ZC10 | CR2, **CR5**, **CR7** y **CR6 (excepción: `TypeError`)** | verde |
+| ZC11 | CR4 | verde |
+| ZC12 | CR6 | verde |
+| ZC13 | CR3 | verde |
+| ZC14 | CR7 | verde |
+| ZC15 | CR5 y **HR1** | verde |
+
+**Cruces que la predicción no tenía (en negrita; ningún test se tocó para que calzara):**
+- **ZC10 × CR5, CR6 y CR7:** esos tres tests **preparan** su cola fallando un reto; si el reto no mete nada, se quedan sin entrada. En CR6 el rojo es **por excepción en la preparación** (el ayudante busca una entrada que no existe: `int(None)`), no por una aserción. Es la única celda por excepción; la diagonal de ZC10 (CR2) es por aserción.
+- **ZC1 × CR5 y CR6:** al servir también lo visto, cambia qué forma se sirve.
+- **ZC1, ZC2, ZC3, ZC8 y ZC15 × HR1:** el humo recorre el ciclo entero y cuenta formas ya vistas, filas del libro y estados.
+- Fuera de las 9 columnas: ZC1, ZC3, ZC4, ZC11 y ZC15 también ponen rojo a **UR1** (el test puro), porque parchean las funciones de `reglas.py` que UR1 mide.
+- **RR1 quedó verde con los 15 tramposos:** la réplica mide el aislamiento por institución, el tope y la espera por `open`; no es sensible a estos 15. Se declara: RR1 no tiene tramposo propio.
+
+### Ajuste a un ayudante de test después de ver un tramposo (ERR-9; se declara)
+Con ZC15, CR5 caía por una **excepción** (`IndexError`: el ayudante tomaba la primera forma servida y no había ninguna). El ayudante `_responder_la_vigente` ahora devuelve `("nada_que_responder", None)` si no le sirven nada, para que el rojo sea una **aserción**. El criterio de CR5 no cambió; con el código bueno era verde antes y después.
+
+### Cuentas medidas
+**572 passed + 22 skipped** (suite completa desde un export limpio del commit, 1.070 s); **139 no-integ**; `ruff check .` 0 y `mypy .` 0 (327 archivos). Igual a §4. Los 16 tramposos, rojos por su razón. Las ediciones a lo existente fueron las de §1.7 (la migración lleva además un CHECK que el resumen de §1.7 no listaba: `hits >= 0 AND failures >= 1 AND reopened >= 0`).
+
+- **HR1** escribió su archivo. Los cuatro ceros que son criterio se cumplen: **`servidas_ya_vistas: 0`, `filas_en_el_libro: 0`, `saldo_movido: 0` y `nivel_escrito: 0`**. Los números de la semilla (fijados con la primera medición): **22 entradas; tras el refuerzo, 16 `por_repasar` y 6 `en_refuerzo`; tras el repaso, 11 `superado`, 8 `en_refuerzo` y 3 `por_repasar`; 0 en espera y 0 huecos**.
+- **RR1 pasó en su primera corrida.** Las cuatro réplicas nuevas (catálogo, Grader, foco y refuerzo) corrieron **juntas** sobre el HEAD final y pasaron (8 passed con sus humos).
+- Los tramposos existentes del camino tocado (Y2, Y11, A4, A5, ZG2, ZG5 y ZG10) siguieron rojos por su razón (dentro de la suite completa).
+
+### Lo que esta espec NO resuelve y hay que saber antes del aula
+**Las formas paralelas salen de retos activos que el estudiante ve, y esos retos también están en su feed.** Si abre el reto donde viven la gemela y el repaso, los "ve" y dejan de servir como refuerzo: el nodo cae en "en espera de contenido". Para que el refuerzo sirva, las gemelas y los repasos necesitan vivir en retos que **no** aparezcan en el feed (un "banco de refuerzo"). Hoy no existe esa marca. Propuesta para la siguiente espec: `challenges.solo_refuerzo BOOLEAN` (fuera del feed y de la paga; dentro de las candidatas). Sin eso, el refuerzo funciona, pero se queda sin contenido muy rápido.
+
+### No medido
+- **Con un banco real sembrado** (las 44 unidades con sus familias): todo se midió con un banco sintético. No se sabe cuántos nodos quedarían en espera el primer día.
+- **Contra el Grader real y contra engrama-web.**
+- Dos respuestas **a la vez** a la misma entrada (hay un candado sobre la fila; no hay test con dos hilos).
+- El costo de `GET /teachers/groups/{gid}/refuerzo` con un grupo de 40 y cientos de entradas (son 5 consultas, sin importar el tamaño).
+- El `downgrade` por la CLI de Alembic.
+
+## 13. Antes de aplicar la 041
+Respaldo y el sí de Christiam. **La 041 va antes o junto con el código.** Después, en este orden: cargar el catálogo; sembrar los retos con `nodos`, `item_ref`, `familia` y `rol`; y que el Grader mande `nodos` en cada ítem. **Antes de un aula real: la respuesta del pedagogo a §9.**
