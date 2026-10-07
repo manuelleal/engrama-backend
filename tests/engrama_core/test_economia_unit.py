@@ -1,6 +1,7 @@
 """Pruebas PURAS (sin base) de `economia.py` — `docs/ESPEC_economia_oleada0.md` §2.
 
   UE3  la asistencia: 5 por asistir + 5 por puntualidad (C1)
+  UE4  `compute_next_streak`: la misma fecha (o una futura) = 0, "sin cambio" (C6)
 
 Cada test llama a la función por el módulo (`economia.f(...)`, no `from ... import`)
 para que su tramposo (`tests/tramposos/test_tramposos_economia_unit.py`) pueda
@@ -10,8 +11,9 @@ UE1 y UE2 (redondeo y guardia estática).
 from __future__ import annotations
 
 import inspect
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
+from src.engrama_core.service import attendance as attendance_mod
 from src.engrama_core.service import economia
 from src.shared.config import Settings
 
@@ -59,3 +61,20 @@ def test_ue3_la_asistencia_paga_5_mas_5_por_puntualidad() -> None:
         "asistencia_minutos_puntualidad")}
     assert defectos == {"asistencia_monedas_base": 5, "asistencia_monedas_puntualidad": 5,
                         "asistencia_minutos_puntualidad": 5}, f"UE3: {defectos}"
+
+
+def test_ue4_la_misma_fecha_no_cambia_la_racha() -> None:
+    """C6: 0 = sin cambio con la misma fecha y con una futura; los 4 casos de antes, idénticos."""
+    hoy = date(2026, 4, 20)
+    f = attendance_mod.compute_next_streak
+    resultado = {
+        "misma fecha": f(hoy, hoy),
+        "fecha futura": f(hoy + timedelta(days=3), hoy),
+        # los cuatro casos de siempre (también en test_attendance.TestComputeNextStreak)
+        "nunca": f(None, hoy),
+        "ayer": f(hoy - timedelta(days=1), hoy),
+        "hace dos días": f(hoy - timedelta(days=2), hoy),
+        "hace una semana": f(hoy - timedelta(days=7), hoy),
+    }
+    assert resultado == {"misma fecha": 0, "fecha futura": 0, "nunca": 1, "ayer": -1,
+                         "hace dos días": 1, "hace una semana": 1}, f"UE4: {resultado}"

@@ -12,11 +12,9 @@ Flujo general:
 Reglas clave (spec §11):
   - `session_code` vía `secrets.choice` (criptográficamente seguro).
   - `geo_status` es informativo; NUNCA bloquea check-in.
-  - Streak:
-      * last_attendance_date = ayer       → current_streak += 1
-      * last_attendance_date < ayer       → current_streak = 1 (roto)
-      * last_attendance_date = hoy        → UNIQUE constraint bloquea
-      * last_attendance_date IS NULL      → current_streak = 1
+  - Streak por días de la INSTITUCIÓN (UTC + ENGRAMA_UTC_OFFSET_HOURS, no UTC):
+      ayer → +1 · antes de ayer o nunca → 1 · hoy → SIN CAMBIO (una segunda
+      sesión del día no reinicia ni suma; el UNIQUE de la BD es por sesión)
   - Todo dentro de la misma AsyncSession del request para que un fallo
     reviente la transacción completa (get_db hace rollback).
 """
@@ -40,6 +38,7 @@ from src.engrama_core.schemas import (
 )
 from src.engrama_core.service import coins as coins_service
 from src.engrama_core.service import economia
+from src.foco import fechas
 from src.shared.config import settings
 from src.shared.models import (
     Attendance,
@@ -94,14 +93,14 @@ def _ahora() -> datetime:
 def compute_next_streak(
     last_attendance_date: date | None, today: date
 ) -> int:
-    """Nueva racha tras un check-in HOY (spec §11.3)."""
+    """Nueva racha tras un check-in HOY (spec §11.3): 0 = sin cambio (ya asistió
+    hoy), -1 = sentinel "incrementar el actual" (lo resuelve el caller), 1 = empieza."""
     if last_attendance_date is None:
         return 1
+    if last_attendance_date >= today:
+        return 0
     if last_attendance_date == today - timedelta(days=1):
-        return -1  # sentinel: "incrementar el actual" — lo resuelve el caller
-    if last_attendance_date < today - timedelta(days=1):
-        return 1
-    # last_attendance_date == today nunca debería llegar aquí (UNIQUE).
+        return -1
     return 1
 
 
@@ -315,16 +314,15 @@ async def check_in(
             detail="Student profile not found",
         )
 
-    today = now.date()
+    today = fechas.hoy(now, settings.engrama_utc_offset_hours)  # el día de la institución
     delta = compute_next_streak(profile.last_attendance_date, today)
-    if delta == -1:  # sentinel: "racha continúa, suma 1"
-        new_streak = profile.current_streak + 1
+    if delta == 0:  # segunda sesión del día: racha, récord y fecha como estaban
+        new_streak = profile.current_streak
     else:
-        new_streak = delta  # 1 (primer check-in o racha rota)
-
-    profile.current_streak = new_streak
-    profile.longest_streak = max(profile.longest_streak, new_streak)
-    profile.last_attendance_date = today
+        new_streak = profile.current_streak + 1 if delta == -1 else delta
+        profile.current_streak = new_streak
+        profile.longest_streak = max(profile.longest_streak, new_streak)
+        profile.last_attendance_date = today
 
     # 6. Coins: 5 por asistir + 5 si llegó puntual, sin multiplicar por racha
     # (regla pura en economia.py).

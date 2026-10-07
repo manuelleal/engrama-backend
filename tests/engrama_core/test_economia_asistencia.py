@@ -1,18 +1,20 @@
-"""La asistencia paga 5 + 5 por puntualidad — `docs/ESPEC_economia_oleada0.md` §1.1.
+"""La asistencia paga 5 + 5 por puntualidad — `docs/ESPEC_economia_oleada0.md` §1.1 a §1.3.
 
   EA1  C2  check-in puntual: 200, 10 monedas; el asiento lleva base, puntualidad y puntual
   EA2  C3  a los 5:00 paga 10; a los 5:01 paga 5 (`puntualidad: 0`)
   EA3  C4  los números son configuración: con 4 + 3 y 10 minutos paga 7 y 4
+  ER1  C7  la segunda sesión del mismo día NO cambia la racha
+  ER2  C8  el día es el de la institución (Bogotá), no el UTC
 
 El reloj se fija con la costura `attendance._ahora`; la sesión se abre con
-`crear_sesion_asistencia(inicio=...)`. Los tramposos ZT1-ZT3:
-`tests/tramposos/test_tramposos_economia.py`. Los siguientes commits de la
-oleada agregan aquí la racha (ER*) y el pago único por día (ED*).
+`crear_sesion_asistencia(inicio=...)`. Los tramposos:
+`tests/tramposos/test_tramposos_economia.py`. El siguiente commit de la oleada
+agrega aquí el pago único por día (ED*).
 """
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from typing import Any
+from datetime import UTC, date, datetime, timedelta
+from typing import Any, NamedTuple
 from uuid import UUID
 
 import pytest
@@ -34,19 +36,29 @@ def fijar_ahora(mp: pytest.MonkeyPatch, instante: datetime) -> None:
     mp.setattr(attendance_mod, "_ahora", lambda: instante)
 
 
-def escena(integ: Any, *, estudiantes: int = 1, inicio: datetime = INICIO,
-           expira_en: timedelta = timedelta(minutes=15)) -> tuple[UUID, str, list[UUID]]:
-    """Colegio (pool 1000), grupo G1 y una sesión abierta en `inicio`.
+class Escena(NamedTuple):
+    tenant: UUID
+    grupo: UUID
+    docente: UUID
+    alumnos: list[UUID]
 
-    Devuelve (colegio, código de la sesión, estudiantes de G1).
-    """
+
+def armar(integ: Any, *, estudiantes: int = 1, racha: int = 0,
+          ultima: date | None = None) -> Escena:
+    """Colegio (pool 1000), grupo G1, su docente y `estudiantes` alumnos de G1."""
     tenant = integ.crear_tenant(pool=POOL)
     grupo = integ.crear_grupo(tenant, "G1")
     docente = integ.crear_perfil(tenant, rol="teacher", group_code="G1")
-    alumnos = [integ.crear_perfil(tenant, group_code="G1") for _ in range(estudiantes)]
-    codigo = integ.crear_sesion_asistencia(tenant, grupo, docente, inicio=inicio,
-                                           expira_en=expira_en)
-    return tenant, codigo, alumnos
+    alumnos = [integ.crear_perfil(tenant, group_code="G1", racha=racha, ultima_asistencia=ultima)
+               for _ in range(estudiantes)]
+    return Escena(tenant, grupo, docente, alumnos)
+
+
+def abrir(integ: Any, esc: Escena, inicio: datetime = INICIO,
+          expira_en: timedelta = timedelta(minutes=15)) -> str:
+    """Abre una sesión de G1 a las `inicio`; devuelve su código."""
+    return integ.crear_sesion_asistencia(esc.tenant, esc.grupo, esc.docente,
+                                         inicio=inicio, expira_en=expira_en)
 
 
 def marcar(integ: Any, alumno: UUID, codigo: str) -> Any:
@@ -68,11 +80,19 @@ def asientos(integ: Any, alumno: UUID) -> list[dict[str, Any]]:
     return integ.run(_q())  # type: ignore[no-any-return]
 
 
+def estado_racha(integ: Any, alumno: UUID) -> dict[str, Any]:
+    fila = integ.fila("select current_streak, longest_streak, last_attendance_date "
+                      "from profiles where id = :p", p=alumno)
+    assert fila is not None
+    return fila
+
+
 # =============================================================================
 # EA1 — C2: check-in puntual
 # =============================================================================
 def test_ea1_checkin_puntual_paga_10(integ, monkeypatch) -> None:
-    tenant, codigo, (alumno,) = escena(integ)
+    esc = armar(integ)
+    (alumno,), codigo = esc.alumnos, abrir(integ, esc)
     fijar_ahora(monkeypatch, INICIO + timedelta(minutes=2))
 
     r = marcar(integ, alumno, codigo)
@@ -89,14 +109,15 @@ def test_ea1_checkin_puntual_paga_10(integ, monkeypatch) -> None:
     assert (meta["base"], meta["puntualidad"], meta["puntual"]) == (5, 5, True), f"EA1: {meta}"
     assert "multiplier" not in meta, f"EA1: el asiento aún lleva el multiplicador: {meta}"
     assert integ.saldo("profile", alumno) == 10, "EA1: el saldo del estudiante no es 10"
-    assert integ.saldo("tenant", tenant) == POOL - 10, "EA1: la bolsa no bajó 10"
+    assert integ.saldo("tenant", esc.tenant) == POOL - 10, "EA1: la bolsa no bajó 10"
 
 
 # =============================================================================
 # EA2 — C3: el límite es inclusivo
 # =============================================================================
 def test_ea2_el_limite_de_cinco_minutos_es_inclusivo(integ, monkeypatch) -> None:
-    _, codigo, (en_el_limite, pasado) = escena(integ, estudiantes=2)
+    esc = armar(integ, estudiantes=2)
+    (en_el_limite, pasado), codigo = esc.alumnos, abrir(integ, esc)
 
     fijar_ahora(monkeypatch, INICIO + timedelta(minutes=5))
     a = marcar(integ, en_el_limite, codigo)
@@ -117,7 +138,8 @@ def test_ea3_los_numeros_son_configuracion(integ, monkeypatch) -> None:
     monkeypatch.setattr(settings, "asistencia_monedas_base", 4)
     monkeypatch.setattr(settings, "asistencia_monedas_puntualidad", 3)
     monkeypatch.setattr(settings, "asistencia_minutos_puntualidad", 10)
-    _, codigo, (a, b) = escena(integ, estudiantes=2)
+    esc = armar(integ, estudiantes=2)
+    (a, b), codigo = esc.alumnos, abrir(integ, esc)
 
     fijar_ahora(monkeypatch, INICIO + timedelta(minutes=8))
     en_8 = marcar(integ, a, codigo)
@@ -128,3 +150,53 @@ def test_ea3_los_numeros_son_configuracion(integ, monkeypatch) -> None:
     pagos = (en_8.json()["coins_awarded"], en_11.json()["coins_awarded"])
     assert pagos == (7, 4), f"EA3: pagó {pagos}, esperado (7, 4)"
     assert integ.saldo("profile", a) == 7 and integ.saldo("profile", b) == 4, "EA3: saldos"
+
+
+# =============================================================================
+# ER1 — C7: la segunda sesión del mismo día no toca la racha
+# =============================================================================
+def test_er1_la_segunda_sesion_del_dia_no_cambia_la_racha(integ, monkeypatch) -> None:
+    """Racha 5, última asistencia ayer. La 1.ª sesión de hoy -> 6; la 2.ª -> sigue en 6."""
+    ayer, hoy = date(2026, 10, 5), date(2026, 10, 6)
+    esc = armar(integ, racha=5, ultima=ayer)
+    (alumno,) = esc.alumnos
+    # 13:00 y 15:00 de Bogotá: el mismo día local Y el mismo día UTC.
+    primera = abrir(integ, esc, datetime(2026, 10, 6, 18, 0, tzinfo=UTC))
+    segunda = abrir(integ, esc, datetime(2026, 10, 6, 20, 0, tzinfo=UTC))
+
+    fijar_ahora(monkeypatch, datetime(2026, 10, 6, 18, 1, tzinfo=UTC))
+    r1 = marcar(integ, alumno, primera)
+    assert r1.status_code == 200, f"ER1: {r1.text}"
+    assert r1.json()["streak"] == 6, f"ER1: la 1.ª sesión dio racha {r1.json()['streak']}, no 6"
+
+    fijar_ahora(monkeypatch, datetime(2026, 10, 6, 20, 1, tzinfo=UTC))
+    r2 = marcar(integ, alumno, segunda)
+    assert r2.status_code == 200, f"ER1: {r2.text}"
+    assert r2.json()["streak"] == 6, f"ER1: la 2.ª sesión dio racha {r2.json()['streak']}, no 6"
+    estado = estado_racha(integ, alumno)
+    assert estado == {"current_streak": 6, "longest_streak": 6,
+                      "last_attendance_date": hoy}, f"ER1: {estado}"
+
+
+# =============================================================================
+# ER2 — C8: el día es el local
+# =============================================================================
+def test_er2_el_dia_es_el_de_la_institucion(integ, monkeypatch) -> None:
+    """A las 19:30 de Bogotá ya es otro día en UTC; la racha cuenta por el día de Bogotá."""
+    esc = armar(integ, estudiantes=0)
+    seguido = integ.crear_perfil(esc.tenant, group_code="G1", racha=3,
+                                 ultima_asistencia=date(2026, 10, 6))  # ayer, en Bogotá
+    con_hueco = integ.crear_perfil(esc.tenant, group_code="G1", racha=3,
+                                   ultima_asistencia=date(2026, 10, 5))  # dos días atrás
+    # 19:30 del 7 de octubre en Bogotá = 00:30 del 8 en UTC.
+    codigo = abrir(integ, esc, datetime(2026, 10, 8, 0, 28, tzinfo=UTC))
+    fijar_ahora(monkeypatch, datetime(2026, 10, 8, 0, 30, tzinfo=UTC))
+
+    a, b = marcar(integ, seguido, codigo), marcar(integ, con_hueco, codigo)
+    assert (a.status_code, b.status_code) == (200, 200), f"ER2: {a.text} | {b.text}"
+    assert a.json()["streak"] == 4, f"ER2: ayer local + hoy local dio racha {a.json()['streak']}"
+    assert b.json()["streak"] == 1, f"ER2: con dos días de hueco dio racha {b.json()['streak']}"
+    dia_local = date(2026, 10, 7)
+    assert estado_racha(integ, seguido)["last_attendance_date"] == dia_local, "ER2: la fecha"
+    assert integ.valor("select attendance_date from attendance where student_id = :p",
+                       p=seguido) == dia_local, "ER2: attendance_date no es el día local"

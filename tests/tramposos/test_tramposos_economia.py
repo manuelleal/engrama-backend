@@ -9,22 +9,27 @@ matriz completa se mide aparte (ERR-15, 19 y 23).
        (releva a T2, que parcheaba `streak_multiplier` y ya no tiene blanco)
   ZT2  la base es 50 fija en el código               -> EA1
   ZT3  la puntualidad nunca se paga                  -> EA1
+  ZT4  el día es el UTC                              -> ER2
+  ZT8  la segunda sesión del día reinicia la racha a 1 -> ER1
+  ZT9  la segunda sesión del día suma racha          -> ER1
 
-Los demás (ZT4-ZT19) entran con el commit que crea su pieza.
+Los demás (ZT5-ZT7, ZT10-ZT19) entran con el commit que crea su pieza.
 """
 from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.engrama_core.service import attendance as attendance_mod
 from src.engrama_core.service import coins as coins_mod
 from src.engrama_core.service import economia as economia_mod
+from src.foco import fechas as fechas_mod
 from tests.engrama_core import test_attendance as ta
 from tests.engrama_core import test_economia_asistencia as ea
 from tests.tramposos.test_tramposos_bug13 import correr
@@ -35,6 +40,7 @@ Aplicar = Callable[[Any, pytest.MonkeyPatch], AbstractContextManager[Any]]
 
 _AWARD_BUENO = coins_mod.award_coins
 _DESGLOSE_BUENO = economia_mod.desglose_asistencia
+_SIGUIENTE_RACHA_BUENA = attendance_mod.compute_next_streak
 
 
 # =============================================================================
@@ -68,6 +74,30 @@ def _nunca_puntual(llegada: datetime, apertura: datetime, *, base: int, bono: in
     return economia_mod.DesgloseAsistencia(base=base, puntualidad=0, puntual=False)
 
 
+# =============================================================================
+# ZT4 — el día es el UTC
+# =============================================================================
+def _hoy_utc(ahora_utc: datetime, desfase_horas: int) -> date:
+    """ZT4: ignora el desfase de la institución; el día es el de UTC."""
+    del desfase_horas
+    return ahora_utc.date()
+
+
+# =============================================================================
+# ZT8, ZT9 — la segunda sesión del día toca la racha
+# =============================================================================
+def _misma_fecha_reinicia(last_attendance_date: date | None, today: date) -> int:
+    """ZT8: con la misma fecha la racha vuelve a 1."""
+    bueno = _SIGUIENTE_RACHA_BUENA(last_attendance_date, today)
+    return 1 if bueno == 0 else bueno
+
+
+def _misma_fecha_suma(last_attendance_date: date | None, today: date) -> int:
+    """ZT9: con la misma fecha la racha suma 1 (el sentinel -1)."""
+    bueno = _SIGUIENTE_RACHA_BUENA(last_attendance_date, today)
+    return -1 if bueno == 0 else bueno
+
+
 def _parche(objetivo: Any, nombre: str, valor: Any) -> Aplicar:
     def aplicar(_integ: Any, mp: pytest.MonkeyPatch) -> AbstractContextManager[Any]:
         mp.setattr(objetivo, nombre, valor)
@@ -88,6 +118,18 @@ TRAMPOSOS: dict[str, tuple[Aplicar, list[tuple[Callable[..., None], str]]]] = {
     ]),
     "ZT3": (_parche(economia_mod, "desglose_asistencia", _nunca_puntual), [
         (ea.test_ea1_checkin_puntual_paga_10, r"EA1: la respuesta dice 5, no 10"),
+    ]),
+    "ZT4": (_parche(fechas_mod, "hoy", _hoy_utc), [
+        (ea.test_er2_el_dia_es_el_de_la_institucion,
+         r"ER2: ayer local \+ hoy local dio racha 1"),
+    ]),
+    "ZT8": (_parche(attendance_mod, "compute_next_streak", _misma_fecha_reinicia), [
+        (ea.test_er1_la_segunda_sesion_del_dia_no_cambia_la_racha,
+         r"ER1: la 2\.ª sesión dio racha 1, no 6"),
+    ]),
+    "ZT9": (_parche(attendance_mod, "compute_next_streak", _misma_fecha_suma), [
+        (ea.test_er1_la_segunda_sesion_del_dia_no_cambia_la_racha,
+         r"ER1: la 2\.ª sesión dio racha 7, no 6"),
     ]),
 }
 

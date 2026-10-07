@@ -22,7 +22,9 @@ from src.engrama_core.service.attendance import (
     generate_session_code,
     haversine_distance,
 )
+from src.foco import fechas
 from src.main import app
+from src.shared.config import settings
 
 client = TestClient(app)
 
@@ -139,9 +141,10 @@ def _escenario(integ, *, racha: int = 0, ultima: date | None = None):
     return tenant, grupo, teacher, alumno
 
 
-def _hoy_utc() -> date:
-    # check_in usa datetime.now(UTC).date(): "hoy" y "ayer" se cuentan en UTC.
-    return datetime.now(UTC).date()
+def _hoy_local() -> date:
+    # check_in cuenta "hoy" y "ayer" por el día de la INSTITUCIÓN (UTC + el
+    # desfase de ENGRAMA_UTC_OFFSET_HOURS), no por el día UTC.
+    return fechas.hoy(datetime.now(UTC), settings.engrama_utc_offset_hours)
 
 
 @pytest.mark.integ
@@ -251,7 +254,7 @@ def test_checkin_valid_awards_5_and_streak_1(integ) -> None:
     assert perfil == {
         "current_streak": 1,
         "longest_streak": 1,
-        "last_attendance_date": _hoy_utc(),
+        "last_attendance_date": _hoy_local(),
     }
     assert integ.saldo("profile", alumno) == 5
     assert integ.saldo("tenant", tenant) == 995
@@ -266,7 +269,7 @@ def test_checkin_streak_7_paga_lo_mismo(integ) -> None:
 
     Ya no hay multiplicador ×1,5 (ESPEC_economia_oleada0 C5). La racha 7 se
     sigue afirmando: es la que antes pagaba 75."""
-    ayer = _hoy_utc() - timedelta(days=1)
+    ayer = _hoy_local() - timedelta(days=1)
     tenant, grupo, teacher, alumno = _escenario(integ, racha=6, ultima=ayer)
     codigo = integ.crear_sesion_asistencia(tenant, grupo, teacher)
 
@@ -290,7 +293,7 @@ def test_checkin_streak_7_paga_lo_mismo(integ) -> None:
 @pytest.mark.integ
 def test_checkin_streak_14_paga_lo_mismo(integ) -> None:
     """Con streak=13 y ayer → nuevo=14, y paga LO MISMO que racha 1: 5 (antes ×2 = 100)."""
-    ayer = _hoy_utc() - timedelta(days=1)
+    ayer = _hoy_local() - timedelta(days=1)
     tenant, grupo, teacher, alumno = _escenario(integ, racha=13, ultima=ayer)
     codigo = integ.crear_sesion_asistencia(tenant, grupo, teacher)
 
