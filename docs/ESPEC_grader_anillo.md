@@ -215,3 +215,53 @@ Las cinco tablas de §1.5, con `grader_exam_items.nodos` (§9.2), `ON DELETE CAS
 `A` sale de la semilla: se fija al medir el humo por primera vez con el código bueno, y desde ahí no se mueve.
 
 **RG1** (`ENGRAMA_REPLICA_GRADER=1`): tres instituciones con el mismo `group_code` y el mismo `codigo`; formas A y B; una hoja con todo `vacia`; un examen de 1 ítem; y un examen de 200 ítems.
+
+---
+
+## 10. Medido (2026-10-06, sobre `55397a3`)
+
+### Matriz medida: 132 celdas, más RG1 (ERR-19 y ERR-23)
+**Cómo se midió:** una corrida de pytest por tramposo, aplicado a las 11 columnas por una fixture `autouse`, en un contenedor de prueba propio (`engrama-test-pg-opus1`). La fila base dio 11 verdes.
+
+**Resultado: 17 rojas, todas por aserción; 0 por excepción; 115 verdes.**
+
+| Id | Rojas medidas | RG1 (con la bandera) |
+|---|---|---|
+| ZG1 | GR6 | verde |
+| ZG2 | GR5, **GR4**, **GR7** y **HG1** | roja (as) |
+| ZG3 | GR7 | verde |
+| ZG4 | GR7 | verde |
+| ZG5 | GR9 y **HG1** | verde |
+| ZG6 | GR3 | roja (as) |
+| ZG7 | GR2 | verde |
+| ZG8 | GR6 | roja (as) |
+| ZG9 | GR7 | verde |
+| ZG10 | GR7 y **GR6** | verde |
+| ZG11 | GR10 | verde |
+| ZG13 | GR10 | verde |
+
+**Cruces que la predicción no tenía (en negrita):**
+- **ZG2 × GR4, GR7 y HG1:** la versión rota inserta la hoja y **no guarda sus ítems**, así que toda hoja queda con 0 ítems. Es un efecto del tramposo, no solo del reenvío. Se había predicho GR4 verde.
+- **ZG5 × HG1:** el humo cuenta los niveles escritos.
+- **ZG10 × GR6:** el tramposo supone que el examen existe; con un examen ajeno responde 500 en vez de 404.
+
+**Mecanismos que la medición corrigió (ERR-23; el test no se movió, sí el mensaje esperado del tramposo):**
+- **ZG7** se predijo "el quinto recibe el 2". Lo que pasa: el `UNIQUE (group_id, numero)` es una **segunda barrera**; el número de quien salió sigue ocupado, la lista responde 500 y el quinto queda sin número. El rojo es por aserción, a través de esa barrera.
+- **ZG4** se predijo "500 por el CHECK de la base". En la primera corrida la hoja con `dudosa` cayó por **otra** barrera (`aciertos_no_coinciden`): el ítem dudoso decía `correcta: true` y el recálculo ya no lo contaba.
+
+**Ajuste a un test después de ver un tramposo que no mordía como se predijo (ERR-9; se declara):** en GR7, la hoja con `dudosa` pasó a ser **coherente en todo lo demás** (el ítem no dice ser correcto y `aciertos` cuadra), para que lo único que la rechace sea el estado. El criterio no cambió (`dudosa` → `estado_invalido`); con el código bueno GR7 era verde antes y después. Con el ajuste, ZG4 da el 500 predicho.
+
+### Cuentas
+- Sobre `55397a3`: los 10 tests, los 13 tramposos, MG39 y HG1, verdes; `ruff` 0 y `mypy` 0 (294 archivos). **La suite completa no se corrió en este commit por separado.**
+- La suite completa se midió en el commit siguiente (`9231656`, el foco del grupo): **546 passed + 21 skipped**, que incluye los 525 + 20 de §9.7.
+- **HG1** escribió su archivo. **`aciertos_totales` = 301** (fijado con la primera medición, como decía §9.8).
+- **RG1 pasó en su primera corrida** (tres instituciones con el mismo grupo y el mismo código; un examen de 200 ítems).
+
+### No medido
+- **Contra el Grader real.** Todo se midió con un Grader simulado en los tests (`tests/grader/_ayuda.py`).
+- Dos envíos **a la vez** de la misma hoja, y dos peticiones a la vez de la lista: el código usa `ON CONFLICT` y un candado, pero no hay un test con dos hilos.
+- Un lote de 200 hojas de 200 ítems (40.000 filas): no se midió cuánto tarda.
+- El `downgrade` por la CLI de Alembic.
+
+## 11. Antes de aplicar la 039
+Respaldo y el sí de Christiam. La 039 no toca tablas existentes. El catálogo (038) debe estar cargado si el Grader va a mandar nodos.
