@@ -128,3 +128,45 @@ Diagonal PREDICHA (el código no existe; ERR-23):
 - **FUNCIONA:** las cuentas de §4, la matriz medida, HC1 escrito, MG38 verde y RC1 verde con el mapa real.
 - **HAY ALGO MODESTO:** todo lo anterior sin RC1 (el mapa real no estaba o no cargó).
 - **NO:** una carga borra o deja a medias el catálogo; un id desconocido pasa; un reemplazado no resuelve; un tramposo queda verde.
+
+---
+
+## 8. Medido (2026-10-06, sobre `8e6e277`)
+
+### Matriz medida: 25 celdas (ERR-19 y ERR-23)
+**Cómo se midió:** una corrida de pytest por tramposo, aplicado a las 5 columnas por una fixture `autouse`, en un contenedor de prueba propio (`engrama-test-pg-opus1`, puerto 55434). La fila base dio 5 verdes.
+
+**Resultado: 9 rojas, todas por aserción; 0 por excepción; 16 verdes.**
+
+| Id | Rojas medidas |
+|---|---|
+| ZM1 | MN2 |
+| ZM2 | MN2, **MN1** y **HC1** |
+| ZM3 | MN3 y **HC1** |
+| ZM4 | MN3 y **HC1** |
+| ZM5 | MN1 y **HC1** |
+
+**Cruces que la predicción no tenía (en negrita; ningún test se tocó para que calzara):**
+- **ZM2 × MN1: predicción REFUTADA** (se había predicho verde). El tramposo escribe los vigentes antes de contar, así que el resumen de la primera carga dice `nuevos: 2` en vez de 8. La predicción miró solo lo que MN1 afirma del `GET` y no el resumen.
+- **ZM2, ZM3, ZM4 y ZM5 × HC1:** el humo carga, fusiona, resuelve y lee el `GET`: ejercita los cuatro caminos. §3 no predijo nada para HC1.
+
+### Cuentas medidas
+**500 passed + 19 skipped** (suite completa desde un export limpio del commit, 707 s); **133 no-integ**; `ruff check .` 0 y `mypy .` 0 (280 archivos). Igual a §4. Los 6 tramposos, rojos por su razón en la primera corrida. Las ediciones a lo existente fueron las de §1.5.
+
+- **HC1** escribió `tests/_salida/humo_catalogo_nodos.json`, idéntico a §3.
+- **RC1 pasó en su primera corrida** con el mapa real: `nodos-0.3`, **521 vigentes y 14 reemplazos**, leído de `INGLES/curriculo/nodos.json` el 2026-10-06 (el mapa sigue en consolidación: esos dos números son de ese momento).
+
+### Lo que la medición corrigió antes del commit
+`mypy` marcó que el id leído del archivo podía ser `None` donde se usaba como texto: se concentró en una función (`mapa._id_de`) que devuelve el id o lanza `id_invalido`. Los criterios no se movieron.
+
+### No medido
+- **La orden por la línea de comandos** (`python -m src.curriculo cargar --archivo …`): los tests llaman a `correr_carga`, que es lo que la orden ejecuta, pero no pasan por `main()` (argumentos, lectura del archivo, códigos de salida 0 y 2).
+- La carga contra una base con miles de referencias que reapuntar (aquí, decenas).
+- Dos cargas a la vez (no hay candado sobre la tabla; es una orden del operador).
+- El `downgrade` por la CLI de Alembic (MG38 corre las mismas tuplas de SQL).
+
+## 9. Antes de aplicar la 038
+1. Respaldo y el sí de Christiam (es producción).
+2. `alembic upgrade head`.
+3. `DATABASE_URL=… python -m src.curriculo cargar --archivo <ruta>/curriculo/nodos.json`; debe imprimir `vigentes` y `reemplazados` iguales a los del archivo.
+4. Repetir el paso 3 cada vez que el mapa cambie. Si responde `nodo_desaparecido`, el mapa borró un id: se corrige **el mapa** (declarándolo en `reemplazos[]`), no la base.
