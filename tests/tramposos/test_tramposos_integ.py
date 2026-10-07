@@ -7,8 +7,8 @@ falla y este archivo queda en rojo: el test real no estaría probando nada.
 
   T1  ledger descuadrado: award_coins acredita al estudiante sin debitar la
       billetera del tenant  -> debe fallar test_award_coins_double_entry.
-  T2  racha: streak_multiplier devuelve siempre 1.0
-                            -> debe fallar test_checkin_streak_7_awards_75.
+  T2  (borrado en la oleada 0 de la economía: parcheaba `streak_multiplier`,
+      que ya no existe; lo releva ZT1 en `test_tramposos_economia.py`)
   T3  base sin migrar: la preparación de la base sin `upgrade head`
                             -> debe fallar el humo.
 
@@ -22,9 +22,7 @@ from uuid import UUID
 
 import pytest
 
-import tests.engrama_core.test_attendance as tests_asistencia
 import tests.engrama_core.test_coins as tests_monedas
-from src.engrama_core.service import attendance as attendance_mod
 from src.engrama_core.service import coins as coins_mod
 from src.shared.models import CoinLedger
 from tests import integ_db
@@ -71,17 +69,6 @@ def test_t1_ledger_descuadrado_rompe_double_entry(integ, monkeypatch) -> None:
     monkeypatch.setattr(coins_mod, "award_coins", _award_sin_debito)
     with pytest.raises(AssertionError):
         tests_monedas.test_award_coins_double_entry(integ)
-
-
-# =============================================================================
-# T2 — racha sin multiplicador
-# =============================================================================
-def test_t2_racha_sin_multiplicador_rompe_streak_7(integ, monkeypatch) -> None:
-    # check_in (attendance.py:302) llama a `streak_multiplier` por nombre global
-    # del módulo attendance: ahí se reemplaza.
-    monkeypatch.setattr(attendance_mod, "streak_multiplier", lambda _racha: 1.0)
-    with pytest.raises(AssertionError):
-        tests_asistencia.test_checkin_streak_7_awards_75(integ)
 
 
 # =============================================================================

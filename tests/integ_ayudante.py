@@ -226,12 +226,20 @@ class Integ(ComoMixin):
         expira_en: timedelta = timedelta(minutes=15),
         lat: float | None = None,
         lng: float | None = None,
+        inicio: datetime | None = None,
     ) -> str:
-        """Sesión QR 'active'. `expira_en` negativo = ya expirada. Devuelve el código."""
+        """Sesión QR 'active'. `expira_en` negativo = ya expirada. Devuelve el código.
+
+        Sin `inicio`: abierta hace 1 h y vence en `expira_en` desde AHORA (como
+        siempre; todo check-in de esos tests llega "tarde"). Con `inicio` (para
+        probar la puntualidad, ESPEC_economia_oleada0): abre y vence a partir de
+        ESE instante, y quien marca debe fijar `attendance._ahora` dentro de la
+        ventana.
+        """
         from src.engrama_core.service.attendance import generate_session_code
         from src.shared.models import AttendanceSession
 
-        ahora = datetime.now(UTC)
+        ahora = datetime.now(UTC) if inicio is None else inicio
         codigo = generate_session_code()
         self._insertar(
             AttendanceSession(
@@ -241,7 +249,7 @@ class Integ(ComoMixin):
                 qr_payload={"session_code": codigo},
                 admin_lat=lat,
                 admin_lng=lng,
-                starts_at=ahora - timedelta(hours=1),
+                starts_at=ahora - timedelta(hours=1) if inicio is None else inicio,
                 expires_at=ahora + expira_en,
                 created_by=creador_id,
                 status="active",

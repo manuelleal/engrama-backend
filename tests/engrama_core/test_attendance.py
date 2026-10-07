@@ -1,12 +1,13 @@
 """Tests del submódulo attendance — SPECS/02-engrama-core.md §9.
 
 Niveles:
-  1. Unit puro (sin DB): haversine, streak_multiplier, compute_next_streak,
-     generate_session_code. Corren en CI.
+  1. Unit puro (sin DB): haversine, compute_next_streak,
+     generate_session_code. Corren en CI. (La tabla de multiplicadores de la
+     racha se borró en la oleada 0 de la economía: ya no hay multiplicadores.)
   2. Contract HTTP (sin DB): endpoints /core/attendance/* sin auth → 401,
      check-in con session inválida → responde según la capa de auth.
-  3. Integration (con DB): check_in real con sesión activa, multiplicadores
-     por racha, geo_status, duplicados. `@pytest.mark.skip` hasta que
+  3. Integration (con DB): check_in real con sesión activa, la racha sin
+     multiplicadores, geo_status, duplicados. `@pytest.mark.skip` hasta que
      tengamos fixture de Postgres de prueba.
 """
 from __future__ import annotations
@@ -20,7 +21,6 @@ from src.engrama_core.service.attendance import (
     compute_next_streak,
     generate_session_code,
     haversine_distance,
-    streak_multiplier,
 )
 from src.main import app
 
@@ -30,22 +30,6 @@ client = TestClient(app)
 # =============================================================================
 # 1. Unit puro — helpers sin DB
 # =============================================================================
-class TestStreakMultiplier:
-    """Tabla de multiplicadores per §4.2 del spec."""
-
-    @pytest.mark.parametrize("streak", [0, 1, 3, 6])
-    def test_returns_1x_below_7(self, streak: int) -> None:
-        assert streak_multiplier(streak) == 1.0
-
-    @pytest.mark.parametrize("streak", [7, 10, 13])
-    def test_returns_1_5x_between_7_and_13(self, streak: int) -> None:
-        assert streak_multiplier(streak) == 1.5
-
-    @pytest.mark.parametrize("streak", [14, 30, 365])
-    def test_returns_2x_from_14(self, streak: int) -> None:
-        assert streak_multiplier(streak) == 2.0
-
-
 class TestComputeNextStreak:
     """Spec §11.3: cómo se actualiza la racha según last_attendance_date."""
 
@@ -240,12 +224,12 @@ def test_checkin_duplicate_returns_409(integ) -> None:
     # Solo cuenta el primero: una fila, un pago.
     assert integ.valor("select count(*) from attendance") == 1
     assert integ.valor("select count(*) from coin_ledger") == 1
-    assert integ.saldo("profile", alumno) == 50
+    assert integ.saldo("profile", alumno) == 5
 
 
 @pytest.mark.integ
-def test_checkin_valid_awards_50_and_streak_1(integ) -> None:
-    """Primer check-in del alumno → coins=50, streak=1, success=True."""
+def test_checkin_valid_awards_5_and_streak_1(integ) -> None:
+    """Primer check-in del alumno (tarde: la sesión abrió hace 1 h) → coins=5, streak=1."""
     tenant, grupo, teacher, alumno = _escenario(integ)
     codigo = integ.crear_sesion_asistencia(tenant, grupo, teacher)
 
@@ -257,7 +241,7 @@ def test_checkin_valid_awards_50_and_streak_1(integ) -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["success"] is True
-    assert body["coins_awarded"] == 50
+    assert body["coins_awarded"] == 5
     assert body["streak"] == 1
 
     perfil = integ.fila(
@@ -269,16 +253,19 @@ def test_checkin_valid_awards_50_and_streak_1(integ) -> None:
         "longest_streak": 1,
         "last_attendance_date": _hoy_utc(),
     }
-    assert integ.saldo("profile", alumno) == 50
-    assert integ.saldo("tenant", tenant) == 950
+    assert integ.saldo("profile", alumno) == 5
+    assert integ.saldo("tenant", tenant) == 995
     assert integ.valor(
         "select coins_awarded from attendance where student_id = :p", p=alumno
-    ) == 50
+    ) == 5
 
 
 @pytest.mark.integ
-def test_checkin_streak_7_awards_75(integ) -> None:
-    """Con current_streak=6 y last_attendance=ayer → nuevo=7 → 50*1.5=75."""
+def test_checkin_streak_7_paga_lo_mismo(integ) -> None:
+    """Con current_streak=6 y last_attendance=ayer → nuevo=7, y paga LO MISMO que racha 1: 5.
+
+    Ya no hay multiplicador ×1,5 (ESPEC_economia_oleada0 C5). La racha 7 se
+    sigue afirmando: es la que antes pagaba 75."""
     ayer = _hoy_utc() - timedelta(days=1)
     tenant, grupo, teacher, alumno = _escenario(integ, racha=6, ultima=ayer)
     codigo = integ.crear_sesion_asistencia(tenant, grupo, teacher)
@@ -292,17 +279,17 @@ def test_checkin_streak_7_awards_75(integ) -> None:
     body = r.json()
     assert body["success"] is True
     assert body["streak"] == 7
-    assert body["coins_awarded"] == 75
-    assert integ.saldo("profile", alumno) == 75
-    assert integ.saldo("tenant", tenant) == 925
+    assert body["coins_awarded"] == 5
+    assert integ.saldo("profile", alumno) == 5
+    assert integ.saldo("tenant", tenant) == 995
     assert integ.valor(
         "select current_streak from profiles where id = :p", p=alumno
     ) == 7
 
 
 @pytest.mark.integ
-def test_checkin_streak_14_awards_100(integ) -> None:
-    """Con streak=13 y ayer → nuevo=14 → 50*2.0=100."""
+def test_checkin_streak_14_paga_lo_mismo(integ) -> None:
+    """Con streak=13 y ayer → nuevo=14, y paga LO MISMO que racha 1: 5 (antes ×2 = 100)."""
     ayer = _hoy_utc() - timedelta(days=1)
     tenant, grupo, teacher, alumno = _escenario(integ, racha=13, ultima=ayer)
     codigo = integ.crear_sesion_asistencia(tenant, grupo, teacher)
@@ -316,9 +303,9 @@ def test_checkin_streak_14_awards_100(integ) -> None:
     body = r.json()
     assert body["success"] is True
     assert body["streak"] == 14
-    assert body["coins_awarded"] == 100
-    assert integ.saldo("profile", alumno) == 100
-    assert integ.saldo("tenant", tenant) == 900
+    assert body["coins_awarded"] == 5
+    assert integ.saldo("profile", alumno) == 5
+    assert integ.saldo("tenant", tenant) == 995
     assert integ.valor(
         "select current_streak from profiles where id = :p", p=alumno
     ) == 14
@@ -342,8 +329,8 @@ def test_checkin_geo_out_of_range_still_succeeds(integ) -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["success"] is True
-    assert body["coins_awarded"] == 50
+    assert body["coins_awarded"] == 5
     assert integ.valor(
         "select geo_status from attendance where student_id = :p", p=alumno
     ) == "out_of_range"
-    assert integ.saldo("profile", alumno) == 50
+    assert integ.saldo("profile", alumno) == 5

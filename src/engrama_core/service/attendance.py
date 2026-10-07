@@ -6,7 +6,8 @@ Flujo general:
   2. El QR muestra durante `duration_minutes`.
   3. Cada estudiante escanea → el frontend envía `session_code` + GPS.
   4. Backend valida: sesión activa, no expirada, no duplicada; otorga
-     coins con multiplicador según streak; actualiza `profiles.streak`.
+     coins (5 por asistir + 5 por puntualidad, ESPEC_economia_oleada0; la
+     racha ya NO multiplica); actualiza `profiles.streak`.
 
 Reglas clave (spec §11):
   - `session_code` vía `secrets.choice` (criptográficamente seguro).
@@ -38,6 +39,8 @@ from src.engrama_core.schemas import (
     CheckInResult,
 )
 from src.engrama_core.service import coins as coins_service
+from src.engrama_core.service import economia
+from src.shared.config import settings
 from src.shared.models import (
     Attendance,
     AttendanceSession,
@@ -49,13 +52,8 @@ from src.shared.models import (
 # =============================================================================
 # Constantes de negocio (spec §7).
 # =============================================================================
-ATTENDANCE_COINS_BASE = 50
-# Umbral → multiplicador. Ordenado de mayor a menor para buscar "el más alto
-# que aplique". Ej: streak 15 matchea 14 (x2.0); streak 8 matchea 7 (x1.5).
-_STREAK_MULTIPLIERS: tuple[tuple[int, float], ...] = (
-    (14, 2.0),
-    (7, 1.5),
-)
+# Los montos de la asistencia ya no son constantes: son configuración
+# (`settings.asistencia_*`) y la regla vive en `economia.py`.
 GEO_MAX_DISTANCE_METERS = 100.0
 SESSION_CODE_LENGTH = 6
 _SESSION_CODE_ALPHABET = string.ascii_uppercase + string.digits
@@ -88,12 +86,9 @@ def haversine_distance(
     return 2 * R * math.asin(math.sqrt(a))
 
 
-def streak_multiplier(current_streak: int) -> float:
-    """Devuelve el multiplicador de coins según la racha (§4.2)."""
-    for threshold, mult in _STREAK_MULTIPLIERS:
-        if current_streak >= threshold:
-            return mult
-    return 1.0
+def _ahora() -> datetime:
+    """El instante actual; costura para que los tests fijen la hora."""
+    return datetime.now(UTC)
 
 
 def compute_next_streak(
@@ -141,7 +136,7 @@ async def create_session(
         )
 
     # 2. Código único y ventana temporal.
-    now = datetime.now(UTC)
+    now = _ahora()
     expires_at = now + timedelta(minutes=duration_minutes)
     # Colisiones son extremadamente raras con 36^6 combinaciones, pero
     # reintentamos 3 veces por si el UNIQUE de session_code choca.
@@ -283,7 +278,7 @@ async def check_in(
         )
 
     # 2. Validar estado + expiración.
-    now = datetime.now(UTC)
+    now = _ahora()
     if session.status != "active" or session.expires_at <= now:
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
@@ -303,19 +298,13 @@ async def check_in(
         )
 
     # 4. Geo — informativo, nunca bloqueante (spec §11.4).
+    geo_status = "skipped"
     if latitude is not None and longitude is not None:
-        if session.admin_lat is not None and session.admin_lng is not None:
-            dist = haversine_distance(
-                latitude, longitude, session.admin_lat, session.admin_lng
-            )
-            geo_status = (
-                "valid" if dist <= GEO_MAX_DISTANCE_METERS else "out_of_range"
-            )
+        if session.admin_lat is None or session.admin_lng is None:
+            geo_status = "reference_missing"  # sin coords de referencia no se valida
         else:
-            # La sesión no tiene coords de referencia → no podemos validar.
-            geo_status = "reference_missing"
-    else:
-        geo_status = "skipped"
+            dist = haversine_distance(latitude, longitude, session.admin_lat, session.admin_lng)
+            geo_status = "valid" if dist <= GEO_MAX_DISTANCE_METERS else "out_of_range"
 
     # 5. Actualizar streak del estudiante.
     profile = await db.get(Profile, student_id)
@@ -337,9 +326,15 @@ async def check_in(
     profile.longest_streak = max(profile.longest_streak, new_streak)
     profile.last_attendance_date = today
 
-    # 6. Calcular coins con multiplicador por racha.
-    multiplier = streak_multiplier(new_streak)
-    coins_awarded = int(ATTENDANCE_COINS_BASE * multiplier)
+    # 6. Coins: 5 por asistir + 5 si llegó puntual, sin multiplicar por racha
+    # (regla pura en economia.py).
+    pago = economia.desglose_asistencia(
+        now, session.starts_at,
+        base=settings.asistencia_monedas_base,
+        bono=settings.asistencia_monedas_puntualidad,
+        minutos=settings.asistencia_minutos_puntualidad,
+    )
+    coins_awarded = pago.total
 
     # 7. INSERT attendance.
     record = Attendance(
@@ -355,21 +350,25 @@ async def check_in(
     db.add(record)
 
     # 8. Otorgar coins vía double-entry. Si falla por fondos insuficientes
-    # (HTTPException 402) la transacción entera revierte → no queda
-    # attendance huérfana ni streak actualizada.
-    await coins_service.award_coins(
-        db,
-        student_id=student_id,
-        tenant_id=tenant_id,
-        amount=coins_awarded,
-        action="attendance",
-        metadata={
-            "session_id": str(session.id),
-            "streak": new_streak,
-            "geo_status": geo_status,
-            "multiplier": multiplier,
-        },
-    )
+    # (402) la transacción entera revierte: ni attendance huérfana ni streak
+    # nueva. Con el monto en 0 (la configuración lo permite) no hay que mover
+    # nada: `award_coins` exige > 0.
+    if coins_awarded > 0:
+        await coins_service.award_coins(
+            db,
+            student_id=student_id,
+            tenant_id=tenant_id,
+            amount=coins_awarded,
+            action="attendance",
+            metadata={
+                "session_id": str(session.id),
+                "streak": new_streak,
+                "geo_status": geo_status,
+                "base": pago.base,
+                "puntualidad": pago.puntualidad,
+                "puntual": pago.puntual,
+            },
+        )
 
     await db.flush()
     return CheckInResult(

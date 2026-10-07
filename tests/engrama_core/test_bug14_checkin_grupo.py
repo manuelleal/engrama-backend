@@ -11,7 +11,7 @@ un docente también marca y cobra.
   A14-2  C11  la sesión EXPIRADA de G1, con E2 -> 404 (hoy 410), mismo cuerpo.
   A14-3  C12  un docente con `group_code = G1` en la sesión de G1 -> 404; un
               estudiante sin `group_code` -> 404; mismo cuerpo.
-  S14    C13  controles, verdes antes y después: E1 (G1) en G1 -> 200, 50 y
+  S14    C13  controles, verdes antes y después: E1 (G1) en G1 -> 200, 5 y
               racha 1; código inexistente -> 404; otro colegio -> 404.
 
 A14-1..3 afirman por la API: por eso corrieron en el commit 1 (508d568),
@@ -148,7 +148,7 @@ def test_a14_3_solo_estudiantes_del_grupo_marcan(integ) -> None:
 # S14 — C13: controles (verdes antes y después)
 # =============================================================================
 def test_s14_controles_del_checkin(integ) -> None:
-    """E1 en G1 -> 200, 50, racha 1. Código inexistente -> 404. Otro colegio -> 404."""
+    """E1 en G1 -> 200, 5, racha 1. Código inexistente -> 404. Otro colegio -> 404."""
     esc = _sembrar(integ)
     codigo = integ.crear_sesion_asistencia(esc.tenant, esc.g1, esc.docente)
 
@@ -164,7 +164,7 @@ def test_s14_controles_del_checkin(integ) -> None:
     r = _marcar(integ, esc.e1, codigo)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert (body["coins_awarded"], body["streak"]) == (50, 1), body
-    assert integ.saldo("profile", esc.e1) == 50
-    assert integ.saldo("tenant", esc.tenant) == POOL - 50
+    assert (body["coins_awarded"], body["streak"]) == (5, 1), body
+    assert integ.saldo("profile", esc.e1) == 5
+    assert integ.saldo("tenant", esc.tenant) == POOL - 5
     assert integ.valor("select count(*) from attendance") == 1

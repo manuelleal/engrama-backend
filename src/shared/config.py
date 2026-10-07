@@ -83,6 +83,15 @@ class Settings(BaseSettings):
     # Cuántas entradas de la cola se sirven a la vez.
     refuerzo_max_por_vez: int = Field(default=5, ge=1, le=20)
 
+    # La asistencia (ESPEC_economia_oleada0 §1.1 y §5). TODOS ESTOS NÚMEROS SON
+    # PROVISIONALES del arquitecto y Christiam puede vetarlos: por eso viven aquí
+    # y no enterrados en el código. Se paga `base` por asistir y `puntualidad`
+    # más si el check-in ocurre a `minutos_puntualidad` minutos o menos de que
+    # el profe abrió la sesión. La racha ya no multiplica nada.
+    asistencia_monedas_base: int = Field(default=5, ge=0, le=50)
+    asistencia_monedas_puntualidad: int = Field(default=5, ge=0, le=50)
+    asistencia_minutos_puntualidad: int = Field(default=5, ge=0, le=60)
+
     # --- Database ---
     database_url: str = Field(
         ..., description="DSN Postgres; se normaliza a postgresql+asyncpg:// internamente"

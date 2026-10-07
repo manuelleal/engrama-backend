@@ -264,6 +264,8 @@ app.include_router(core_router, prefix="/core", tags=["engrama-core"])
 
 Definir en `src/shared/config.py` o como constantes en el service:
 
+> **Vigente (oleada 0 de la economía):** la asistencia paga 5 + 5 por puntualidad, sin multiplicadores de racha, y los montos son configuración (`docs/ESPEC_economia_oleada0.md`, constitución §1: el código manda). Los valores de abajo (50, ×1,5, ×2) son los del diseño original y ya no rigen.
+
 ```python
 ATTENDANCE_COINS_BASE = 50
 ATTENDANCE_STREAK_THRESHOLDS = {
