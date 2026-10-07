@@ -30,9 +30,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.challenge_engine.schemas import (
     CHALLENGE_STATUSES,
     ChallengeCreate,
+    ChallengeQuestionIn,
     ChallengeOut,
     ChallengeQuestionOut,
 )
+from src.curriculo import service as curriculo_service
 from src.shared.models import (
     Challenge,
     ChallengeAttempt,
@@ -44,6 +46,18 @@ from src.shared.models import (
 # =============================================================================
 # 3.1 create_challenge
 # =============================================================================
+async def nodos_de_las_preguntas(
+    db: AsyncSession, preguntas: list[ChallengeQuestionIn]
+) -> list[list[str]]:
+    """Los nodos VIGENTES de cada pregunta (ESPEC_foco_grupo §1.1).
+
+    422 `nodo_desconocido` si alguno no está en el catálogo. Sin nodos no
+    consulta nada: un reto sin etiquetas se crea igual que siempre.
+    """
+    return [await curriculo_service.canonicos(db, q.nodos) if q.nodos else []
+            for q in preguntas]
+
+
 async def create_challenge(
     db: AsyncSession,
     *,
@@ -68,6 +82,9 @@ async def create_challenge(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="group_id not found in tenant",
             )
+
+    # Antes de escribir nada: un nodo desconocido no deja un reto a medias.
+    nodos = await nodos_de_las_preguntas(db, data.questions)
 
     challenge = Challenge(
         tenant_id=tenant_id,
@@ -97,6 +114,7 @@ async def create_challenge(
                 options_json=q.options_json,
                 correct_answer=q.correct_answer,
                 order_index=q.order_index or i,
+                nodes=nodos[i - 1],
             )
         )
     await db.flush()

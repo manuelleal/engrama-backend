@@ -42,6 +42,8 @@ from src.challenge_engine.schemas import (
 from src.challenge_engine.service import attempts as attempts_service
 from src.challenge_engine.service import challenges as challenges_service
 from src.challenge_engine.service import generator as generator_service
+from src.foco import service as foco_service
+from src.foco.schemas import FocoEstudianteOut
 from src.shared.config import settings
 from src.shared.db import get_db
 from src.shared.deps import get_current_user, require_teacher
@@ -181,7 +183,36 @@ async def list_challenges(
         tenant_id=auth.tenant_id,
         group_code=auth.group_code,
     )
+    # Los MISMOS retos, con los del foco vigente de su grupo delante. Sin
+    # foco, la lista es la de siempre (ESPEC_foco_grupo §1.3).
+    rows = await foco_service.priorizar_feed(
+        db, tenant_id=auth.tenant_id, group_code=auth.group_code, retos=rows
+    )
     return [await challenges_service.hydrate(db, c) for c in rows]
+
+
+@router.get(
+    "/foco",
+    response_model=FocoEstudianteOut,
+    status_code=status.HTTP_200_OK,
+)
+async def read_focus(
+    auth: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> FocoEstudianteOut:
+    """El foco vigente del grupo del estudiante y cuáles retos de SU feed están en él.
+
+    NOTA: debe declararse antes de `/{challenge_id}`, igual que `/attempts/history`.
+    """
+    feed = await challenges_service.list_challenges_for_student(
+        db,
+        student_id=auth.profile_id,
+        tenant_id=auth.tenant_id,
+        group_code=auth.group_code,
+    )
+    return await foco_service.para_el_estudiante(
+        db, tenant_id=auth.tenant_id, group_code=auth.group_code, feed=feed
+    )
 
 
 @router.get(

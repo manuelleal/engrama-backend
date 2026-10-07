@@ -60,6 +60,10 @@ class ChallengeQuestionIn(BaseModel):
     options_json: list[dict[str, Any]] | None = None
     correct_answer: str
     order_index: int = Field(default=1, ge=1)
+    # Los nodos del mapa que practica la pregunta (ESPEC_foco_grupo §1.1). Opcional;
+    # pasan por el catálogo. NUNCA salen en `ChallengeQuestionOut`.
+    nodos: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(
+        default_factory=list, max_length=8)
 
 
 class ChallengeCreate(BaseModel):

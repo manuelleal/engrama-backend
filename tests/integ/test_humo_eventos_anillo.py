@@ -35,7 +35,7 @@ ITEMS = 4
 # N, M y K salen de la semilla. Se fijaron al medir el humo por primera vez con el
 # código bueno (ESPEC §3) y desde ahí no se mueven: si difieren, se reporta.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "039_grader", "semilla": 37, "eventos": 42,
+    "alembic_version": "040_foco_grupo", "semilla": 37, "eventos": 42,
     "primera": {"accepted": 42, "duplicates": 0, "rejected": 0},
     "segunda": {"accepted": 0, "duplicates": 42, "rejected": 0},
     "filas": 42, "monedas_acreditadas": 24, "filas_en_el_libro": 12, "bolsa": 976,

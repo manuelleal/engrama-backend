@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     # APAGADO (ESPEC_generador_apagado; decisión 012, D6): no revisa créditos
     # ni calidad. Apagado responde 503 `generador_apagado` sin llamar a la IA.
     challenges_generate_enabled: bool = Field(default=False)
+    # El día de calendario de la institución: UTC + estas horas (Colombia = -5).
+    # Lo usa el foco del grupo, que va por días y no por instantes
+    # (ESPEC_foco_grupo §1.2). Una sola para toda la instalación.
+    engrama_utc_offset_hours: int = Field(default=-5, ge=-12, le=14)
 
     # --- Database ---
     database_url: str = Field(

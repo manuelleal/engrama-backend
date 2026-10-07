@@ -63,8 +63,8 @@ RUTA_HUMO = RAIZ_BACKEND / "tests" / "_salida" / "humo_integ.json"
 # Valores exactos que el humo debe encontrar (espec §5). Si uno difiere se
 # reporta; NO se ajusta este diccionario para que pase.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "039_grader",  # la puerta del Grader
-    "tablas_con_rls": 38,  # 33 + 5 (039), con RLS y sin políticas
+    "alembic_version": "040_foco_grupo",  # el foco del grupo
+    "tablas_con_rls": 39,  # 38 + 1 (040), con RLS y sin políticas
     # 19 x 2 + 13 especiales (029); la 030 reemplaza 2, no suma; la 031 no toca políticas
     "politicas_public": 51,
     "auth_uid_existe": True,

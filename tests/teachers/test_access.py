@@ -146,9 +146,20 @@ _GRADER: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/grader/resultados", frozenset({"POST"})): "teacher",
 }
 
+# docs/ESPEC_foco_grupo.md: las etiquetas de nodo, el foco del grupo y su logro.
+_FOCO: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/teachers/challenges/{cid}/nodos", frozenset({"GET"})): "teacher",
+    ("/teachers/challenges/{cid}/nodos", frozenset({"PUT"})): "teacher",
+    ("/teachers/groups/{gid}/foco", frozenset({"PUT"})): "teacher",
+    ("/teachers/groups/{gid}/foco", frozenset({"GET"})): "teacher",
+    ("/teachers/groups/{gid}/foco/{desde}", frozenset({"DELETE"})): "teacher",
+    ("/teachers/groups/{gid}/foco/logro", frozenset({"GET"})): "teacher",
+    ("/challenges/foco", frozenset({"GET"})): "user",
+}
+
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS, **_EVENTOS,
-    **_CATALOGO, **_GRADER}
+    **_CATALOGO, **_GRADER, **_FOCO}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:

@@ -37,6 +37,9 @@ def _en_arreglo(tabla: str, columna: str) -> Reapuntador:
 TABLAS: list[tuple[str, Reapuntador]] = [
     # Los ítems de los exámenes del Grader (ESPEC_grader_anillo §9.2).
     ("grader_exam_items", _en_arreglo("grader_exam_items", "nodos")),
+    # Las preguntas de los retos y los focos de los grupos (ESPEC_foco_grupo §1.2).
+    ("challenge_questions", _en_arreglo("challenge_questions", "nodes")),
+    ("group_focus", _en_arreglo("group_focus", "nodes")),
 ]
 
 

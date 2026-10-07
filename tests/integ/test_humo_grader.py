@@ -32,7 +32,7 @@ REPLICA = os.environ.get("ENGRAMA_REPLICA_GRADER") == "1"
 # Contenido exacto (ESPEC §9.8). `aciertos_totales` salió de la primera medición
 # con el código bueno y no se mueve. Si difiere se reporta; no se ajusta.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "039_grader", "semilla": 39, "lista": 28, "examen": 201,
+    "alembic_version": "040_foco_grupo", "semilla": 39, "lista": 28, "examen": 201,
     "examen_otra_vez": 200,
     "primer_envio": {"recibidas": 28, "reemplazadas": 0, "rechazadas": 0},
     "reenvio": {"recibidas": 2, "reemplazadas": 2, "rechazadas": 0},

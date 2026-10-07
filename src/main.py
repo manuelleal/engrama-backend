@@ -6,6 +6,7 @@ from src.curriculo.router import router as curriculo_router
 from src.datos.router import admin as datos_admin_router
 from src.datos.router import usuario as datos_usuario_router
 from src.engrama_core.router import router as core_router
+from src.foco.router import router as foco_router
 from src.grader.router import router as grader_router
 from src.registro.router import docente as registro_docente_router
 from src.registro.router import publico as registro_publico_router
@@ -40,6 +41,8 @@ app.include_router(curriculo_router, prefix="/teachers", tags=["curriculo"])
 # La puerta del Grader: lista numerada, examen impreso y hojas calificadas, con el
 # Bearer del profe (docs/ESPEC_grader_anillo.md).
 app.include_router(grader_router, prefix="/grader", tags=["grader"])
+# El foco del grupo y las etiquetas de nodo de los retos (docs/ESPEC_foco_grupo.md).
+app.include_router(foco_router, prefix="/teachers", tags=["foco"])
 
 
 @app.get("/health")

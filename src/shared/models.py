@@ -483,8 +483,17 @@ class ChallengeQuestion(Base):
     order_index: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("1")
     )
+    # 040: los nodos del mapa que practica la pregunta (ids vigentes del catálogo).
+    # `default=list`: el objeto recién creado ya los trae, sin releer la fila.
+    nodes: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("idx_challenge_questions_nodes", "nodes", postgresql_using="gin"),
     )
 
 
@@ -1539,4 +1548,46 @@ class GraderSheetItem(Base):
                         name="grader_sheet_items_estado_check"),
         CheckConstraint("NOT correcta OR estado = 'marcada'",
                         name="grader_sheet_items_correcta_check"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# 040 — el foco del grupo (docs/ESPEC_foco_grupo.md §1.5)
+# -----------------------------------------------------------------------------
+class GroupFocus(Base):
+    """Un periodo del foco de un grupo: los nodos del mapa que trabaja esos días.
+
+    Uno por `(grupo, starts_on)`; dos periodos del mismo grupo no se solapan
+    (lo exige `foco.service.fijar`, con un candado sobre el grupo).
+    """
+
+    __tablename__ = "group_focus"
+
+    id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    group_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("groups.id", ondelete="CASCADE"), nullable=False
+    )
+    starts_on: Mapped[date] = mapped_column(Date, nullable=False)
+    ends_on: Mapped[date] = mapped_column(Date, nullable=False)
+    nodes: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    set_by: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("group_id", "starts_on", name="group_focus_group_start_key"),
+        CheckConstraint("ends_on >= starts_on AND ends_on - starts_on <= 62",
+                        name="group_focus_dates_check"),
+        CheckConstraint("cardinality(nodes) BETWEEN 1 AND 12", name="group_focus_nodes_check"),
     )
