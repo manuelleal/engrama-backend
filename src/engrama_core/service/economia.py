@@ -9,8 +9,9 @@ Regla de la casa: todo monto de monedas sale de una función de este módulo.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import NamedTuple
+from uuid import UUID
 
 
 class DesgloseAsistencia(NamedTuple):
@@ -44,3 +45,13 @@ def desglose_asistencia(
     """
     puntual = es_puntual(llegada, apertura, minutos)
     return DesgloseAsistencia(base=base, puntualidad=bono if puntual else 0, puntual=puntual)
+
+
+def llave_asistencia(group_id: UUID, student_id: UUID, dia: date) -> str:
+    """La llave de idempotencia de la paga de asistencia: un pago por estudiante, grupo y día.
+
+    `dia` es el día de la INSTITUCIÓN (no el UTC). La garantía real es el UNIQUE
+    `(tenant_id, idempotency_key)` de la migración 033; esta función solo fija
+    qué cuenta como "el mismo pago".
+    """
+    return f"attendance:{group_id}:{student_id}:{dia.isoformat()}"

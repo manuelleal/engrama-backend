@@ -5,14 +5,17 @@
   EA3  C4  los números son configuración: con 4 + 3 y 10 minutos paga 7 y 4
   ER1  C7  la segunda sesión del mismo día NO cambia la racha
   ER2  C8  el día es el de la institución (Bogotá), no el UTC
+  ED1  C9  una segunda sesión del día se registra con 0 monedas (un pago por día)
+  ED2  C10 el día de la paga es el local
+  ED3  C11 dos check-ins a la vez a dos sesiones del día: una sola paga
 
 El reloj se fija con la costura `attendance._ahora`; la sesión se abre con
 `crear_sesion_asistencia(inicio=...)`. Los tramposos:
-`tests/tramposos/test_tramposos_economia.py`. El siguiente commit de la oleada
-agrega aquí el pago único por día (ED*).
+`tests/tramposos/test_tramposos_economia.py`.
 """
 from __future__ import annotations
 
+import threading
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, NamedTuple
 from uuid import UUID
@@ -23,6 +26,7 @@ from fastapi.testclient import TestClient
 from src.engrama_core.service import attendance as attendance_mod
 from src.main import app
 from src.shared.config import settings
+from tests.seguridad.veredictos import PruebaRota
 
 pytestmark = pytest.mark.integ
 client = TestClient(app)
@@ -61,9 +65,13 @@ def abrir(integ: Any, esc: Escena, inicio: datetime = INICIO,
                                          inicio=inicio, expira_en=expira_en)
 
 
+def marcar_con(cliente: TestClient, integ: Any, alumno: UUID, codigo: str) -> Any:
+    return cliente.post("/core/attendance/check-in", json={"session_code": codigo},
+                        headers=integ.headers(alumno))
+
+
 def marcar(integ: Any, alumno: UUID, codigo: str) -> Any:
-    return client.post("/core/attendance/check-in", json={"session_code": codigo},
-                       headers=integ.headers(alumno))
+    return marcar_con(client, integ, alumno, codigo)
 
 
 def asientos(integ: Any, alumno: UUID) -> list[dict[str, Any]]:
@@ -200,3 +208,116 @@ def test_er2_el_dia_es_el_de_la_institucion(integ, monkeypatch) -> None:
     assert estado_racha(integ, seguido)["last_attendance_date"] == dia_local, "ER2: la fecha"
     assert integ.valor("select attendance_date from attendance where student_id = :p",
                        p=seguido) == dia_local, "ER2: attendance_date no es el día local"
+
+
+# =============================================================================
+# ED1 — C9: dos sesiones del mismo grupo el mismo día: se paga UNA vez
+# =============================================================================
+def _filas(integ: Any, alumno: UUID) -> tuple[int, int]:
+    """(filas en `attendance`, asientos 'attendance' en el libro) de ese estudiante."""
+    return (int(integ.valor("select count(*) from attendance where student_id = :p", p=alumno)),
+            len(asientos(integ, alumno)))
+
+
+def test_ed1_una_segunda_sesion_del_dia_se_registra_pero_no_paga(integ, monkeypatch) -> None:
+    """La 1.ª sesión llega tarde (5); la 2.ª, puntual, no paga. Otro estudiante cobra lo suyo."""
+    esc = armar(integ, estudiantes=2)
+    e, control = esc.alumnos
+    # 13:00 y 15:00 de Bogotá, el mismo día.
+    primera = abrir(integ, esc, datetime(2026, 10, 6, 18, 0, tzinfo=UTC))
+    segunda = abrir(integ, esc, datetime(2026, 10, 6, 20, 0, tzinfo=UTC))
+
+    fijar_ahora(monkeypatch, datetime(2026, 10, 6, 18, 10, tzinfo=UTC))  # 10 min: tarde
+    r1 = marcar(integ, e, primera)
+    assert r1.status_code == 200 and r1.json()["coins_awarded"] == 5, f"ED1: {r1.text}"
+    racha = r1.json()["streak"]
+
+    fijar_ahora(monkeypatch, datetime(2026, 10, 6, 20, 1, tzinfo=UTC))  # 1 min: puntual
+    r2 = marcar(integ, e, segunda)
+    # Primero la base de datos (qué quedó), después lo que respondió.
+    filas, pagos = _filas(integ, e)
+    assert filas == 2, f"ED1: {filas} filas en attendance, esperadas 2 (se registra la asistencia)"
+    assert pagos == 1, f"ED1: {pagos} asientos de asistencia, esperado 1 (un pago por día)"
+    assert asientos(integ, e)[0]["metadata"]["dia"] == "2026-10-06", "ED1: el asiento sin su día"
+    assert r2.status_code == 200, f"ED1: la 2.ª sesión respondió {r2.status_code} {r2.text}"
+    assert r2.json()["coins_awarded"] == 0, f"ED1: la 2.ª pagó {r2.json()['coins_awarded']}"
+    assert r2.json()["streak"] == racha, f"ED1: la racha cambió a {r2.json()['streak']}"
+    assert integ.valor("select coins_awarded from attendance where session_id = "
+                       "(select id from attendance_sessions where session_code = :c)",
+                       c=segunda) == 0, "ED1: la fila de la 2.ª sesión no dice 0 monedas"
+    assert integ.saldo("profile", e) == 5, "ED1: el saldo de E se movió con la 2.ª sesión"
+    assert integ.saldo("tenant", esc.tenant) == POOL - 5, "ED1: la bolsa se movió con la 2.ª"
+
+    # Control: otro estudiante del grupo, su primera asistencia del día, SÍ cobra.
+    r3 = marcar(integ, control, segunda)
+    assert r3.status_code == 200 and r3.json()["coins_awarded"] == 10, \
+        f"ED1: el control cobró {r3.json().get('coins_awarded')}, no 10 ({r3.text})"
+    assert integ.saldo("tenant", esc.tenant) == POOL - 15, "ED1: la bolsa tras el control"
+
+
+# =============================================================================
+# ED2 — C10: el día de la paga es el local
+# =============================================================================
+def test_ed2_el_dia_de_la_paga_es_el_local(integ, monkeypatch) -> None:
+    """18:00 y 19:30 de Bogotá (otro día en UTC): una paga. A las 00:10 del día siguiente, otra."""
+    esc = armar(integ)
+    (e,) = esc.alumnos
+    a = abrir(integ, esc, datetime(2026, 10, 6, 23, 0, tzinfo=UTC))  # 18:00 Bogotá
+    b = abrir(integ, esc, datetime(2026, 10, 7, 0, 28, tzinfo=UTC))  # 19:28 Bogotá, ya 7 en UTC
+    c = abrir(integ, esc, datetime(2026, 10, 7, 5, 8, tzinfo=UTC))   # 00:08 Bogotá del día 7
+
+    pagos = []
+    for codigo, ahora in ((a, datetime(2026, 10, 6, 23, 1, tzinfo=UTC)),
+                          (b, datetime(2026, 10, 7, 0, 30, tzinfo=UTC)),
+                          (c, datetime(2026, 10, 7, 5, 10, tzinfo=UTC))):
+        fijar_ahora(monkeypatch, ahora)
+        r = marcar(integ, e, codigo)
+        assert r.status_code == 200, f"ED2: {r.text}"
+        pagos.append(r.json()["coins_awarded"])
+    # 18:00 -> 10 · 19:30 (mismo día local) -> 0 · 00:10 del día siguiente -> 10 otra vez
+    assert pagos == [10, 0, 10], f"ED2: las pagas fueron {pagos}, esperadas [10, 0, 10]"
+    dias = [x["metadata"]["dia"] for x in asientos(integ, e)]
+    assert dias == ["2026-10-06", "2026-10-07"], f"ED2: los días de los asientos: {dias}"
+
+
+# =============================================================================
+# ED3 — C11: dos check-ins a la vez a dos sesiones del mismo día: una paga
+# =============================================================================
+ESPERA_HILO_S = 60  # si un hilo no vuelve en este tiempo, el arnés está roto
+
+
+def test_ed3_dos_checkins_a_la_vez_pagan_una_vez(integ, monkeypatch) -> None:
+    esc = armar(integ)
+    (e,) = esc.alumnos
+    codigos = [abrir(integ, esc, datetime(2026, 10, 6, 18, 0, tzinfo=UTC)),
+               abrir(integ, esc, datetime(2026, 10, 6, 18, 0, tzinfo=UTC))]
+    fijar_ahora(monkeypatch, datetime(2026, 10, 6, 18, 1, tzinfo=UTC))  # ambas puntuales
+
+    respuestas: list[Any] = [None, None]
+    errores: list[BaseException] = []
+    barrera = threading.Barrier(2)
+
+    def marcar_a_la_vez(i: int) -> None:
+        try:
+            barrera.wait(timeout=ESPERA_HILO_S)
+            respuestas[i] = marcar_con(TestClient(app), integ, e, codigos[i])
+        except BaseException as exc:  # noqa: BLE001 — se re-lanza en el hilo principal
+            errores.append(exc)
+
+    hilos = [threading.Thread(target=marcar_a_la_vez, args=(i,)) for i in (0, 1)]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join(timeout=ESPERA_HILO_S)
+    if any(h.is_alive() for h in hilos):
+        raise PruebaRota("ED3: un check-in no volvió a tiempo (¿bloqueo?)")
+    if errores:
+        raise errores[0]
+
+    estados = sorted(r.status_code for r in respuestas)
+    pagos = sorted(r.json()["coins_awarded"] for r in respuestas if r.status_code == 200)
+    filas, asientos_n = _filas(integ, e)
+    medido = {"estados": estados, "pagos": pagos, "filas": filas, "asientos": asientos_n,
+              "saldo": integ.saldo("profile", e)}
+    assert medido == {"estados": [200, 200], "pagos": [0, 10], "filas": 2, "asientos": 1,
+                      "saldo": 10}, f"ED3: dos check-ins a la vez: {medido}"

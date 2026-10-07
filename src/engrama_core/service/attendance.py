@@ -351,22 +351,21 @@ async def check_in(
     # (402) la transacción entera revierte: ni attendance huérfana ni streak
     # nueva. Con el monto en 0 (la configuración lo permite) no hay que mover
     # nada: `award_coins` exige > 0.
+    # UN solo pago por estudiante, grupo y día: la llave la garantiza el UNIQUE
+    # de la 033, también si dos check-ins a dos sesiones llegan a la vez. Si la
+    # llave ya estaba (None), la asistencia SÍ se registra, con 0 monedas.
     if coins_awarded > 0:
-        await coins_service.award_coins(
-            db,
-            student_id=student_id,
-            tenant_id=tenant_id,
-            amount=coins_awarded,
+        asiento = await coins_service.award_coins(
+            db, student_id=student_id, tenant_id=tenant_id, amount=coins_awarded,
             action="attendance",
-            metadata={
-                "session_id": str(session.id),
-                "streak": new_streak,
-                "geo_status": geo_status,
-                "base": pago.base,
-                "puntualidad": pago.puntualidad,
-                "puntual": pago.puntual,
-            },
+            idempotency_key=economia.llave_asistencia(session.group_id, student_id, today),
+            metadata={"session_id": str(session.id), "streak": new_streak,
+                      "geo_status": geo_status, "base": pago.base,
+                      "puntualidad": pago.puntualidad, "puntual": pago.puntual,
+                      "dia": today.isoformat()},
         )
+        if asiento is None:
+            coins_awarded = record.coins_awarded = 0
 
     await db.flush()
     return CheckInResult(
