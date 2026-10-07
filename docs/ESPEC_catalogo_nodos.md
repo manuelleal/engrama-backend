@@ -170,3 +170,6 @@ Diagonal PREDICHA (el código no existe; ERR-23):
 2. `alembic upgrade head`.
 3. `DATABASE_URL=… python -m src.curriculo cargar --archivo <ruta>/curriculo/nodos.json`; debe imprimir `vigentes` y `reemplazados` iguales a los del archivo.
 4. Repetir el paso 3 cada vez que el mapa cambie. Si responde `nodo_desaparecido`, el mapa borró un id: se corrige **el mapa** (declarándolo en `reemplazos[]`), no la base.
+
+### Medido después, a mano y fuera de la suite (2026-10-06, sobre `0d1058b`)
+La orden por su `main()`, con un test desechable fuera del repo: con el mapa real → sale con **0** y carga (`nodos-0.3`, **523 vigentes y 14 reemplazos**: el mapa ya había cambiado desde RC1); con un archivo sin nodos, uno que no es JSON y uno que no existe → sale con **2** y no escribe. Queda sin medir solo la lectura de `DATABASE_URL` del entorno (el test inyecta las sesiones).
