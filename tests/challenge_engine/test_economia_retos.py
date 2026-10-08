@@ -1,7 +1,8 @@
 """El valor de un reto: tope de `coins_reward` — `docs/ESPEC_economia_oleada0.md` §1.4.
 
   UE6  C12  (no-integ) 21 se rechaza en `coins_reward`; 20 y 0 pasan; con el tope en
-            30, 25 pasa; `recompensa_del_reto(50, 20) = 20`
+            30, 25 pasa; `recompensa_del_reto(50, 20) = 20`; `max_winners` omitido
+            es `None` (el servidor lo resuelve, §1.5)
   ET1  C13  `POST /challenges/` con 21 -> 422 y 0 filas; con 20 -> 201. Un reto YA
             guardado con 50: quien lo gana recibe 20 (respuesta, asiento y saldo) y
             el `GET` lo muestra con 20
@@ -67,6 +68,14 @@ def test_ue6_el_tope_se_valida_y_se_aplica() -> None:
     assert pagos == {"50 con tope 20": 20, "20 con tope 20": 20, "10 con tope 20": 10,
                      "0 con tope 20": 0}, f"UE6: {pagos}"
     assert settings.reto_monedas_tope == 20, "UE6: el defecto del tope no es 20"
+
+    # `max_winners` omitido = None (ya no es 10); uno explícito se respeta.
+    omitido = ChallengeCreate.model_validate(_cuerpo(10)).max_winners
+    explicito = ChallengeCreate.model_validate({**_cuerpo(10), "max_winners": 3}).max_winners
+    assert (omitido, explicito) == (None, 3), f"UE6: max_winners omitido/explícito: {omitido}, {explicito}"
+    cupos = (economia.cupo_por_defecto(12, 1), economia.cupo_por_defecto(12, 40),
+             economia.cupo_por_defecto(0, 1), economia.cupo_por_defecto(55, 40))
+    assert cupos == (12, 40, 1, 55), f"UE6: cupo por defecto (12/1, 12/40, 0/1, 55/40): {cupos}"
 
 
 # =============================================================================

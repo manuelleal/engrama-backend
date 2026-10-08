@@ -18,8 +18,9 @@ matriz completa se mide aparte (ERR-15, 19 y 23).
   ZT10 la segunda sesión del día responde 409 y no registra -> ED1
   ZT11 al pagar no se aplica el tope                 -> ET1 (recibe 50)
   ZT12 al crear no se valida el tope                 -> ET1 (201 con 21)
+  ZT13 `max_winners` omitido = 10                    -> EG1, EG2
 
-Los demás (ZT13-ZT19) entran con el commit que crea su pieza.
+Los demás (ZT14-ZT19) entran con el commit que crea su pieza.
 """
 from __future__ import annotations
 
@@ -40,6 +41,7 @@ from src.engrama_core.service import economia as economia_mod
 from src.foco import fechas as fechas_mod
 from src.shared.config import settings
 from src.shared.models import Attendance
+from tests.challenge_engine import test_economia_ganadores as eg
 from tests.challenge_engine import test_economia_retos as er
 from tests.engrama_core import test_attendance as ta
 from tests.engrama_core import test_economia_asistencia as ea
@@ -170,6 +172,15 @@ def _no_valida_el_tope(coins_reward: int, tope: int) -> int:
     return coins_reward
 
 
+# =============================================================================
+# ZT13 — el cupo omitido vuelve a 10
+# =============================================================================
+def _cupo_diez(estudiantes_activos: int, piso: int) -> int:
+    """ZT13: `max_winners` omitido = 10, como antes (la carrera)."""
+    del estudiantes_activos, piso
+    return 10
+
+
 def _parche(objetivo: Any, nombre: str, valor: Any) -> Aplicar:
     def aplicar(_integ: Any, mp: pytest.MonkeyPatch) -> AbstractContextManager[Any]:
         mp.setattr(objetivo, nombre, valor)
@@ -228,6 +239,12 @@ TRAMPOSOS: dict[str, tuple[Aplicar, list[tuple[Callable[..., None], str]]]] = {
     "ZT12": (_parche(economia_mod, "exigir_tope_del_reto", _no_valida_el_tope), [
         (er.test_et1_el_tope_al_crear_al_pagar_y_al_mostrar,
          r"ET1: crear con 21 respondió 201"),
+    ]),
+    "ZT13": (_parche(economia_mod, "cupo_por_defecto", _cupo_diez), [
+        (eg.test_eg1_el_cupo_por_defecto_es_el_tamano_del_grupo,
+         r"EG1: grupo de 12 activos con piso 1: max_winners 10, no 12"),
+        (eg.test_eg2_los_13_de_un_grupo_de_13_cobran,
+         r"EG2: aciertos 13, cobraron 10, sin paga por cupo 3"),
     ]),
 }
 

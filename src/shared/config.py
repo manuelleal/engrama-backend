@@ -96,6 +96,12 @@ class Settings(BaseSettings):
     # tope en 20 ningún reto individual paga más que una sesión entera de EVA.
     # Provisional; se valida al crear y se aplica al pagar y al mostrar.
     reto_monedas_tope: int = Field(default=20, ge=1, le=1000)
+    # Cuántos pueden cobrar un reto cuando quien lo crea no indica `max_winners`
+    # (ESPEC_economia_oleada0 §1.5): tantos como estudiantes activos tenga el
+    # grupo, pero NUNCA menos que este piso. El piso existe porque un grupo se
+    # siembra a veces vacío (los estudiantes entran después por el autorregistro)
+    # y el tamaño daría 0 o 1: volvería la carrera por cupo. Ponerlo en 1 lo veta.
+    reto_ganadores_piso: int = Field(default=40, ge=1, le=10000)
 
     # --- Database ---
     database_url: str = Field(

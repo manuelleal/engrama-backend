@@ -64,6 +64,16 @@ def recompensa_del_reto(coins_reward: int, tope: int) -> int:
     return min(coins_reward, tope)
 
 
+def cupo_por_defecto(estudiantes_activos: int, piso: int) -> int:
+    """`max_winners` de un reto creado SIN indicarlo: el tamaño del grupo, con piso.
+
+    Sin cupo indicado, el reto no debe acabarse antes de que todo el grupo lo
+    intente (la moneda premia el dominio, no llegar primero). El piso evita que
+    un grupo todavía vacío deje el cupo en 0 o 1.
+    """
+    return max(estudiantes_activos, piso)
+
+
 def llave_asistencia(group_id: UUID, student_id: UUID, dia: date) -> str:
     """La llave de idempotencia de la paga de asistencia: un pago por estudiante, grupo y día.
 

@@ -88,7 +88,9 @@ class ChallengeCreate(BaseModel):
     coins_reward: int = Field(default=10, ge=0)
     xp_reward: int = Field(default=10, ge=0)
     max_attempts: int = Field(default=2, ge=1)
-    max_winners: int = Field(default=10, ge=1)
+    # None = "no lo indico": el servidor pone el tamaño del grupo (con piso),
+    # ESPEC_economia_oleada0 §1.5. Un número explícito se respeta tal cual.
+    max_winners: int | None = Field(default=None, ge=1)
     group_id: UUIDIn | None = None  # None = visible a todo el tenant
     questions: list[ChallengeQuestionIn] = Field(min_length=1)
 

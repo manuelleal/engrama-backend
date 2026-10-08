@@ -42,6 +42,7 @@ from src.shared.models import (
     ChallengeAttempt,
     ChallengeQuestion,
     Group,
+    Membership,
 )
 
 
@@ -60,6 +61,30 @@ async def nodos_de_las_preguntas(
             for q in preguntas]
 
 
+async def _cupo_por_defecto(
+    db: AsyncSession, tenant_id: UUID, group_code: str | None
+) -> int:
+    """`max_winners` cuando no se indicó: estudiantes ACTIVOS del grupo (o de la
+    institución, si el reto es global), con el piso de `RETO_GANADORES_PISO`.
+
+    Se resuelve al crear y NO crece si el grupo crece después (límite declarado).
+    """
+    if group_code is not None:
+        # Import local: `teachers.service.panel` importa este módulo (ciclo).
+        from src.teachers.service.panel import student_count
+
+        activos = await student_count(db, tenant_id, group_code)
+    else:
+        activos = int((await db.execute(
+            select(func.count()).select_from(Membership).where(
+                Membership.tenant_id == tenant_id,
+                Membership.role == "student",
+                Membership.is_active.is_(True),
+            )
+        )).scalar_one())
+    return economia.cupo_por_defecto(activos, settings.reto_ganadores_piso)
+
+
 async def create_challenge(
     db: AsyncSession,
     *,
@@ -73,17 +98,23 @@ async def create_challenge(
       - Si `group_id` viene, debe existir y pertenecer al tenant (404 si no).
     `require_teacher` aguas arriba ya garantiza el rol del creador.
     """
+    group_code: str | None = None
     if data.group_id is not None:
         grp = await db.execute(
-            select(Group.id).where(
+            select(Group.group_code).where(
                 Group.id == data.group_id, Group.tenant_id == tenant_id
             )
         )
-        if grp.scalar_one_or_none() is None:
+        group_code = grp.scalar_one_or_none()
+        if group_code is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="group_id not found in tenant",
             )
+
+    max_winners = data.max_winners
+    if max_winners is None:
+        max_winners = await _cupo_por_defecto(db, tenant_id, group_code)
 
     # Antes de escribir nada: un nodo desconocido no deja un reto a medias.
     nodos = await nodos_de_las_preguntas(db, data.questions)
@@ -102,7 +133,7 @@ async def create_challenge(
         coins_reward=data.coins_reward,
         xp_reward=data.xp_reward,
         max_attempts=data.max_attempts,
-        max_winners=data.max_winners,
+        max_winners=max_winners,
     )
     db.add(challenge)
     await db.flush()  # necesitamos challenge.id para las preguntas
