@@ -63,7 +63,9 @@ class Settings(BaseSettings):
     # Secretos HMAC de la puerta de eventos del anillo, UNO POR ORIGEN
     # (ESPEC_eventos_anillo §1.2): EVA firma como `live` y SET como `set`. 32
     # caracteres o más, al azar. Vacío = ese origen está apagado (401). No son
-    # el secreto JWT ni la clave de servicio.
+    # el secreto JWT ni la clave de servicio. Si están puestos y son cortos,
+    # iguales entre sí o iguales al secreto JWT, el servicio NO arranca
+    # (`exigir_secretos_de_eventos`, más abajo).
     events_secret_live: str = Field(default="")
     events_secret_set: str = Field(default="")
     # El generador viejo de retos con IA (`POST /challenges/generate`) nace
@@ -146,10 +148,63 @@ class Settings(BaseSettings):
         return value
 
 
+# El mínimo de un secreto de eventos. Es el mismo número que `events.SECRETO_MINIMO`
+# (un test, UE3, exige que coincidan): aquí no se importa `events` para que la
+# configuración no dependa de ningún otro módulo.
+EVENTS_SECRET_MINIMO = 32
+
+
+class ConfiguracionInvalida(RuntimeError):
+    """La configuración no deja arrancar. El mensaje NUNCA lleva el valor de un secreto."""
+
+
+def problemas_de_secretos(live: str, set_: str, jwt: str) -> list[str]:
+    """Por qué los secretos de eventos no sirven; lista vacía si están bien.
+
+    Auditoría 03, S-11 (ESPEC_eventos_anillo §12). Un secreto VACÍO no es un
+    problema: significa "ese origen apagado" (401). Pero si está puesto debe:
+      - medir 32 o más: uno corto dejaba el origen apagado EN SILENCIO;
+      - ser distinto del otro: el origen no va dentro de lo firmado, así que
+        con un secreto compartido un lote de SET valdría como si fuera de EVA;
+      - ser distinto del secreto JWT: cada secreto abre una sola puerta.
+    Los mensajes nombran la variable y el motivo; nunca el valor ni su largo.
+    """
+    puestos = {"EVENTS_SECRET_LIVE": live, "EVENTS_SECRET_SET": set_}
+    problemas = [f"{nombre} mide menos de {EVENTS_SECRET_MINIMO} caracteres"
+                 for nombre, valor in puestos.items()
+                 if valor and len(valor) < EVENTS_SECRET_MINIMO]
+    if live and live == set_:
+        problemas.append("EVENTS_SECRET_LIVE y EVENTS_SECRET_SET son iguales")
+    problemas += [f"{nombre} es igual a SUPABASE_JWT_SECRET"
+                  for nombre, valor in puestos.items() if valor and valor == jwt]
+    return problemas
+
+
+def exigir_secretos_de_eventos(config: Settings) -> None:
+    """Si un secreto de eventos está puesto y no sirve, el servicio NO arranca.
+
+    No es un validador de pydantic a propósito: su error imprime los valores
+    de entrada, y aquí los valores son secretos.
+    """
+    problemas = problemas_de_secretos(config.events_secret_live, config.events_secret_set,
+                                      config.supabase_jwt_secret)
+    if problemas:
+        raise ConfiguracionInvalida(
+            "Secretos de eventos inválidos: " + "; ".join(problemas)
+            + ". Genera secretos nuevos (32 o más, al azar, distintos entre sí) o deja "
+              "vacía la variable para apagar ese origen.")
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Singleton cacheado. Se usa tanto en deps FastAPI como en tests."""
-    return Settings()  # type: ignore[call-arg]
+    """Singleton cacheado. Se usa tanto en deps FastAPI como en tests.
+
+    Corre al importar la aplicación: si la configuración no sirve, uvicorn
+    termina con el error antes de escuchar.
+    """
+    config = Settings()  # type: ignore[call-arg]
+    exigir_secretos_de_eventos(config)
+    return config
 
 
 # Exportamos una instancia lista para usar en imports directos.

@@ -3,7 +3,7 @@
 Una versión ROTA a propósito, inyectada con monkeypatch en el módulo donde se
 USA; se corre el cuerpo del test real y se exige `AssertionError` con el
 mensaje del mecanismo. Aquí se automatiza la DIAGONAL; la matriz completa se
-mide aparte (ERR-15, 19 y 23). ZE18 y ZE19 son no-integ (no piden `integ`).
+mide aparte (ERR-15, 19 y 23). ZE18, ZE19 y ZE20 (§12) son no-integ (no piden `integ`).
 """
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.engrama_core.service import coins as coins_mod
 from src.engrama_core.service import level as level_mod
+from src.shared import config as config_mod
 from src.shared import events as events_mod
 from src.shared.models import ConfirmedLevel, LearningEvent
 from src.webhooks import efectos as efectos_mod
@@ -251,8 +252,12 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
              tu.test_ue1_la_firma_y_el_catalogo, r"'otro_cuerpo': True"),
     "ZE19": (_set_tambien_acredita, tu.test_ue1_la_firma_y_el_catalogo,
              r"'tipos_de_set': \['coins.granted', 'level.assessed'\]"),
+    # Auditoría 03, S-11 (ESPEC §12): la comprobación de arranque no encuentra nada.
+    "ZE20": (_parche(config_mod, "problemas_de_secretos", lambda live, set_, jwt: []),
+             tu.test_ue3_los_secretos_de_eventos_se_validan_al_arrancar,
+             r"'live_de_31': \[\], 'iguales': \[\], 'set_igual_al_jwt': \[\], 'todo_mal': 0"),
 }
-SIN_BASE = ("ZE18", "ZE19")
+SIN_BASE = ("ZE18", "ZE19", "ZE20")
 
 
 def correr(test_real: Callable[..., None], disponibles: dict[str, Any]) -> None:
@@ -274,4 +279,4 @@ def test_tramposo_puro_pone_rojo_su_test(monkeypatch, clave: str) -> None:
     aplicar, test_real, motivo = TRAMPOSOS[clave]
     aplicar(monkeypatch)
     with pytest.raises(AssertionError, match=motivo):
-        test_real()
+        correr(test_real, {"monkeypatch": monkeypatch})
