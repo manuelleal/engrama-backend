@@ -19,16 +19,21 @@ matriz completa se mide aparte (ERR-15, 19 y 23).
   ZT11 al pagar no se aplica el tope                 -> ET1 (recibe 50)
   ZT12 al crear no se valida el tope                 -> ET1 (201 con 21)
   ZT13 `max_winners` omitido = 10                    -> EG1, EG2
+  ZT14 la recarga ignora la referencia               -> EP1 (la segunda suma otra vez)
+  ZT15 la recarga no deja fila en el libro           -> EP1
+  ZT16 la recarga hace commit a mitad                -> EP2 (el saldo quedó movido)
+  ZT17 la recarga no actualiza `coin_pool`           -> EP1
 
-Los demás (ZT14-ZT19) entran con el commit que crea su pieza.
+Los de la alerta (ZT18, ZT19) entran con el commit que crea su pieza.
 """
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from datetime import date, datetime
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException, status
@@ -39,13 +44,14 @@ from src.engrama_core.service import attendance as attendance_mod
 from src.engrama_core.service import coins as coins_mod
 from src.engrama_core.service import economia as economia_mod
 from src.foco import fechas as fechas_mod
+from src.onboarding import recarga as recarga_mod
 from src.shared.config import settings
 from src.shared.models import Attendance
 from tests.challenge_engine import test_economia_ganadores as eg
 from tests.challenge_engine import test_economia_retos as er
 from tests.engrama_core import test_attendance as ta
 from tests.engrama_core import test_economia_asistencia as ea
-from tests.tramposos.test_tramposos_bug13 import correr
+from tests.onboarding import test_recarga as rec
 
 pytestmark = pytest.mark.integ
 
@@ -187,6 +193,58 @@ def _cupo_diez(estudiantes_activos: int, piso: int) -> int:
     return 10
 
 
+# =============================================================================
+# ZT14 a ZT17 — la recarga de la bolsa rota
+# =============================================================================
+_MOVER_SALDO_BUENO = recarga_mod._mover_saldo
+
+
+def _llave_que_no_deduplica() -> Callable[[str], str]:
+    """ZT14: la recarga ignora la referencia al deduplicar.
+
+    La primera orden guarda su llave bien escrita (`topup:<referencia>`); cada
+    orden posterior reclama una llave NUEVA aunque traiga la misma referencia,
+    así que repetir la orden vuelve a sumar.
+    """
+    vistas: set[str] = set()
+
+    def llave(referencia: str) -> str:
+        if referencia in vistas:
+            return f"topup:{referencia}:{uuid4()}"
+        vistas.add(referencia)
+        return f"topup:{referencia}"
+    return llave
+
+
+async def _no_asienta(db: AsyncSession, tenant_id: UUID, billetera_id: UUID, monedas: int,
+                      llave: str, metadata: dict[str, Any]) -> None:
+    """ZT15: la recarga mueve los saldos pero no deja fila en el libro."""
+    del db, tenant_id, billetera_id, monedas, llave, metadata
+
+
+async def _mueve_y_commitea(db: AsyncSession, billetera: Any, monedas: int) -> None:
+    """ZT16: commit a mitad (después de mover el saldo, antes de subir lo emitido)."""
+    await _MOVER_SALDO_BUENO(db, billetera, monedas)
+    await db.commit()
+
+
+async def _no_sube_lo_emitido(db: AsyncSession, tenant: Any, monedas: int) -> None:
+    """ZT17: la billetera sube, pero `tenants.coin_pool` se queda como estaba."""
+    del db, tenant, monedas
+
+
+def correr(test_real: Callable[..., None], **fixtures: Any) -> None:
+    """Corre el cuerpo de un test real con los fixtures que pida (integ, monkeypatch, capsys)."""
+    pide = inspect.signature(test_real).parameters
+    test_real(**{nombre: valor for nombre, valor in fixtures.items() if nombre in pide})
+
+
+def _zt14(_integ: Any, mp: pytest.MonkeyPatch) -> AbstractContextManager[Any]:
+    """Una llave rota NUEVA en cada aplicación (su memoria no pasa de un test a otro)."""
+    mp.setattr(economia_mod, "llave_recarga", _llave_que_no_deduplica())
+    return nullcontext()
+
+
 def _parche(objetivo: Any, nombre: str, valor: Any) -> Aplicar:
     def aplicar(_integ: Any, mp: pytest.MonkeyPatch) -> AbstractContextManager[Any]:
         mp.setattr(objetivo, nombre, valor)
@@ -252,13 +310,30 @@ TRAMPOSOS: dict[str, tuple[Aplicar, list[tuple[Callable[..., None], str]]]] = {
         (eg.test_eg2_los_13_de_un_grupo_de_13_cobran,
          r"EG2: aciertos 13, cobraron 10, sin paga por cupo 3"),
     ]),
+    "ZT14": (_zt14, [
+        (rec.test_ep1_la_recarga_suma_una_vez_y_deja_quien_y_cuando,
+         r"EP1: la misma referencia volvió a sumar: "
+         r"\{'saldo': 2000, 'coin_pool': 2000, 'filas': 2\}"),
+    ]),
+    "ZT15": (_parche(recarga_mod, "_asentar", _no_asienta), [
+        (rec.test_ep1_la_recarga_suma_una_vez_y_deja_quien_y_cuando,
+         r"EP1: 0 filas pool_topup, esperada 1"),
+    ]),
+    "ZT16": (_parche(recarga_mod, "_mover_saldo", _mueve_y_commitea), [
+        (rec.test_ep2_un_fallo_a_mitad_no_deja_nada,
+         r"EP2: tras el fallo quedó \{'saldo': 1500, 'coin_pool': 1000, 'filas': 1\}"),
+    ]),
+    "ZT17": (_parche(recarga_mod, "_subir_emitido", _no_sube_lo_emitido), [
+        (rec.test_ep1_la_recarga_suma_una_vez_y_deja_quien_y_cuando,
+         r"EP1: coin_pool quedó en 1000, no 1500"),
+    ]),
 }
 
 
 @pytest.mark.parametrize("clave", list(TRAMPOSOS))
-def test_tramposo_pone_rojo_su_test(integ, monkeypatch, clave: str) -> None:
+def test_tramposo_pone_rojo_su_test(integ, monkeypatch, capsys, clave: str) -> None:
     aplicar, diagonal = TRAMPOSOS[clave]
     with aplicar(integ, monkeypatch):
         for test_real, motivo in diagonal:
             with pytest.raises(AssertionError, match=motivo):
-                correr(test_real, integ, monkeypatch)
+                correr(test_real, integ=integ, monkeypatch=monkeypatch, capsys=capsys)

@@ -10,11 +10,13 @@ predicho" de la espec); lo que cada tramposo deja verde se mide aparte.
   ZE3  la puntualidad se paga siempre  -> UE3 (5:01 da 10)
   ZE4  la misma fecha devuelve 1       -> UE4
   ZE6  el tope no se valida ni se aplica -> UE6 (21 pasa)
+  ZE7  `recargar` acepta sin `--operador` -> UE7 (salida distinta de 2)
 
-Los de la recarga y la alerta (ZE5, ZE7) entran con el commit que crea su pieza.
+El de la alerta (ZE5) entra con el commit que crea su pieza.
 """
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from datetime import date, datetime
 from typing import Any
@@ -23,9 +25,11 @@ import pytest
 
 from src.engrama_core.service import attendance as attendance_mod
 from src.engrama_core.service import economia as economia_mod
+from src.onboarding import recarga as recarga_mod
 from tests.challenge_engine import test_economia_retos as er
 from tests.engrama_core import guardia_monedas as guardia_mod
 from tests.engrama_core import test_economia_unit as ue
+from tests.onboarding import test_recarga as rec
 
 Aplicar = Callable[[pytest.MonkeyPatch], None]
 
@@ -64,8 +68,25 @@ def _sin_tope(coins_reward: int, tope: int) -> int:
     return coins_reward
 
 
+_RECHAZO_BUENO = recarga_mod.motivo_de_rechazo
+
+
+def _acepta_sin_operador(*, operador: str | None, **resto: Any) -> str | None:
+    """ZE7: `recargar` no exige `--operador` (una emisión sin quién la hizo)."""
+    del operador
+    return _RECHAZO_BUENO(operador="alguien", **resto)
+
+
 def _parche(modulo: Any, nombre: str, valor: Any) -> Aplicar:
     return lambda mp: mp.setattr(modulo, nombre, valor)
+
+
+def correr(test_real: Callable[..., None], mp: pytest.MonkeyPatch) -> None:
+    """Corre el cuerpo de un test puro; le pasa `monkeypatch` si lo pide (UE7)."""
+    if "monkeypatch" in inspect.signature(test_real).parameters:
+        test_real(mp)
+    else:
+        test_real()
 
 
 def _varios(*aplicar: Aplicar) -> Aplicar:
@@ -75,7 +96,7 @@ def _varios(*aplicar: Aplicar) -> Aplicar:
     return todos
 
 
-TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[], None], str]] = {
+TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     "ZE1": (_parche(economia_mod, "redondear_monedas", _redondeo_de_python),
             ue.test_ue1_el_redondeo_es_la_mitad_hacia_arriba,
             r"UE1: \{'5/2': 2,"),
@@ -92,6 +113,9 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[], None], str]] = {
                     _parche(economia_mod, "recompensa_del_reto", _sin_tope)),
             er.test_ue6_el_tope_se_valida_y_se_aplica,
             r"UE6: 21 pasó la validación del tope"),
+    "ZE7": (_parche(recarga_mod, "motivo_de_rechazo", _acepta_sin_operador),
+            rec.test_ue7_la_recarga_mal_pedida_no_abre_la_base,
+            r"UE7: \{'sin --operador': 'abrió la base', 'sin --motivo': 2,"),
 }
 
 
@@ -100,4 +124,4 @@ def test_tramposo_pone_rojo_su_test(monkeypatch, clave: str) -> None:
     aplicar, test_real, motivo = TRAMPOSOS[clave]
     aplicar(monkeypatch)
     with pytest.raises(AssertionError, match=motivo):
-        test_real()
+        correr(test_real, monkeypatch)

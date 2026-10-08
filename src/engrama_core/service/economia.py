@@ -84,6 +84,16 @@ def llave_asistencia(group_id: UUID, student_id: UUID, dia: date) -> str:
     return f"attendance:{group_id}:{student_id}:{dia.isoformat()}"
 
 
+def llave_recarga(referencia: str) -> str:
+    """La llave de idempotencia de una recarga de la bolsa: una por referencia.
+
+    La referencia la pone el operador (el número de la orden, del recibo...).
+    Con el UNIQUE `(tenant_id, idempotency_key)` de la 033, repetir la orden con
+    la misma referencia no puede emitir las monedas dos veces.
+    """
+    return f"topup:{referencia}"
+
+
 def redondear_monedas(numerador: int, denominador: int) -> int:
     """La ÚNICA forma permitida de pasar de una fracción a monedas.
 

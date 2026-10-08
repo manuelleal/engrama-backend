@@ -102,6 +102,14 @@ class Settings(BaseSettings):
     # siembra a veces vacío (los estudiantes entran después por el autorregistro)
     # y el tamaño daría 0 o 1: volvería la carrera por cupo. Ponerlo en 1 lo veta.
     reto_ganadores_piso: int = Field(default=40, ge=1, le=10000)
+    # Lo máximo que el operador puede recargar a la bolsa de una institución en
+    # UNA orden (ESPEC_economia_oleada0 §1.6). Es un freno contra el dedazo (un
+    # cero de más), no un límite de negocio: provisional. OJO: la orden
+    # `python -m src.onboarding recargar` no carga esta clase (la CLI no
+    # necesita el secreto JWT); lee la MISMA variable del entorno en
+    # `src/onboarding/recarga.py`, y un test (UE7) exige que los dos defectos
+    # coincidan.
+    bolsa_recarga_maxima: int = Field(default=1_000_000, ge=1, le=100_000_000)
 
     # --- Database ---
     database_url: str = Field(

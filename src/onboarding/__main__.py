@@ -5,6 +5,12 @@
     python -m src.onboarding restablecer --slug <slug> --documento <doc> --salida <ruta>
     python -m src.onboarding suspender --slug <slug> --documento <doc> [--solo-institucion]
     python -m src.onboarding reactivar --slug <slug> --documento <doc>
+    python -m src.onboarding recargar --slug <slug> --monedas <n> \\
+        --operador "<quién>" --motivo "<por qué>" --referencia <id único>
+
+`recargar` (ESPEC_economia_oleada0 §1.6) EMITE monedas a la bolsa de la
+institución: todo o nada, idempotente por `--referencia`, y deja en el libro
+quién y cuándo. Solo toca la base, como `suspender`.
 
 Credenciales, SOLO por variable de entorno: `DATABASE_URL`, `GOTRUE_URL` y
 `SUPABASE_SERVICE_ROLE_KEY`. La clave de servicio la usa únicamente esta CLI.
@@ -14,6 +20,8 @@ Salida del proceso:
   1  algo no se hizo; el resumen JSON dice qué, con su fila.
   2  argumentos inválidos, falta configuración, o `--salida` cae dentro del
      repo del backend (no se escribe NADA: ni base, ni cuentas, ni archivo).
+     En `recargar`: falta `--operador`, `--motivo` o `--referencia`, o
+     `--monedas` es <= 0 o pasa de `BOLSA_RECARGA_MAXIMA` (la base ni se abre).
 
 Imprime en stdout un resumen JSON, sin contraseñas. Las contraseñas temporales
 solo van al archivo `--salida`.
@@ -36,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from src.onboarding.alta import Sesiones, correr_alta
+from src.onboarding import recarga
 from src.onboarding.cuentas import CuentasAdmin, ErrorDeConfiguracion, gotrue_admin_del_entorno
 from src.onboarding.restablecer import correr_restablecer
 from src.onboarding.salida import dentro_del_repo
@@ -43,7 +52,7 @@ from src.onboarding.suspension import correr_suspension
 
 SALIDA_OK, SALIDA_CON_ERRORES, SALIDA_NO_CORRIO = 0, 1, 2
 # Órdenes que solo tocan la base: no usan GoTrue ni escriben credenciales.
-SOLO_BASE = ("suspender", "reactivar")
+SOLO_BASE = ("suspender", "reactivar", "recargar")
 
 
 def _monedas(texto: str) -> int:
@@ -79,6 +88,15 @@ def argumentos(argv: Sequence[str]) -> argparse.Namespace:
         orden.add_argument("--slug", required=True)
         orden.add_argument("--documento", required=True,
                            help="el documento_id tal como está en la base")
+    rec = sub.add_parser("recargar", help="emite monedas a la bolsa de la institución")
+    # Ninguno es `required` para argparse: los valida `recarga.motivo_de_rechazo`
+    # (una función pura, con su test y su tramposo) y `main` responde 2.
+    rec.add_argument("--slug")
+    rec.add_argument("--monedas", type=int, help="cuántas monedas se emiten (mayor que 0)")
+    rec.add_argument("--operador", help="quién hace la recarga (queda en el libro)")
+    rec.add_argument("--motivo", help="por qué (queda en el libro)")
+    rec.add_argument("--referencia",
+                     help="id único de esta recarga: repetirla con la misma no suma dos veces")
     return p.parse_args(argv)
 
 
@@ -102,6 +120,11 @@ def sesiones_del_entorno() -> Sesiones:
 async def _correr(a: argparse.Namespace, cuentas: CuentasAdmin | None,
                   sesiones: Sesiones) -> tuple[dict[str, Any], bool]:
     """(resumen, ¿hubo errores?)."""
+    if a.orden == "recargar":
+        datos = await recarga.correr_recarga(
+            slug=a.slug, monedas=a.monedas, operador=a.operador, motivo=a.motivo,
+            referencia=a.referencia, sesiones=sesiones)
+        return datos, "error" in datos
     if a.orden in SOLO_BASE:
         datos = await correr_suspension(
             slug=a.slug, documento_id=a.documento, activo=a.orden == "reactivar",
@@ -132,6 +155,14 @@ def main(argv: Sequence[str] | None = None, *, cuentas: CuentasAdmin | None = No
         print(f"no existe el CSV {a.csv}", file=sys.stderr)
         return SALIDA_NO_CORRIO
     try:
+        if a.orden == "recargar":
+            rechazo = recarga.motivo_de_rechazo(
+                slug=a.slug, monedas=a.monedas, operador=a.operador, motivo=a.motivo,
+                referencia=a.referencia, maximo=recarga.recarga_maxima())
+            if rechazo is not None:
+                # Antes de abrir la base: una emisión mal pedida no toca nada.
+                print(f"recargar: {rechazo}", file=sys.stderr)
+                return SALIDA_NO_CORRIO
         if con_credenciales and cuentas is None:
             cuentas = gotrue_admin_del_entorno()
         sesiones = sesiones if sesiones is not None else sesiones_del_entorno()
