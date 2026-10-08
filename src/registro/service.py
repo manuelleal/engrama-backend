@@ -53,6 +53,8 @@ NACE_ACTIVA = False
 # Una solicitud `creando` más vieja que esto es un registro que no terminó.
 HUERFANO_S = 60
 _UNIQUE_VIOLADO = "23505"
+# El único motivo de 403 en el que el código de GRUPO era válido.
+MOTIVO_DOCUMENTO = "documento"
 
 
 class CodigoNoValido(Exception):
@@ -61,6 +63,15 @@ class CodigoNoValido(Exception):
     def __init__(self, motivo: str) -> None:
         super().__init__(motivo)
         self.motivo = motivo
+
+    @property
+    def codigo_de_grupo_valido(self) -> bool:
+        """¿El código de GRUPO sí servía? Solo cuando falló el código estudiantil.
+
+        Lo usa el límite de intentos (ESPEC §11.3): los contadores por código y
+        global no cuentan los códigos inexistentes, vencidos, apagados o llenos.
+        """
+        return self.motivo == MOTIVO_DOCUMENTO
 
 
 class RegistroNoDisponible(Exception):
@@ -202,7 +213,7 @@ async def _reservar(db: AsyncSession, cuentas: CuentasDeRegistro,
     documento = con_prefijo(tenant.slug, datos.codigo_estudiantil)
     if not roster.DOC_ID_RE.fullmatch(documento):
         await db.rollback()
-        raise CodigoNoValido("documento")
+        raise CodigoNoValido(MOTIVO_DOCUMENTO)
     if await _ocupado(db, cuentas, documento):
         await db.rollback()
         return None

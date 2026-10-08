@@ -185,6 +185,14 @@ async def _confirma_sin_proteger(db: AsyncSession, cuentas: Any, reserva: Any,
     await service_mod._confirmar(db, reserva, datos)
 
 
+# --- ZR25 (auditoría 03, S-3): se cuenta todo intento, sin saber si sirve ------
+_ANOTAR_CODIGO_BUENO = limite_mod.anotar_codigo
+
+
+def _anota_sin_saber_si_sirve(huella_del_codigo: str, *, valido: bool) -> None:
+    _ANOTAR_CODIGO_BUENO(huella_del_codigo, valido=True)
+
+
 def _varios(*aplicar: Aplicar) -> Aplicar:
     def todos(mp: pytest.MonkeyPatch) -> None:
         for uno in aplicar:
@@ -258,6 +266,10 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
              ta.test_ar12_si_falla_la_confirmacion_no_queda_cuenta,
              r"AR12: \{'t2_falla': \{'respuesta': \(500, None\), "
              r"'borrar_la_cuenta_del_perfil': False, 'cuenta': True"),
+    "ZR25": (_parche(limite_mod, "anotar_codigo", _anota_sin_saber_si_sirve),
+             ta.test_ar13_los_codigos_inventados_no_agotan_el_registro,
+             r"AR13: \{'basura': \[403, 403, 403, 429, 429\], "
+             r"'llaves_por_codigo_tras_la_basura': 3"),
 }
 
 

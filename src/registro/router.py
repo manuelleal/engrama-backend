@@ -59,6 +59,19 @@ def _no_disponible() -> HTTPException:
     return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=NO_DISPONIBLE)
 
 
+def _revisar_limite(request: Request, huella: str) -> str:
+    """429 si algún tope ya se alcanzó; si no, anota el intento y devuelve la IP."""
+    ip = limite.ip_del_visitante(request.client.host if request.client else None,
+                                 request.headers.get("x-forwarded-for"),
+                                 settings.proxies_de_confianza)
+    espera = limite.revisar(ip, huella)
+    if espera > 0:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=DEMASIADOS,
+                            headers={"Retry-After": str(espera)})
+    limite.anotar(ip)
+    return ip
+
+
 # =============================================================================
 # POST /auth/registro
 # =============================================================================
@@ -77,24 +90,23 @@ async def registrarse(
     # Depende solo del cuerpo y de la configuración: va antes del límite (H-13).
     consentimiento.exigir_version_permitida(payload.aviso_version)
     listas = _exigir_cuentas(cuentas)
-    ip = limite.ip_del_visitante(request.client.host if request.client else None,
-                                 request.headers.get("x-forwarded-for"),
-                                 settings.proxies_de_confianza)
     huella = codigos.huella(payload.codigo)
-    espera = limite.revisar(ip, huella)
-    if espera > 0:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=DEMASIADOS,
-                            headers={"Retry-After": str(espera)})
-    limite.anotar(ip, huella)
+    ip = _revisar_limite(request, huella)
+    # Los contadores por código y global solo cuentan si el código de GRUPO
+    # servía (auditoría 03, S-3): eso se sabe después de consultar la base.
+    codigo_valido = True
     try:
         resultado = await service.registrar(db, listas, payload)
     except service.CodigoNoValido as exc:
+        codigo_valido = exc.codigo_de_grupo_valido
         limite.anotar_malo(ip)
         service.logger.info("registro: código no válido (%s)", exc.motivo)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail=service.detalle_de_rechazo(exc.motivo)) from exc
     except service.RegistroNoDisponible as exc:
         raise _no_disponible() from exc
+    finally:
+        limite.anotar_codigo(huella, valido=codigo_valido)
     return JSONResponse(status_code=status.HTTP_201_CREATED,
                         content=_respuesta_uniforme(resultado, payload))
 

@@ -124,6 +124,9 @@ class Limitador:
 
 # Los cuatro contadores de la ruta (ESPEC §1.6). Un salón de 40 sale por una
 # sola IP y se equivoca al teclear: por eso 150 y 60, y no menos.
+# Los dos primeros cuentan por IP; los otros dos, solo intentos con un código
+# de grupo VÁLIDO (`anotar_codigo`). Son POR PROCESO: con `--workers 2` cada
+# tope vale hasta el doble (ESPEC §11.4; lo decide el despliegue).
 POR_IP = Limitador(150)
 MALOS_POR_IP = Limitador(60)
 POR_CODIGO = Limitador(200)
@@ -138,9 +141,26 @@ def revisar(ip: str, huella_del_codigo: str) -> int:
                POR_CODIGO.espera(huella_del_codigo), GLOBAL.espera(_LLAVE_GLOBAL))
 
 
-def anotar(ip: str, huella_del_codigo: str) -> None:
-    """Cuenta un intento (antes de saber cómo termina)."""
+def anotar(ip: str) -> None:
+    """Cuenta un intento de esa IP (antes de saber cómo termina)."""
     POR_IP.anotar(ip)
+
+
+def anotar_codigo(huella_del_codigo: str, *, valido: bool) -> None:
+    """Cuenta el intento en el tope por código y en el global, SOLO si el código servía.
+
+    Auditoría 03, S-3 (ESPEC §11.3). Antes se contaba todo intento, sin saber
+    si servía: 1.000 peticiones con códigos inventados llenaban el contador
+    global y dejaban a TODOS en 429 por diez minutos; y cada código inventado
+    ocupaba una llave del contador por código. Ahora quien no tiene un código
+    válido solo gasta los cupos de su propia IP (`POR_IP` y `MALOS_POR_IP`).
+
+    Se llama DESPUÉS de consultar la base. "Válido" es el código de GRUPO
+    (existe, activo, vigente y con cupo), aunque el registro termine en 403
+    por un código estudiantil que no cabe.
+    """
+    if not valido:
+        return
     POR_CODIGO.anotar(huella_del_codigo)
     GLOBAL.anotar(_LLAVE_GLOBAL)
 
