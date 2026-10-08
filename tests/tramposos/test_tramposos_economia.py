@@ -116,24 +116,30 @@ def _misma_fecha_suma(last_attendance_date: date | None, today: date) -> int:
 # =============================================================================
 async def _award_sin_llave(db: AsyncSession, *, idempotency_key: str | None = None,
                            **resto: Any) -> Any:
-    """ZT5: la paga de asistencia va sin llave (acepta la llave y la descarta)."""
-    del idempotency_key
-    return await _AWARD_BUENO(db, idempotency_key=None, **resto)
+    """ZT5: la paga de asistencia va sin llave (acepta la llave y la descarta).
+
+    Solo la de asistencia: las llaves de los retos (`challenge:...`) pasan intactas.
+    """
+    if resto.get("action") == "attendance":
+        idempotency_key = None
+    return await _AWARD_BUENO(db, idempotency_key=idempotency_key, **resto)
 
 
 async def _award_llave_sin_dia(db: AsyncSession, *, idempotency_key: str | None = None,
                                **resto: Any) -> Any:
     """ZT6: la llave `attendance:<grupo>:<estudiante>:<día>` pierde el día."""
-    llave = idempotency_key.rsplit(":", 1)[0] if idempotency_key else None
+    llave = idempotency_key
+    if llave and llave.startswith("attendance:"):  # las llaves de los retos pasan intactas
+        llave = llave.rsplit(":", 1)[0]
     return await _AWARD_BUENO(db, idempotency_key=llave, **resto)
 
 
 async def _award_llave_sin_estudiante(db: AsyncSession, *, idempotency_key: str | None = None,
                                       **resto: Any) -> Any:
     """ZT7: la llave pierde al estudiante: un solo pago por grupo y día para todos."""
-    llave = None
-    if idempotency_key:
-        accion, grupo, _estudiante, dia = idempotency_key.split(":")
+    llave = idempotency_key
+    if llave and llave.startswith("attendance:"):  # las llaves de los retos pasan intactas
+        accion, grupo, _estudiante, dia = llave.split(":")
         llave = f"{accion}:{grupo}:{dia}"
     return await _AWARD_BUENO(db, idempotency_key=llave, **resto)
 
