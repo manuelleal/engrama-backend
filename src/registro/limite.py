@@ -5,9 +5,11 @@ uvicorn el tope efectivo es hasta el doble, y reiniciar lo pone en cero.
 
 La IP del visitante la da `ip_del_visitante`, una función pura. Nunca se usa
 un valor de `X-Forwarded-For` que el visitante haya podido escribir.
+Una dirección IPv6 se cuenta por su red /64 (`_agrupar`).
 """
 from __future__ import annotations
 
+import ipaddress
 import math
 import time
 from collections import deque
@@ -16,6 +18,8 @@ from collections.abc import Callable
 VENTANA_S = 600
 MAX_LLAVES = 20_000
 IP_DESCONOCIDA = "desconocida"
+# Los bits de red con los que se agrupa una dirección IPv6 (ver `_agrupar`).
+PREFIJO_IPV6 = 64
 
 
 def ip_del_visitante(client_host: str | None, x_forwarded_for: str | None, saltos: int) -> str:
@@ -32,11 +36,33 @@ def ip_del_visitante(client_host: str | None, x_forwarded_for: str | None, salto
     la cadena esperada: todas esas comparten la llave `desconocida`.
     """
     if saltos <= 0:
-        return client_host or IP_DESCONOCIDA
+        return _agrupar(client_host or IP_DESCONOCIDA)
     valores = [v.strip() for v in (x_forwarded_for or "").split(",") if v.strip()]
     if len(valores) < saltos:
         return IP_DESCONOCIDA
-    return valores[-saltos]
+    return _agrupar(valores[-saltos])
+
+
+def _agrupar(valor: str) -> str:
+    """La llave del límite para esa dirección (auditoría 03, S-3; ESPEC §11.2).
+
+    IPv6 se cuenta por su red /64: es lo que un proveedor le entrega a UNA
+    casa o a un servidor, y quien la tiene dispone de 2^64 direcciones. Si la
+    llave fuera la dirección completa, rotarlas saltaría el límite sin esfuerzo.
+    IPv4 sigue por dirección completa. Una IPv6 que envuelve una IPv4
+    (`::ffff:203.0.113.9`) cuenta como esa IPv4. Lo que no es una dirección
+    (el `testclient` de las pruebas, `desconocida`) queda igual.
+    """
+    try:
+        ip = ipaddress.ip_address(valor)
+    except ValueError:
+        return valor
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        # Por el entero: una dirección con zona (`fe80::1%eth0`) no rompe.
+        return str(ipaddress.IPv6Network((int(ip), PREFIJO_IPV6), strict=False))
+    return str(ip)
 
 
 class Limitador:

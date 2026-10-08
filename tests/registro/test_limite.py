@@ -3,6 +3,7 @@
   AR10  C10   (integ) 60 códigos malos por IP; el encabezado falso no ayuda; tope por código.
   UL1   C15   el limitador, puro, con el reloj inyectado.
   UL2   C15b  la IP del visitante, pura: nunca un valor que el visitante pudo escribir.
+  UL3   C19   (auditoría 03, S-3) una dirección IPv6 se cuenta por su red /64.
 
 AR10 llama a las funciones por el módulo (`limite.…`) para que un tramposo que
 las reemplace ahí (ZR3, ZR4) las alcance.
@@ -126,3 +127,25 @@ def test_ul2_la_ip_del_visitante_pura() -> None:
         "dos_proxies": "203.0.113.9", "con_espacios_y_vacios": "203.0.113.9",
         "menos_valores_que_saltos": "desconocida", "sin_encabezado": "desconocida",
     }, f"UL2: {observado}"
+
+
+def test_ul3_ipv6_se_cuenta_por_su_red_64() -> None:
+    """UL3 (C19): rotar direcciones dentro de un /64 no cambia la llave; IPv4 no se agrupa."""
+    ip = limite.ip_del_visitante
+    casa = "2001:db8:1:2"
+    observado = {
+        "una_del_64": ip("172.18.0.5", f"198.51.100.7, {casa}:aaaa::1", 1),
+        "otra_del_mismo_64": ip("172.18.0.5", f"{casa}:bbbb:cccc:dddd:eeee", 1),
+        "en_mayusculas_y_larga": ip("172.18.0.5", "2001:0DB8:0001:0002:0000:0000:0000:0009", 1),
+        "sin_proxies": ip(f"{casa}::7", None, 0),
+        "otro_64": ip("172.18.0.5", "2001:db8:1:3::1", 1),
+        "ipv4_envuelta": ip("172.18.0.5", "::ffff:203.0.113.9", 1),
+        "ipv4_entera": (ip("172.18.0.5", "203.0.113.9", 1), ip("172.18.0.5", "203.0.113.10", 1)),
+        "lo_que_no_es_una_ip": ip("testclient", None, 0),
+    }
+    red = f"{casa}::/64"
+    assert observado == {
+        "una_del_64": red, "otra_del_mismo_64": red, "en_mayusculas_y_larga": red,
+        "sin_proxies": red, "otro_64": "2001:db8:1:3::/64", "ipv4_envuelta": "203.0.113.9",
+        "ipv4_entera": ("203.0.113.9", "203.0.113.10"), "lo_que_no_es_una_ip": "testclient",
+    }, f"UL3: {observado}"

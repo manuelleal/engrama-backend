@@ -7,6 +7,7 @@ el módulo donde el test la usa y se exige `AssertionError` con el mecanismo.
   ZR21  la huella del código es SHA-256 sin llave       -> UR1
   ZR22  la ventana del limitador nunca vence            -> UL1
   ZR23  `RegistroIn.contrasena` con mínimo 6            -> UR2
+  ZR28  (§11.2) IPv6 por dirección completa, como antes  -> UL3
 """
 from __future__ import annotations
 
@@ -66,6 +67,11 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[], None], str]] = {
              tl.test_ul1_el_limitador_puro, r"'vencio_el_primero': 1,"),
     "ZR23": (_parche(schemas_mod, "RegistroIn", _ClaveCorta),
              tu.test_ur2_una_sola_politica_de_contrasena, r"'registro': \(6, 72\)"),
+    # Auditoría 03 (ESPEC §11.2): sin agrupar, cada dirección de un /64 es una llave.
+    "ZR28": (_parche(limite_mod, "_agrupar", lambda valor: valor),
+             tl.test_ul3_ipv6_se_cuenta_por_su_red_64,
+             r"UL3: \{'una_del_64': '2001:db8:1:2:aaaa::1', "
+             r"'otra_del_mismo_64': '2001:db8:1:2:bbbb:cccc:dddd:eeee'"),
 }
 
 
