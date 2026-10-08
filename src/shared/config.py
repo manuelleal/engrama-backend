@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     # (p. ej. "2026-10-v1"). Vacía = sin restricción (desarrollo). En el
     # despliegue debe contener el AVISO_VERSION del cliente: si no, nadie
     # puede aceptar el aviso.
+    # OJO: vacía y con el registro encendido (hay clave de servicio),
+    # `POST /auth/registro` responde 503 `registro_sin_aviso` (falla cerrado,
+    # ESPEC_autorregistro §11.5).
     aviso_versiones_validas: str = Field(default="")
     # Secretos HMAC de la puerta de eventos del anillo, UNO POR ORIGEN
     # (ESPEC_eventos_anillo §1.2): EVA firma como `live` y SET como `set`. 32

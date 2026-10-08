@@ -270,6 +270,9 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
              ta.test_ar13_los_codigos_inventados_no_agotan_el_registro,
              r"AR13: \{'basura': \[403, 403, 403, 429, 429\], "
              r"'llaves_por_codigo_tras_la_basura': 3"),
+    "ZR26": (_parche(router_mod, "_exigir_aviso_configurado", lambda: None),
+             ta.test_ar15_sin_lista_de_avisos_el_registro_no_abre,
+             r"AR15: \{'lista_vacia': \(201, \{'estado': 'pendiente'\}\)"),
 }
 
 

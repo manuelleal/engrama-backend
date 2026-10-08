@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from src.main import app
 from src.registro import limite
 from src.registro.cuentas import get_cuentas_de_registro
+from src.shared.config import settings
 from src.shared.models import TeacherGroup
 from tests.cuentas_falsas import CuentasFalsas
 
@@ -43,18 +44,31 @@ def campo(r: httpx.Response, clave: str) -> Any:
     return datos.get(clave) if isinstance(datos, dict) else None
 
 
+# Lo que `AVISO_VERSIONES_VALIDAS` valía antes de `preparar`, para devolverlo.
+_AVISOS_DE_ANTES: list[str] = []
+
+
 def preparar(integ: Any) -> CuentasFalsas:
-    """El doble de GoTrue en la dependencia de la ruta, y el límite en cero."""
+    """El doble de GoTrue en la dependencia de la ruta, el límite en cero y el aviso.
+
+    El registro encendido exige una lista de versiones del aviso (ESPEC §11.5 b):
+    aquí se pone la de las pruebas, como hace el despliegue.
+    """
     falsas = CuentasFalsas(sesiones=integ.Session)
     app.dependency_overrides[get_cuentas_de_registro] = lambda: falsas
     limite.reiniciar()
+    if not _AVISOS_DE_ANTES:
+        _AVISOS_DE_ANTES.append(settings.aviso_versiones_validas)
+    settings.aviso_versiones_validas = AVISO
     return falsas
 
 
 def soltar() -> None:
-    """Quita el doble de la dependencia (el dict de overrides es global) y limpia el límite."""
+    """Quita el doble (el dict de overrides es global), limpia el límite y devuelve el aviso."""
     app.dependency_overrides.pop(get_cuentas_de_registro, None)
     limite.reiniciar()
+    if _AVISOS_DE_ANTES:
+        settings.aviso_versiones_validas = _AVISOS_DE_ANTES.pop()
 
 
 @dataclass(frozen=True)

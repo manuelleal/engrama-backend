@@ -3,6 +3,7 @@
   AR12  C18  (S-7) si la segunda transacción falla, no queda una cuenta huérfana.
   AR13  C20  (S-3) los códigos inventados no agotan el registro de los demás.
   AR14  C22  la contraseña de más de 72 BYTES da 422 y no llega a GoTrue.
+  AR15  C23  sin lista de versiones del aviso, el registro encendido responde 503.
 
 Las piezas se llaman por su módulo (`service_mod.…`) para que los tramposos
 ZR24 en adelante las alcancen.
@@ -14,8 +15,10 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 
+from src.main import app
 from src.registro import limite as limite_mod
 from src.registro import service as service_mod
+from src.registro.cuentas import get_cuentas_de_registro
 from src.shared.config import settings
 from tests.registro import _ayuda as ay
 
@@ -132,3 +135,34 @@ def test_ar14_la_contrasena_de_mas_de_72_bytes_da_422(integ) -> None:
         "de_80_bytes": 422, "dice_por_que": True, "sin_escribir": (0, 0, 0, 0),
         "de_72_bytes": 201,
     }, f"AR14: {observado}"
+
+
+# =============================================================================
+# AR15 — C23 (sin lista de avisos, el registro no abre)
+# =============================================================================
+def test_ar15_sin_lista_de_avisos_el_registro_no_abre(integ) -> None:
+    """AR15 (C23): lista vacía -> 503 propio y nada escrito; con lista, 201."""
+    cuentas = ay.preparar(integ)
+    a = ay.aula(integ)
+    lista = settings.aviso_versiones_validas
+    try:
+        settings.aviso_versiones_validas = ""
+        vacia = ay.registrar(ay.cuerpo(a.codigo, 1))
+        sin_escribir = (ay.estudiantes(integ), len(ay.solicitudes(integ)),
+                        len(cuentas.creadas), ay.usos(integ, a.grupo))
+        # Con el registro APAGADO (sin clave de servicio) manda el motivo de siempre.
+        app.dependency_overrides[get_cuentas_de_registro] = lambda: None
+        apagado = ay.registrar(ay.cuerpo(a.codigo, 1))
+        app.dependency_overrides[get_cuentas_de_registro] = lambda: cuentas
+    finally:
+        settings.aviso_versiones_validas = lista
+    observado = {
+        "lista_vacia": ay.estado_y_cuerpo(vacia), "sin_escribir": sin_escribir,
+        "lista_vacia_y_registro_apagado": ay.estado_y_cuerpo(apagado),
+        "con_la_lista": ay.registrar(ay.cuerpo(a.codigo, 1)).status_code,
+    }
+    assert observado == {
+        "lista_vacia": (503, {"detail": "registro_sin_aviso"}), "sin_escribir": (0, 0, 0, 0),
+        "lista_vacia_y_registro_apagado": (503, {"detail": "registro_no_configurado"}),
+        "con_la_lista": 201,
+    }, f"AR15: {observado}"

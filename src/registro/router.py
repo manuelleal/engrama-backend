@@ -35,6 +35,7 @@ publico = APIRouter()
 docente = APIRouter()
 
 NO_CONFIGURADO = "registro_no_configurado"
+SIN_AVISO = "registro_sin_aviso"
 NO_DISPONIBLE = "registro_no_disponible"
 DEMASIADOS = "demasiados_intentos"
 
@@ -53,6 +54,19 @@ def _exigir_cuentas(cuentas: CuentasDeRegistro | None) -> CuentasDeRegistro:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                             detail=NO_CONFIGURADO)
     return cuentas
+
+
+def _exigir_aviso_configurado() -> None:
+    """503 si el registro está encendido y no hay lista de versiones del aviso.
+
+    Auditoría 03 (ESPEC §11.5 b): con `AVISO_VERSIONES_VALIDAS` vacía se
+    aceptaba CUALQUIER texto como versión del aviso. En una ruta pública que
+    crea cuentas eso es guardar consentimientos de un aviso que nadie mostró.
+    Falla cerrado: sin lista, no se registra nadie. El consentimiento de quien
+    ya tiene sesión (`POST /auth/consent`) no cambia.
+    """
+    if not consentimiento.versiones_validas():
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=SIN_AVISO)
 
 
 def _no_disponible() -> HTTPException:
@@ -84,12 +98,14 @@ async def registrarse(
 ) -> JSONResponse:
     """Pide la inscripción en el grupo del código. Queda pendiente del profe.
 
-    Orden: cuerpo (422, antes de entrar aquí) -> configuración (503) -> límite
-    (429) -> código (403, un solo cuerpo) -> 201 uniforme, o 502 si GoTrue falla.
+    Orden: cuerpo (422, antes de entrar aquí) -> configuración (503: sin GoTrue
+    o sin lista de avisos) -> límite (429) -> código (403, un solo cuerpo) ->
+    201 uniforme, o 502 si GoTrue o la confirmación fallan.
     """
     # Depende solo del cuerpo y de la configuración: va antes del límite (H-13).
     consentimiento.exigir_version_permitida(payload.aviso_version)
     listas = _exigir_cuentas(cuentas)
+    _exigir_aviso_configurado()
     huella = codigos.huella(payload.codigo)
     ip = _revisar_limite(request, huella)
     # Los contadores por código y global solo cuentan si el código de GRUPO
