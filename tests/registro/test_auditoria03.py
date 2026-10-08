@@ -4,6 +4,7 @@
   AR13  C20  (S-3) los códigos inventados no agotan el registro de los demás.
   AR14  C22  la contraseña de más de 72 BYTES da 422 y no llega a GoTrue.
   AR15  C23  sin lista de versiones del aviso, el registro encendido responde 503.
+  AR16  C24  las variantes de un código estudiantil ya ocupado no crean otra persona.
 
 Las piezas se llaman por su módulo (`service_mod.…`) para que los tramposos
 ZR24 en adelante las alcancen.
@@ -11,6 +12,7 @@ ZR24 en adelante las alcancen.
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
@@ -20,6 +22,7 @@ from src.registro import limite as limite_mod
 from src.registro import service as service_mod
 from src.registro.cuentas import get_cuentas_de_registro
 from src.shared.config import settings
+from src.shared.models import Membership, Profile
 from tests.registro import _ayuda as ay
 
 pytestmark = pytest.mark.integ
@@ -166,3 +169,67 @@ def test_ar15_sin_lista_de_avisos_el_registro_no_abre(integ) -> None:
         "lista_vacia_y_registro_apagado": (503, {"detail": "registro_no_configurado"}),
         "con_la_lista": 201,
     }, f"AR15: {observado}"
+
+
+# =============================================================================
+# AR16 — C24 (las variantes del código estudiantil)
+# =============================================================================
+VARIANTES = ("ab-0123", "AB0123", "ab0123", "00AB-0123")
+
+
+def _con_codigo(a: ay.Aula, n: int, codigo_estudiantil: str) -> Any:
+    return ay.registrar(ay.cuerpo(a.codigo, n, codigo_estudiantil=codigo_estudiantil))
+
+
+def _perfiles_de(integ: Any, a: ay.Aula) -> int:
+    """Los perfiles con código interno de esa institución (`<slug>_...`)."""
+    return ay.contar(integ, "select count(*) from profiles where starts_with(documento_id, :p)",
+                     p=f"{a.slug}_")
+
+
+def test_ar16_las_variantes_de_un_codigo_ocupado_no_entran(integ) -> None:
+    """AR16 (C24): mayúsculas, guiones y ceros a la izquierda no hacen otra persona."""
+    cuentas = ay.preparar(integ)
+    a, b = ay.aula(integ), ay.aula(integ)
+    primero = _con_codigo(a, 1, "AB-0123").status_code
+    n_crear = len(cuentas.creadas)
+    variantes = {v: ay.estado_y_cuerpo(_con_codigo(a, n, v))
+                 for n, v in enumerate(VARIANTES, start=2)}
+    tras_las_variantes = {"otro_crear": len(cuentas.creadas) - n_crear,
+                          "perfiles": _perfiles_de(integ, a), "usos": ay.usos(integ, a.grupo),
+                          "guardado_como_se_escribio": ay.perfil_de(
+                              integ, f"{a.slug}_AB-0123") is not None}
+
+    # Quien ya entró por la lista de su institución con ceros a la izquierda.
+    por_lista = uuid4()
+    integ._insertar(
+        Profile(id=por_lista, documento_id=f"{a.slug}_000457", full_name="", pin_hash="",
+                role="student"),
+        Membership(tenant_id=a.tenant, profile_id=por_lista, role="student",
+                   group_code=a.codigo_de_grupo, is_active=True, full_name="Por Lista"))
+    r = _con_codigo(a, 6, "457")
+    matriculado = {"respuesta": ay.estado_y_cuerpo(r), "cuenta": por_lista in cuentas.cuentas,
+                   "solicitudes": len(ay.solicitudes(integ, profile_id=por_lista)),
+                   "otro_perfil": ay.perfil_de(integ, f"{a.slug}_457") is not None}
+
+    n_crear = len(cuentas.creadas)
+    controles = {
+        "otro_codigo": _con_codigo(a, 7, "AB-0124").status_code,
+        "la_variante_en_otra_institucion": _con_codigo(b, 8, "ab0123").status_code,
+        "crear": len(cuentas.creadas) - n_crear,
+        "perfil_en_la_otra": ay.perfil_de(integ, f"{b.slug}_ab0123") is not None,
+        "usos": (ay.usos(integ, a.grupo), ay.usos(integ, b.grupo)),
+    }
+    observado = {"primero": primero, "variantes": variantes,
+                 "tras_las_variantes": tras_las_variantes,
+                 "matriculado_por_lista": matriculado, "controles": controles}
+    ok = (201, ay.PENDIENTE)
+    assert observado == {
+        "primero": 201, "variantes": dict.fromkeys(VARIANTES, ok),
+        "tras_las_variantes": {"otro_crear": 0, "perfiles": 1, "usos": 1,
+                               "guardado_como_se_escribio": True},
+        "matriculado_por_lista": {"respuesta": ok, "cuenta": False, "solicitudes": 0,
+                                  "otro_perfil": False},
+        "controles": {"otro_codigo": 201, "la_variante_en_otra_institucion": 201, "crear": 2,
+                      "perfil_en_la_otra": True, "usos": (2, 1)},
+    }, f"AR16: {observado}"

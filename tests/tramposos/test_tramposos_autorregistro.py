@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.main import app
 from src.registro import codigos as codigos_mod
 from src.registro import decision as decision_mod
+from src.registro import documento as documento_mod
 from src.registro import limite as limite_mod
 from src.registro import router as router_mod
 from src.registro import service as service_mod
@@ -35,6 +36,7 @@ from src.shared import deps as deps_mod
 from src.shared.db import get_db
 from src.shared.models import CodigoInscripcion, Group, SolicitudInscripcion, Tenant
 from src.teachers.service import access as access_mod
+from src.teachers.service import roster as roster_mod
 from tests.registro import _ayuda as ay
 from tests.registro import test_auditoria03 as ta
 from tests.registro import test_codigo as tc
@@ -83,7 +85,7 @@ async def _crear_sin_id(cuentas: Any, profile_id: UUID, correo: str, clave: str)
 
 
 # --- ZR6: un código estudiantil ya registrado sigue adelante ------------------
-async def _nunca_ocupado(db: AsyncSession, cuentas: Any, documento: str) -> bool:
+async def _nunca_ocupado(db: AsyncSession, cuentas: Any, slug: str, codigo: str) -> bool:
     return False
 
 
@@ -193,6 +195,12 @@ def _anota_sin_saber_si_sirve(huella_del_codigo: str, *, valido: bool) -> None:
     _ANOTAR_CODIGO_BUENO(huella_del_codigo, valido=True)
 
 
+# --- ZR27 (auditoría 03): "ocupado" compara el texto crudo, como antes -------
+async def _solo_el_texto_exacto(db: AsyncSession, slug: str, codigo: str) -> list[Any]:
+    perfil = await roster_mod.get_profile_by_documento(db, f"{slug}_{codigo}")
+    return [] if perfil is None else [perfil]
+
+
 def _varios(*aplicar: Aplicar) -> Aplicar:
     def todos(mp: pytest.MonkeyPatch) -> None:
         for uno in aplicar:
@@ -273,6 +281,9 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     "ZR26": (_parche(router_mod, "_exigir_aviso_configurado", lambda: None),
              ta.test_ar15_sin_lista_de_avisos_el_registro_no_abre,
              r"AR15: \{'lista_vacia': \(201, \{'estado': 'pendiente'\}\)"),
+    "ZR27": (_parche(documento_mod, "perfiles_con_ese_codigo", _solo_el_texto_exacto),
+             ta.test_ar16_las_variantes_de_un_codigo_ocupado_no_entran,
+             r"'tras_las_variantes': \{'otro_crear': 4, 'perfiles': 5, 'usos': 5"),
 }
 
 

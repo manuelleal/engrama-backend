@@ -27,8 +27,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.onboarding.csv_personas import con_prefijo
 from src.onboarding.cuentas import CREADA, ErrorCuenta
+from src.registro import documento as documento_mod
 from src.registro.codigos import huella
 from src.registro.cuentas import CuentasDeRegistro
 from src.registro.schemas import RegistroIn
@@ -167,16 +167,22 @@ async def _recoger_huerfano(db: AsyncSession, cuentas: CuentasDeRegistro,
     return True
 
 
-async def _ocupado(db: AsyncSession, cuentas: CuentasDeRegistro, documento: str) -> bool:
+async def _ocupado(db: AsyncSession, cuentas: CuentasDeRegistro, slug: str,
+                   codigo: str) -> bool:
     """¿Ese código estudiantil ya tiene perfil? (ya se registró, o entró por lista).
 
-    Un perfil que ya existe NUNCA se toca desde el registro: ni se le crea
-    cuenta ni se le cambia el correo. La única excepción es el huérfano.
+    Se compara la forma canónica del código, no el texto: `ab-0123` está
+    ocupado si ya existe `AB0123` (ESPEC §11.6). Un perfil que ya existe NUNCA
+    se toca desde el registro: ni se le crea cuenta ni se le cambia el correo.
+    La única excepción es el huérfano, que se recoge.
+
+    Si hubiera varias variantes guardadas (perfiles de antes de esta regla) y
+    una sola es un huérfano, basta la otra para que esté ocupado.
     """
-    perfil = await roster.get_profile_by_documento(db, documento)
-    if perfil is None:
-        return False
-    return not await _recoger_huerfano(db, cuentas, perfil)
+    for perfil in await documento_mod.perfiles_con_ese_codigo(db, slug, codigo):
+        if not await _recoger_huerfano(db, cuentas, perfil):
+            return True
+    return False
 
 
 async def _escribir_reserva(db: AsyncSession, codigo: CodigoInscripcion, group: Group,
@@ -210,11 +216,12 @@ async def _reservar(db: AsyncSession, cuentas: CuentasDeRegistro,
         raise CodigoNoValido(motivo or "inexistente")
     codigo = encontrado[0]
     group, tenant = await _grupo_del_codigo(db, codigo)
-    documento = con_prefijo(tenant.slug, datos.codigo_estudiantil)
-    if not roster.DOC_ID_RE.fullmatch(documento):
+    # El documento se arma con la función del CSV de alta: una sola fuente.
+    documento = documento_mod.del_registro(tenant.slug, datos.codigo_estudiantil)
+    if documento is None:
         await db.rollback()
         raise CodigoNoValido(MOTIVO_DOCUMENTO)
-    if await _ocupado(db, cuentas, documento):
+    if await _ocupado(db, cuentas, tenant.slug, datos.codigo_estudiantil):
         await db.rollback()
         return None
     # Si se recogió un huérfano, el UPDATE le devolvió un uso a su código (que
