@@ -419,3 +419,41 @@ Un secreto por instancia; liquidar los `not_credited`; el pase corto para SET (`
 - **FUNCIONA:** las cuentas de §4, la matriz medida, HE1 escrito, MG37 verde y los previos verdes con solo las ediciones declaradas.
 - **HAY ALGO MODESTO:** todo lo anterior medido contra los dobles de este repo, sin correr contra el EVA y el SET reales (que deben ajustarse antes, §9).
 - **NO:** un evento repetido deja dos filas o paga dos veces; una firma falsa entra; un conflicto sobrescribe; algo de `live` mueve el nivel; un origen emite un tipo que no es suyo; el nivel de uno se ve en otra institución; un tramposo queda verde.
+
+## 12. Adenda 2026-10-08 · S-11 de la auditoría de seguridad 03: los secretos se validan al arrancar (preregistro)
+Implementador · sobre `2f174f5`. Origen: `investigacion/seguridad/03-auditoria-autorregistro-y-eventos-2026-10-07.md`, S-11. Se commitea antes del código. Sin migración.
+
+### 12.0 Confirmado en el código
+| Qué | Dónde |
+|---|---|
+| Los dos secretos son texto libre, vacío por defecto, sin ninguna comprobación | `src/shared/config.py:67-68` |
+| Un secreto de menos de 32 no vale, pero se descubre **en cada petición** (401), no al arrancar | `src/shared/events.py:75` |
+| Nada exige que sean distintos entre sí ni distintos del secreto JWT | `src/webhooks/router.py:33-36` solo los lee |
+| El origen no entra en lo firmado | `src/shared/events.py:62-65`: `timestamp + "." + cuerpo` |
+
+**Consecuencia (inferida, no medida):** si los dos orígenes comparten secreto, un lote firmado por SET vale también con `X-Engrama-Source: live` (y al revés): el encabezado del origen no está firmado. La lista de tipos por origen (§1.5) deja de separar a EVA de SET.
+
+### 12.1 Qué cambia (una cosa)
+**Si `EVENTS_SECRET_LIVE` o `EVENTS_SECRET_SET` están puestos y no cumplen, el servicio no arranca.**
+- **Puesto** = no vacío. Un secreto **ausente o vacío sigue significando "ese origen apagado"** (401), como hoy: no es un error.
+- Cada secreto puesto debe: medir **32 caracteres o más**; ser **distinto del otro**; y ser **distinto de `SUPABASE_JWT_SECRET`**.
+- Se comprueba al cargar la configuración (`get_settings`), que corre al importar la aplicación: uvicorn termina con un error antes de escuchar. La excepción es `ConfiguracionInvalida`, con un mensaje que **nombra la variable y el motivo y no imprime ningún valor** (tampoco su largo). Por eso **no** es un validador de pydantic: su error mostraría los valores de entrada.
+- La CLI del operador (`python -m src.onboarding …`) y Alembic no cargan `src.shared.config`: no les afecta.
+- `events.verificar` conserva su propio mínimo de 32 (los tests ponen los secretos en `settings` después de cargar).
+
+**Cambio de comportamiento que el despliegue debe saber:** un secreto **corto** (de 1 a 31 caracteres) antes dejaba ese origen apagado en silencio; ahora **impide arrancar**. Lo mismo dos secretos iguales, o uno igual al secreto JWT.
+
+### 12.2 Lo que NO cambia: qué se firma
+**El origen sigue sin entrar en la firma.** Meterlo cambiaría el contrato con EVA y SET, que ya están desplegados y firman `timestamp + "." + cuerpo`. Exigir secretos distintos cierra el cruce entre orígenes sin tocar el contrato. **Para después:** una versión 2 de la firma que incluya el origen, coordinada con las dos piezas.
+
+### 12.3 Criterio, test y tramposo
+| # | Criterio | Test |
+|---|---|---|
+| C20 | **Pura:** los dos vacíos → sin problemas; uno solo, bueno → sin problemas; los dos buenos y distintos → sin problemas; uno de 31 → un problema que nombra su variable; los dos iguales → problema; uno igual al secreto JWT → problema; varios a la vez → se listan todos. **Ningún mensaje contiene un valor.** **Al cargar:** `get_settings` con un secreto corto en el entorno lanza `ConfiguracionInvalida`. **Al arrancar:** un proceso aparte que importa `src.main` con dos secretos iguales termina con código distinto de 0, su salida nombra las dos variables y **no contiene el secreto**; con dos secretos buenos, importa y termina en 0 | UE3 (no-integ) |
+
+**Tramposo ZE20** (no-integ): la comprobación no encuentra nunca nada (hoy). Rojo predicho: **UE3** (as: el secreto de 31 no da problema). El proceso aparte no ve el parche (es otro proceso): el rojo sale de la parte pura, que va primero en el dict observado.
+
+**Tramposos existentes (ERR-26):** ZE1-ZE19 ponen los secretos en `settings` dentro de cada test (`tests/webhooks/_ayuda.py`), después de cargar: no pasan por la comprobación. EV3 sigue probando que un secreto `"corto"` puesto **en caliente** da 401 (`tests/webhooks/test_lote.py:96`).
+
+### 12.4 Cuentas
++1 test no-integ (UE3) y +1 tramposo no-integ (ZE20). Van sumados en `ESPEC_autorregistro.md` §11.8.

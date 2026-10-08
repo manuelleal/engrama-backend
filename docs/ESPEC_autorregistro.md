@@ -462,3 +462,136 @@ POST   /api/teachers/groups/{gid}/solicitudes/7/rechazar   200 {"id":7,"estado":
 - **FUNCIONA:** las cuentas de §5, la matriz medida, HA1 escrito, MG35 verde y los 377 previos verdes con solo las ediciones declaradas.
 - **HAY ALGO MODESTO:** todo lo anterior, pero HA2 sin correr (GoTrue real) o la IP real sin medir detrás del túnel: sirve en local, no sale a internet.
 - **NO:** entra alguien sin aprobación; un código vencido, apagado o lleno inscribe; el cupo se pasa; una respuesta distingue un correo existente; queda una cuenta sin perfil o un perfil activo sin cuenta; la clave de servicio aparece fuera de su módulo, en una respuesta o en un log; un tramposo queda verde.
+
+## 11. Adenda 2026-10-08 · cierre de la auditoría de seguridad 03 (preregistro)
+Implementador · sobre `2f174f5` (no-integ **143**; ruff 0). Origen: `investigacion/seguridad/03-auditoria-autorregistro-y-eventos-2026-10-07.md` (solo lectura, con consecuencias inferidas) y la decisión 011 (D7 aprobado: el registro se abre, primero en el piloto local con datos sintéticos). **Esta adenda se commitea antes del código.** Cada punto es un commit. **Sin migración** (la cabeza sigue en `041_refuerzo`).
+
+### 11.0 Confirmado en el código (`2f174f5`), antes de tocar nada
+| Hallazgo | Dónde | Qué se leyó |
+|---|---|---|
+| S-7 | `src/registro/service.py:300` | `await _confirmar(db, reserva, datos)` va sin `try`: si T2 falla después de que GoTrue creó la cuenta, la excepción sube (500) y quedan la cuenta y la solicitud en `creando` |
+| S-3 (a) | `src/registro/limite.py:21-39` | `ip_del_visitante` devuelve la dirección completa: cada dirección de un /64 es una llave distinta |
+| S-3 (b) | `src/registro/router.py:88` y `limite.py:115-119` | `limite.anotar` suma a `POR_IP`, `POR_CODIGO` y `GLOBAL` **antes** de consultar la base. 1.000 peticiones con cualquier código llenan `GLOBAL` (`limite.py:104`) |
+| S-3 (b), **no estaba en la auditoría** | `limite.py:80-83` y `:118` | cada código inventado crea una llave en `POR_CODIGO`; al llegar a 20.000 llaves vigentes, toda llave **nueva** recibe 429 (falla cerrado). Es el mismo ataque por otra puerta |
+| S-3 (c) | `limite.py:3-4` y §1.6 | el límite es por proceso (ya declarado) |
+| Contraseña | `src/registro/schemas.py:34` y `src/onboarding/cuentas.py:102` | `max_length=72` cuenta **caracteres**; 40 `ñ` son 80 bytes y pasan. Si GoTrue los rechaza, `crear` lanza `ErrorCuenta` → 502. **Que GoTrue responda con error a más de 72 bytes es inferido (no medido).** |
+| Aviso | `src/auth/consentimiento.py:34-37` y `router.py:78` | con `AVISO_VERSIONES_VALIDAS` vacía, `version_permitida` acepta cualquier texto bien formado |
+| `documento_id` | `service.py:202-206` y `teachers/service/roster.py:101-105` | "ocupado" es `Profile.documento_id == documento`: texto exacto |
+
+**Una premisa del encargo que el código refuta (se declara antes de implementar):** `documento_de(slug, "CODIGO", crudo)` (`src/onboarding/csv_personas.py:72-90`) **no normaliza** un código interno: solo le quita los espacios del borde y le pone el prefijo. Los puntos y espacios se quitan solo a `CC`, `TI` y `CE`. Usarla en el registro deja una sola fuente del documento, pero **no cierra las variantes** por sí sola. El diseño de §11.6 lo resuelve sin tocar lo guardado.
+
+### 11.1 S-7 · la segunda transacción, protegida
+- `registrar` llama a `_confirmar_o_deshacer`. Si `_confirmar` lanza **cualquier** excepción: `ROLLBACK`, se registra el fallo (solo el id de la solicitud y el tipo de la excepción), se compensa con `_deshacer(puede_haber_cuenta=True)` y se responde **502 `registro_no_disponible`**.
+- Si la compensación tampoco puede escribir en la base (la cuenta ya se borró en GoTrue), el fallo se registra y la respuesta sigue siendo 502: las filas quedan en `creando` **sin cuenta**, y las recoge el reintento (§1.5).
+- Si `borrar` falla en GoTrue, vale lo de §1.5: las filas se quedan en `creando`.
+
+| # | Criterio | Test |
+|---|---|---|
+| C18 | T2 falla (un `_confirmar` que ejecuta SQL inválido y deja la transacción rota): **502**; el doble recibió `borrar(id del perfil)`; **0 cuentas**, 0 perfiles, 0 solicitudes y `usos = 0`; el reintento (ya sin el fallo) → 201 y 1 solicitud `pendiente`. Con `borrar` fallando además: 502, la solicitud queda en `creando` y la lista del profe está vacía | AR12 |
+
+**Tramposo ZR24** (integ): `_confirmar_o_deshacer` es el código de hoy (llama a `_confirmar` a secas). Rojo predicho: **AR12** (as: la respuesta es 500 y la cuenta queda). Verde predicho: todos los demás (ninguno hace fallar T2).
+
+### 11.2 S-3 (a) · IPv6 por /64
+- `ip_del_visitante` pasa el valor elegido por `_agrupar`: una dirección **IPv6** se cuenta por su red **/64** (`2001:db8:1:2::/64`); una IPv6 que envuelve una IPv4 (`::ffff:203.0.113.9`) cuenta como esa IPv4; **IPv4 sigue por dirección completa**; lo que no es una dirección (el `testclient` de las pruebas, `desconocida`) queda igual.
+- Por qué /64: es lo que un proveedor entrega a **una** casa o a un servidor; quien lo tiene dispone de 2^64 direcciones. Un salón detrás de una red IPv6 comparte normalmente un /64, como comparte una IPv4.
+- **Límite declarado:** quien tenga un /48 dispone de 65.536 redes /64. No se agrupa por /48 (metería en una sola llave a clientes distintos de un mismo proveedor). Queda en "para después".
+
+| # | Criterio | Test |
+|---|---|---|
+| C19 | Pura: dos direcciones del mismo /64 dan la misma llave, con 0 saltos y con 1; otro /64, otra llave; mayúsculas y forma larga no cambian la llave; `::ffff:203.0.113.9` → `203.0.113.9`; IPv4 intacta; `testclient` intacto | UL3 |
+
+**Tramposo ZR28** (no-integ): `_agrupar` devuelve el valor tal cual (hoy). Rojo: **UL3**. UL2 sigue verde (solo usa IPv4).
+
+### 11.3 S-3 (b) · el contador global y el contador por código cuentan solo lo que sirve
+**Diseño elegido: contar solo los intentos cuyo código de grupo pasó la validación** (existe, está activo, vigente y con cupo).
+- `POR_IP` sigue contando **todo** intento, antes de la base (150).
+- `MALOS_POR_IP` sigue contando cada 403 (60).
+- `POR_CODIGO` (200) y `GLOBAL` (1000) se anotan **después** de la reserva, y **solo si el código de grupo era válido**: los 201, el 502 y el 403 por `codigo_estudiantil` que no cabe con el prefijo (ahí el código de grupo sí servía; así AR10 no cambia). Un código inexistente, vencido, apagado o sin cupo **no los mueve**.
+- Los cuatro se siguen **revisando** antes de la base.
+
+**Por qué así y no "global por código":**
+- Quien no tiene un código válido ya no puede llenar `GLOBAL` ni crear llaves en `POR_CODIGO`: sus intentos solo gastan los cupos **de su propia IP** (60 malos, 150 en total).
+- Quien sí tiene un código válido queda frenado por `POR_CODIGO` (200 por ventana, cualquier IP): para llenar `GLOBAL` harían falta 5 códigos válidos martillados a la vez. `GLOBAL` deja de ser un interruptor y vuelve a ser lo que decía §1.6: el techo de cuentas que el proceso le pide a GoTrue.
+- "Global por código" sería `POR_CODIGO` con otro nombre: no agrega nada.
+
+**Lo que se pierde, declarado:**
+- `GLOBAL` ya no protege a la base de una lluvia de códigos malos desde muchas IP: cada uno cuesta una consulta por índice único. Lo frena `MALOS_POR_IP` (60 por IP y ventana).
+- Al anotar después, varias peticiones simultáneas pueden pasar la revisión antes de que la primera anote: el tope se puede pasar por las que estén en vuelo (pocas: el candado del código las pone en fila).
+- **Sigue abierto:** `POR_IP` y `MALOS_POR_IP` también fallan cerrado con 20.000 llaves. Quien controle 20.000 direcciones IPv4 o redes /64 (un /48) todavía puede dejar sin registro a las IP nuevas durante la ventana. Es de otro tamaño (hacen falta 20.000 orígenes y no 1.000 peticiones) y se cierra en el despliegue (tabla compartida o límite en el proxy). **Para después.**
+
+| # | Criterio | Test |
+|---|---|---|
+| C20 | Con `GLOBAL.tope = 3` y `PROXIES_DE_CONFIANZA = 1`: 5 códigos inventados desde 5 IP distintas → cinco 403, y `POR_CODIGO` tiene **0 llaves**; enseguida un registro con código válido desde otra IP → **201** (hoy: 429). Después, hasta completar 3 con código válido → 201, y el cuarto → **429** con `Retry-After` (el techo sigue vivo para lo que sí sirve). `POR_CODIGO` termina con 1 llave | AR13 |
+
+**Tramposo ZR25** (integ): `limite.anotar_codigo` anota siempre, sin mirar si el código servía (hoy). Rojo predicho: **AR13** (as: tras la basura, 429). Verde: AR10 (sus topes se alcanzan igual: 60 malos por IP llegan antes que 1000).
+
+### 11.4 S-3 (c) · documentado, sin cambio
+El límite vive en la memoria de **cada proceso**. Con `--workers 2` (el `CMD` del despliegue) **cada tope vale hasta el doble** (300 por IP, 120 malos por IP, 400 por código, 2000 globales) y un reinicio lo pone en cero. Para que los números de §1.6 sean los reales hace falta **un solo worker** o una tabla compartida. **Lo decide el despliegue; el backend no lo cambia.**
+
+### 11.5 Menores
+**(a) La contraseña se acota en bytes.** bcrypt (el de GoTrue) solo mira los primeros 72 **bytes**. `RegistroIn.contrasena` conserva `CLAVE_MIN` y `CLAVE_MAX` (caracteres; UR2 no cambia) y gana un validador: si `len(contrasena.encode("utf-8")) > 72` → **422**, con un mensaje que lo dice ("no puede pasar de 72 bytes; las tildes, la ñ y los emojis ocupan más de uno"). `POST /auth/contrasena` **no** se toca (para después).
+
+| # | Criterio | Test |
+|---|---|---|
+| C21 | Pura: 72 `x` → pasa; 36 `ñ` (72 bytes) → pasa; 37 `ñ` (74 bytes, 37 caracteres) → error que nombra los 72 bytes; 73 `x` → error (el de antes) | UR3 |
+| C22 | En la ruta: 40 `ñ` → **422**, 0 perfiles, 0 solicitudes, 0 llamadas a `crear`; 36 `ñ` → 201 | AR14 |
+
+**Tramposo ZR29** (no-integ): el tope en bytes no se aplica (`CLAVE_MAX_BYTES` enorme: se cuentan solo caracteres, hoy). Rojo: **UR3**. Cruce predicho, no medido en este tramposo: AR14.
+
+**(b) Sin lista de versiones del aviso, el registro no abre.** Si el registro está encendido (hay URL de GoTrue y clave de servicio) y `AVISO_VERSIONES_VALIDAS` está vacía → **503 `{"detail": "registro_sin_aviso"}`**, sin escribir y sin llamar a GoTrue. Orden: cuerpo (422) → versión fuera de la lista (422, como hoy) → sin configuración (503 `registro_no_configurado`) → **sin lista (503 `registro_sin_aviso`)** → límite (429) → lo demás. `POST /auth/consent` no cambia (con la lista vacía sigue sin restricción: ahí hay un usuario con sesión).
+
+| # | Criterio | Test |
+|---|---|---|
+| C23 | Con el doble puesto y la lista vacía → 503 `registro_sin_aviso`, 0 perfiles y 0 `crear`; con la lista puesta → 201; sin el doble (registro apagado) y la lista vacía → 503 `registro_no_configurado` | AR15 |
+
+**Tramposo ZR26** (integ): la comprobación no hace nada (hoy). Rojo: **AR15** (as: 201 con la lista vacía).
+
+**Edición a lo existente (ERR-25):** `tests/registro/_ayuda.py`: `preparar` pone `AVISO_VERSIONES_VALIDAS = AVISO` y `soltar` la devuelve a su valor. Sin eso, **todos** los tests del registro darían 503. CN6 (`tests/auth/test_aviso_versiones.py`) no cambia: pone su propia lista después de `preparar`, y su caso de lista vacía es del consentimiento.
+
+### 11.6 `documento_id`: las variantes de un código ya ocupado
+- **El documento se arma con `documento_de(slug, "CODIGO", codigo_estudiantil)`**, la función del CSV de alta (una sola fuente: prefijo y `DOC_ID_RE`). Lo que se **guarda** no cambia: `<slug>_<código tal como se escribió>`. Así el matriculado por lista y el que se registra siguen siendo el mismo perfil (AR7 (d)).
+- **"Ocupado" deja de comparar el texto.** Se compara la **forma canónica del código** (lo que va después de `<slug>_`): minúsculas, sin guiones y sin ceros a la izquierda. `AB-0123`, `ab0123`, `00AB-0123` y `Ab-0123` son el mismo código. Se busca entre los perfiles cuyo `documento_id` empieza por `<slug>_` (los de esa institución), con la misma forma calculada en la base.
+- Si alguna variante ya tiene perfil → "ocupado": **201 uniforme**, sin escribir y sin llamar a GoTrue. El huérfano (`creando` de más de 60 s) se recoge igual que antes, también si es una variante.
+- **Los perfiles que ya existen no se tocan** (ni se renombran ni se fusionan). Sin migración.
+- **Límites declarados:**
+  - Dos personas reales de una misma institución con códigos que solo difieren en mayúsculas, guiones o ceros a la izquierda: la segunda recibe el 201 uniforme y **no queda inscrita**; entra por lista. Se acepta (el caso contrario es la suplantación).
+  - Los puntos y los espacios no pueden llegar: el cuerpo los rechaza con 422 (`^[A-Za-z0-9-]{1,24}$`).
+  - La búsqueda recorre los perfiles de la institución sin índice propio. En el piloto son cientos. Un índice por expresión es una migración: para después.
+  - Dos registros **simultáneos** de dos variantes con códigos de **dos grupos distintos** pueden entrar los dos (el candado es por código de grupo). El profe ve los dos y rechaza uno.
+
+| # | Criterio | Test |
+|---|---|---|
+| C24 | Se registra `AB-0123` (201, 1 `crear`). Las variantes `ab-0123`, `AB0123`, `ab0123` y `00AB-0123`, con otro correo → 201 uniforme cada una, **0 `crear` más**, 1 solo perfil y `usos = 1`. Un matriculado por lista con `<slug>_000457`: registrar `457` → 201, sin cuenta y sin solicitud. Control: `AB-0124` → 1 `crear` más; y `ab0123` con el código de **otra** institución → se crea (otro prefijo) | AR16 |
+
+**Tramposo ZR27** (integ): "ocupado" compara el texto crudo (hoy). Rojo: **AR16** (as: las variantes crean perfiles y cuentas). Verde: AR7 (sus documentos son idénticos).
+
+### 11.7 Tramposos existentes (ERR-26), predicción
+- ZR3 parchea `limite.revisar(ip, huella)`: la firma no cambia. ZR4 parchea `limite.ip_del_visitante`: sigue rojo por su razón (AR10).
+- ZR6 parchea `service._ocupado(db, cuentas, documento)`: la firma cambia a `(db, cuentas, slug, codigo)`; **se ajusta la firma del tramposo** (sigue devolviendo `False`) y debe seguir rojo por AR7.
+- ZR14 parchea `service._deshacer`: sigue rojo por AR8.
+- ZR9 llama a `router_mod.registrarse(payload, request, cuentas, db)`: la firma no cambia. Su modelo trae `aviso_version = "sin-aviso"` por defecto, que con la lista puesta por `preparar` daría 422 en el caso `sin_aviso`. **Predicción:** ZR9 sigue rojo con su mismo mensaje (`'menor': 201, 'sin_declarar': 201`: esos dos casos mandan el aviso bueno). Si no, se corrige el tramposo (su valor por defecto), no el test.
+- ZH13 (aviso) y los de la solicitud de datos no pasan por lo tocado.
+
+### 11.8 Cuentas (ERR-10)
+| Grupo | integ | no-integ |
+|---|---|---|
+| AR12-AR16 | 5 | — |
+| ZR24-ZR27 | 4 | — |
+| UL3 y UR3 | — | 2 |
+| ZR28 y ZR29 | — | 2 |
+| UE3 y ZE20 (`ESPEC_eventos_anillo.md` §12) | — | 2 |
+| **Nuevos** | **9** | **6** |
+
+- **no-integ:** 143 + 6 = **149**. **Suite completa:** la de `2f174f5` + 15 passed; skipped sin cambio (23).
+- No se mide la matriz completa de cruces (los tramposos nuevos contra todos los AR): solo la diagonal. Queda dicho.
+
+### 11.9 Qué NO se toca y "para después"
+**No se toca:** S-5 (el oráculo de tiempo; se mide en el despliegue), S-6 y S-1 (GoTrue y Caddy), S-9 (operativo), el barrido de solicitudes en `creando`, el pase acotado, `engrama-web`, `despliegue`, EVA ni SET. Ninguna migración.
+
+**Para después:** el límite compartido entre procesos o en el proxy (y las 20.000 llaves por IP); agrupar por /48; los 72 bytes en `POST /auth/contrasena`; el índice por expresión del código canónico y la carrera entre dos grupos; fusionar perfiles viejos que ya sean variantes entre sí.
+
+### 11.10 Qué cambia para el despliegue
+- **`AVISO_VERSIONES_VALIDAS` pasa a ser obligatoria para registrar:** vacía y con la clave de servicio puesta → 503 `registro_sin_aviso`.
+- **Respuestas nuevas de `POST /auth/registro`:** 503 `registro_sin_aviso`; 422 por contraseña de más de 72 bytes; 502 (antes 500) si la segunda transacción falla.
+- **IPv6:** el límite cuenta por /64. `PROXIES_DE_CONFIANZA` no cambia de significado.
+- **`--workers`:** cada tope vale por proceso (§11.4).
