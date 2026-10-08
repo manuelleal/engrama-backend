@@ -26,6 +26,7 @@ tests/_salida/humo_catalogo_nodos.json
 tests/_salida/humo_grader.json
 tests/_salida/humo_foco_grupo.json
 tests/_salida/humo_refuerzo.json
+tests/_salida/humo_economia_oleada0.json
 
 # Salidas sueltas de herramientas
 *_output.txt
