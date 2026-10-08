@@ -13,6 +13,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from src.auth.schemas import CLAVE_MAX, CLAVE_MIN
 
 _STRICT = ConfigDict(strict=True, extra="forbid")
+# bcrypt (el de GoTrue) solo mira los primeros 72 BYTES de una contraseña.
+# `CLAVE_MAX` cuenta caracteres: 40 eñes son 40 caracteres y 80 bytes.
+CLAVE_MAX_BYTES = CLAVE_MAX
 _SIN_ESPACIOS_AL_BORDE = r"^\S(.*\S)?$"
 
 
@@ -43,6 +46,20 @@ class RegistroIn(BaseModel):
     def _solo_mayores(cls, valor: bool) -> bool:
         if valor is not True:
             raise ValueError("el autorregistro es solo para mayores de edad")
+        return valor
+
+    @field_validator("contrasena")
+    @classmethod
+    def _cabe_en_bytes(cls, valor: str) -> str:
+        """422 claro si pasa de 72 bytes (auditoría 03; ESPEC §11.5 a).
+
+        Sin esto, una contraseña con tildes, eñes o emojis podía pasar el tope
+        de caracteres y llegar a GoTrue, que la rechaza: el estudiante veía un
+        502 ("intenta más tarde") por algo que nunca iba a funcionar.
+        """
+        if len(valor.encode("utf-8")) > CLAVE_MAX_BYTES:
+            raise ValueError(f"la contraseña no puede pasar de {CLAVE_MAX_BYTES} bytes "
+                             "(las tildes, la ñ y los emojis ocupan más de uno)")
         return valor
 
     def correo_normalizado(self) -> str:

@@ -8,6 +8,7 @@ el módulo donde el test la usa y se exige `AssertionError` con el mecanismo.
   ZR22  la ventana del limitador nunca vence            -> UL1
   ZR23  `RegistroIn.contrasena` con mínimo 6            -> UR2
   ZR28  (§11.2) IPv6 por dirección completa, como antes  -> UL3
+  ZR29  (§11.5) la contraseña se acota solo en caracteres -> UR3
 """
 from __future__ import annotations
 
@@ -72,6 +73,10 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[], None], str]] = {
              tl.test_ul3_ipv6_se_cuenta_por_su_red_64,
              r"UL3: \{'una_del_64': '2001:db8:1:2:aaaa::1', "
              r"'otra_del_mismo_64': '2001:db8:1:2:bbbb:cccc:dddd:eeee'"),
+    # Auditoría 03 (ESPEC §11.5 a): sin tope en bytes, 37 eñes pasan (74 bytes).
+    "ZR29": (_parche(schemas_mod, "CLAVE_MAX_BYTES", 10**6),
+             tu.test_ur3_la_contrasena_se_acota_en_bytes,
+             r"'37_enes_74_bytes_nombra_los_72_bytes': False"),
 }
 
 

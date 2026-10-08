@@ -2,6 +2,7 @@
 
   AR12  C18  (S-7) si la segunda transacción falla, no queda una cuenta huérfana.
   AR13  C20  (S-3) los códigos inventados no agotan el registro de los demás.
+  AR14  C22  la contraseña de más de 72 BYTES da 422 y no llega a GoTrue.
 
 Las piezas se llaman por su módulo (`service_mod.…`) para que los tramposos
 ZR24 en adelante las alcancen.
@@ -110,3 +111,24 @@ def test_ar13_los_codigos_inventados_no_agotan_el_registro(integ) -> None:
         "con_codigo_valido": [201, 201, 201, 429], "el_cuarto": ("demasiados_intentos", True),
         "llaves_por_codigo_al_final": 1, "solicitudes": 3,
     }, f"AR13: {observado}"
+
+
+# =============================================================================
+# AR14 — C22 (la contraseña en bytes)
+# =============================================================================
+def test_ar14_la_contrasena_de_mas_de_72_bytes_da_422(integ) -> None:
+    """AR14 (C22): 40 eñes (80 bytes) -> 422 sin escribir ni llamar a GoTrue; 36 entran."""
+    cuentas = ay.preparar(integ)
+    a = ay.aula(integ)
+    larga = ay.registrar(ay.cuerpo(a.codigo, 1, contrasena="ñ" * 40))
+    observado = {
+        "de_80_bytes": larga.status_code,
+        "dice_por_que": "72 bytes" in larga.text,
+        "sin_escribir": (ay.estudiantes(integ), len(ay.solicitudes(integ)),
+                         len(cuentas.creadas), ay.usos(integ, a.grupo)),
+        "de_72_bytes": ay.registrar(ay.cuerpo(a.codigo, 2, contrasena="ñ" * 36)).status_code,
+    }
+    assert observado == {
+        "de_80_bytes": 422, "dice_por_que": True, "sin_escribir": (0, 0, 0, 0),
+        "de_72_bytes": 201,
+    }, f"AR14: {observado}"

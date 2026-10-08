@@ -3,6 +3,7 @@
   SR1  C12  la clave de servicio, cercada: solo `config.py` y `registro/cuentas.py`.
   UR1  C13  el código: formato, normalización y huella con llave.
   UR2  C14  una sola política de contraseña; `mayor_de_edad` solo admite `True`.
+  UR3  C21  (auditoría 03) la contraseña se acota en 72 BYTES, no en caracteres.
 
 Las funciones se llaman por el módulo para que un tramposo que las reemplace
 ahí (ZR20, ZR21, ZR23) las alcance.
@@ -116,6 +117,37 @@ def test_ur2_una_sola_politica_de_contrasena() -> None:
         "mayor_de_edad": {"True": True, "False": False, "1": False, "'true'": False,
                           "None": False},
     }, f"UR2: {observado}"
+
+
+def _error_de_clave(clave: str) -> str | None:
+    """`None` si la contraseña pasa; si no, el mensaje del primer error."""
+    try:
+        registro_schemas.RegistroIn.model_validate({
+            "codigo": "ABCDEFGH", "nombre": "Ana", "correo": "a@b.co",
+            "codigo_estudiantil": "1", "contrasena": clave, "mayor_de_edad": True,
+            "aviso_version": "v1"})
+    except ValidationError as exc:
+        return str(exc.errors()[0].get("msg"))
+    return None
+
+
+def test_ur3_la_contrasena_se_acota_en_bytes() -> None:
+    """UR3 (C21): 36 eñes (72 bytes) pasan; 37 (74 bytes, 37 caracteres) no."""
+    de_74_bytes = _error_de_clave("ñ" * 37)
+    observado = {
+        "72_x": _error_de_clave("x" * 72),
+        "36_enes_72_bytes": _error_de_clave("ñ" * 36),
+        "37_enes_74_bytes_nombra_los_72_bytes": de_74_bytes is not None
+        and "72 bytes" in de_74_bytes,
+        "73_x_el_error_de_siempre": "at most 72 characters" in (_error_de_clave("x" * 73) or ""),
+        "18_emojis_72_bytes": _error_de_clave("🙂" * 18),
+        "19_emojis_76_bytes": _error_de_clave("🙂" * 19) is not None,
+    }
+    assert observado == {
+        "72_x": None, "36_enes_72_bytes": None, "37_enes_74_bytes_nombra_los_72_bytes": True,
+        "73_x_el_error_de_siempre": True, "18_emojis_72_bytes": None,
+        "19_emojis_76_bytes": True,
+    }, f"UR3: {observado}"
 
 
 if __name__ == "__main__":  # pragma: no cover
