@@ -4,6 +4,7 @@
   UR1  C13  el código: formato, normalización y huella con llave.
   UR2  C14  una sola política de contraseña; `mayor_de_edad` solo admite `True`.
   UR3  C21  (auditoría 03) la contraseña se acota en 72 BYTES, no en caracteres.
+  UR4  C25  (auditoría 03, S-6) la contraseña pide una letra y un número o símbolo.
 
 Las funciones se llaman por el módulo para que un tramposo que las reemplace
 ahí (ZR20, ZR21, ZR23) las alcance.
@@ -17,6 +18,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from src.auth import politica_clave
 from src.auth import schemas as auth_schemas
 from src.registro import codigos
 from src.registro import schemas as registro_schemas
@@ -97,7 +99,7 @@ def _acepta_mayor(valor: object) -> bool:
     try:
         registro_schemas.RegistroIn.model_validate({
             "codigo": "ABCDEFGH", "nombre": "Ana", "correo": "a@b.co",
-            "codigo_estudiantil": "1", "contrasena": "x" * 10, "mayor_de_edad": valor,
+            "codigo_estudiantil": "1", "contrasena": "x" * 9 + "1", "mayor_de_edad": valor,
             "aviso_version": "v1"})
     except ValidationError:
         return False
@@ -132,23 +134,72 @@ def _error_de_clave(clave: str) -> str | None:
 
 
 def test_ur3_la_contrasena_se_acota_en_bytes() -> None:
-    """UR3 (C21): 36 eñes (72 bytes) pasan; 37 (74 bytes, 37 caracteres) no."""
-    de_74_bytes = _error_de_clave("ñ" * 37)
+    """UR3 (C21): 35 eñes y dos dígitos (72 bytes) pasan; 36 eñes y un 1 (73 bytes) no."""
+    de_74_bytes = _error_de_clave("ñ" * 36 + "1")
     observado = {
-        "72_x": _error_de_clave("x" * 72),
-        "36_enes_72_bytes": _error_de_clave("ñ" * 36),
+        "72_x": _error_de_clave("x" * 71 + "1"),
+        "36_enes_72_bytes": _error_de_clave("ñ" * 35 + "12"),
         "37_enes_74_bytes_nombra_los_72_bytes": de_74_bytes is not None
         and "72 bytes" in de_74_bytes,
-        "73_x_el_error_de_siempre": "at most 72 characters" in (_error_de_clave("x" * 73) or ""),
-        "18_emojis_72_bytes": _error_de_clave("🙂" * 18),
-        "19_emojis_76_bytes": _error_de_clave("🙂" * 19) is not None,
+        "73_x_el_error_de_siempre": "at most 72 characters" in (_error_de_clave("x" * 72 + "1") or ""),
+        "17_emojis_y_4_72_bytes": _error_de_clave("🙂" * 17 + "abc1"),
+        "19_emojis_76_bytes": _error_de_clave("🙂" * 19 + "a1") is not None,
     }
     assert observado == {
         "72_x": None, "36_enes_72_bytes": None, "37_enes_74_bytes_nombra_los_72_bytes": True,
-        "73_x_el_error_de_siempre": True, "18_emojis_72_bytes": None,
+        "73_x_el_error_de_siempre": True, "17_emojis_y_4_72_bytes": None,
         "19_emojis_76_bytes": True,
     }, f"UR3: {observado}"
 
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+# =============================================================================
+# UR4 — C25 (la composición de la contraseña, S-6)
+# =============================================================================
+# Cada caso: (la contraseña, ¿pasa?). Todas miden 10 caracteres o más, para que
+# lo único que decida sea la composición.
+CASOS_DE_COMPOSICION: dict[str, tuple[str, bool]] = {
+    "solo_letras": ("abcdefghij", False),
+    "solo_digitos": ("1234567890", False),
+    "letra_y_digito": ("abcdefghi1", True),
+    "letra_y_simbolo": ("abcdefghi!", True),
+    "tilde_y_enie_con_digito": ("contraseña1", True),
+    "mayusculas_con_enie_y_guion": ("Ñandú-Ñoño1", True),
+    "solo_enies_con_digito": ("ñññññññññ1", True),   # límite declarado (§12.1)
+    "solo_simbolos": ("-_.!@#$%&*+", False),
+    "simbolo_fuera_de_la_lista": ("clave?????", False),
+    "espacios_en_vez_de_simbolo": ("mi clave aa", False),
+    "digito_unicode_no_cuenta": ("abcdefghi²", False),
+    "digito_arabe_no_cuenta": ("abcdefghi٣", False),
+    "letras_de_otro_alfabeto": ("παράδειγμα1", True),
+}
+
+
+def test_ur4_la_contrasena_pide_letra_y_numero_o_simbolo() -> None:
+    """UR4 (C25): solo letras o solo números dan el error de la regla; el resto pasa."""
+    mensaje = politica_clave.MENSAJE_COMPOSICION
+    errores = {nombre: _error_de_clave(clave) for nombre, (clave, _) in CASOS_DE_COMPOSICION.items()}
+    observado = {
+        "pasa": {nombre: errores[nombre] is None for nombre in CASOS_DE_COMPOSICION},
+        "el_error_dice_la_regla": {nombre: errores[nombre] == f"Value error, {mensaje}"
+                                   for nombre, (_, pasa) in CASOS_DE_COMPOSICION.items()
+                                   if not pasa},
+        "el_texto": mensaje,
+        "simbolos": politica_clave.SIMBOLOS,
+        "largo": (auth_schemas.CLAVE_MIN, auth_schemas.CLAVE_MAX),
+        # Una contraseña de 80 bytes y sin número: gana el error de los bytes.
+        "bytes_gana": "72 bytes" in (_error_de_clave("ñ" * 40) or ""),
+    }
+    assert observado == {
+        "pasa": {nombre: pasa for nombre, (_, pasa) in CASOS_DE_COMPOSICION.items()},
+        "el_error_dice_la_regla": {nombre: True for nombre, (_, pasa)
+                                   in CASOS_DE_COMPOSICION.items() if not pasa},
+        "el_texto": "la contraseña debe tener al menos una letra y al menos un número "
+                    "o un símbolo (- _ . ! @ # $ % & * +)",
+        "simbolos": "-_.!@#$%&*+",
+        "largo": (10, 72),
+        "bytes_gana": True,
+    }, f"UR4: {observado}"

@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth import politica_clave as politica_mod
 from src.main import app
 from src.registro import codigos as codigos_mod
 from src.registro import decision as decision_mod
@@ -284,6 +285,10 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     "ZR27": (_parche(documento_mod, "perfiles_con_ese_codigo", _solo_el_texto_exacto),
              ta.test_ar16_las_variantes_de_un_codigo_ocupado_no_entran,
              r"'tras_las_variantes': \{'otro_crear': 4, 'perfiles': 5, 'usos': 5"),
+    # --- Cierre de S-6 (ESPEC §12.1): el esquema de antes, sin regla de composición ---
+    "ZR31": (_parche(politica_mod, "cumple_composicion", lambda clave: True),
+             ta.test_ar17_la_contrasena_sin_letra_o_sin_numero_da_422,
+             r"AR17: \{'estados': \{'solo_letras': 201, 'solo_digitos': 201\}"),
 }
 
 

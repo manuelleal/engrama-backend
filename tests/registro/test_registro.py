@@ -202,8 +202,8 @@ INVALIDOS: dict[str, dict[str, Any]] = {
     "mayor_como_numero": {"mayor_de_edad": 1},
     "sin_aviso": {"aviso_version": ...},
     "aviso_vacio": {"aviso_version": ""},
-    "clave_de_9": {"contrasena": "x" * 9},
-    "clave_de_73": {"contrasena": "x" * 73},
+    "clave_de_9": {"contrasena": "x" * 8 + "1"},
+    "clave_de_73": {"contrasena": "x" * 72 + "1"},
     "correo_sin_arroba": {"correo": "persona.sintetico.test"},
     "nombre_vacio": {"nombre": ""},
     "nombre_de_121": {"nombre": "n" * 121},
@@ -228,8 +228,8 @@ def test_ar9_cuerpo_invalido_da_422_sin_escribir(integ) -> None:
                     ay.usos(integ, a.grupo))
     observado = {
         "invalidos": estados, "sin_escribir": sin_escribir,
-        "control_de_10": ay.registrar(ay.cuerpo(a.codigo, 2, contrasena="x" * 10)).status_code,
-        "control_de_72": ay.registrar(ay.cuerpo(a.codigo, 3, contrasena="x" * 72)).status_code,
+        "control_de_10": ay.registrar(ay.cuerpo(a.codigo, 2, contrasena="x" * 9 + "1")).status_code,
+        "control_de_72": ay.registrar(ay.cuerpo(a.codigo, 3, contrasena="x" * 71 + "1")).status_code,
     }
     assert observado == {
         "invalidos": dict.fromkeys(INVALIDOS, 422), "sin_escribir": (0, 0, 0, 0),

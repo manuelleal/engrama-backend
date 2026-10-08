@@ -9,6 +9,7 @@ el módulo donde el test la usa y se exige `AssertionError` con el mecanismo.
   ZR23  `RegistroIn.contrasena` con mínimo 6            -> UR2
   ZR28  (§11.2) IPv6 por dirección completa, como antes  -> UL3
   ZR29  (§11.5) la contraseña se acota solo en caracteres -> UR3
+  ZR30  (§12.1) la contraseña sin regla de composición, como antes -> UR4
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from typing import Any
 import pytest
 from pydantic import Field, create_model
 
+from src.auth import politica_clave as politica_mod
 from src.registro import codigos as codigos_mod
 from src.registro import limite as limite_mod
 from src.registro import schemas as schemas_mod
@@ -77,6 +79,10 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[], None], str]] = {
     "ZR29": (_parche(schemas_mod, "CLAVE_MAX_BYTES", 10**6),
              tu.test_ur3_la_contrasena_se_acota_en_bytes,
              r"'37_enes_74_bytes_nombra_los_72_bytes': False"),
+    # Auditoría 03, S-6 (ESPEC §12.1): el esquema de antes, sin letra ni número exigidos.
+    "ZR30": (_parche(politica_mod, "cumple_composicion", lambda clave: True),
+             tu.test_ur4_la_contrasena_pide_letra_y_numero_o_simbolo,
+             r"UR4: \{'pasa': \{'solo_letras': True, 'solo_digitos': True"),
 }
 
 

@@ -10,6 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from src.auth import politica_clave
 from src.auth.schemas import CLAVE_MAX, CLAVE_MIN
 
 _STRICT = ConfigDict(strict=True, extra="forbid")
@@ -60,6 +61,21 @@ class RegistroIn(BaseModel):
         if len(valor.encode("utf-8")) > CLAVE_MAX_BYTES:
             raise ValueError(f"la contraseña no puede pasar de {CLAVE_MAX_BYTES} bytes "
                              "(las tildes, la ñ y los emojis ocupan más de uno)")
+        return valor
+
+    @field_validator("contrasena")
+    @classmethod
+    def _tiene_letra_y_numero_o_simbolo(cls, valor: str) -> str:
+        """422 claro si es solo letras, solo números o solo símbolos (auditoría 03, S-6).
+
+        GoTrue aplica esta regla al CAMBIAR la contraseña, pero el registro crea
+        la cuenta por la API de administración, que no la aplica: sin esto una
+        contraseña de solo letras entraba (medido: 201). La regla vive en
+        `auth/politica_clave.py`, una sola fuente (ESPEC §12.1). Va después del
+        tope en bytes: una contraseña muy larga da primero ese error.
+        """
+        if not politica_clave.cumple_composicion(valor):
+            raise ValueError(politica_clave.MENSAJE_COMPOSICION)
         return valor
 
     def correo_normalizado(self) -> str:

@@ -5,6 +5,7 @@
   AR14  C22  la contraseña de más de 72 BYTES da 422 y no llega a GoTrue.
   AR15  C23  sin lista de versiones del aviso, el registro encendido responde 503.
   AR16  C24  las variantes de un código estudiantil ya ocupado no crean otra persona.
+  AR17  C26  (S-6) la contraseña sin letra, o sin número o símbolo, da 422.
 
 Las piezas se llaman por su módulo (`service_mod.…`) para que los tramposos
 ZR24 en adelante las alcancen.
@@ -126,13 +127,13 @@ def test_ar14_la_contrasena_de_mas_de_72_bytes_da_422(integ) -> None:
     """AR14 (C22): 40 eñes (80 bytes) -> 422 sin escribir ni llamar a GoTrue; 36 entran."""
     cuentas = ay.preparar(integ)
     a = ay.aula(integ)
-    larga = ay.registrar(ay.cuerpo(a.codigo, 1, contrasena="ñ" * 40))
+    larga = ay.registrar(ay.cuerpo(a.codigo, 1, contrasena="ñ" * 39 + "1"))
     observado = {
         "de_80_bytes": larga.status_code,
         "dice_por_que": "72 bytes" in larga.text,
         "sin_escribir": (ay.estudiantes(integ), len(ay.solicitudes(integ)),
                          len(cuentas.creadas), ay.usos(integ, a.grupo)),
-        "de_72_bytes": ay.registrar(ay.cuerpo(a.codigo, 2, contrasena="ñ" * 36)).status_code,
+        "de_72_bytes": ay.registrar(ay.cuerpo(a.codigo, 2, contrasena="ñ" * 35 + "12")).status_code,
     }
     assert observado == {
         "de_80_bytes": 422, "dice_por_que": True, "sin_escribir": (0, 0, 0, 0),
@@ -233,3 +234,35 @@ def test_ar16_las_variantes_de_un_codigo_ocupado_no_entran(integ) -> None:
         "controles": {"otro_codigo": 201, "la_variante_en_otra_institucion": 201, "crear": 2,
                       "perfil_en_la_otra": True, "usos": (2, 1)},
     }, f"AR16: {observado}"
+
+
+# =============================================================================
+# AR17 — C26 (la composición de la contraseña, S-6)
+# =============================================================================
+def test_ar17_la_contrasena_sin_letra_o_sin_numero_da_422(integ) -> None:
+    """AR17 (C26): solo letras o solo números -> 422 con la regla, sin escribir; el resto entra."""
+    cuentas = ay.preparar(integ)
+    a = ay.aula(integ)
+    rechazadas = {nombre: ay.registrar(ay.cuerpo(a.codigo, n, contrasena=clave))
+                  for n, (nombre, clave) in enumerate(
+                      {"solo_letras": "abcdefghij", "solo_digitos": "1234567890"}.items(),
+                      start=1)}
+    sin_escribir = (ay.estudiantes(integ), len(ay.solicitudes(integ)), len(cuentas.creadas),
+                    ay.usos(integ, a.grupo))
+    aceptadas = {nombre: ay.registrar(ay.cuerpo(a.codigo, n, contrasena=clave)).status_code
+                 for n, (nombre, clave) in enumerate(
+                     {"letra_y_digito": "abcdefghi1", "letra_y_simbolo": "abcdefghi!",
+                      "enie_y_digito": "contraseña1"}.items(), start=3)}
+    observado = {
+        "estados": {nombre: r.status_code for nombre, r in rechazadas.items()},
+        "dicen_la_regla": {nombre: "al menos una letra y al menos un número" in r.text
+                           for nombre, r in rechazadas.items()},
+        "sin_escribir": sin_escribir,
+        "aceptadas": aceptadas,
+    }
+    assert observado == {
+        "estados": {"solo_letras": 422, "solo_digitos": 422},
+        "dicen_la_regla": {"solo_letras": True, "solo_digitos": True},
+        "sin_escribir": (0, 0, 0, 0),
+        "aceptadas": {"letra_y_digito": 201, "letra_y_simbolo": 201, "enie_y_digito": 201},
+    }, f"AR17: {observado}"
