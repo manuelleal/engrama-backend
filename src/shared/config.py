@@ -110,6 +110,14 @@ class Settings(BaseSettings):
     # `src/onboarding/recarga.py`, y un test (UE7) exige que los dos defectos
     # coincidan.
     bolsa_recarga_maxima: int = Field(default=1_000_000, ge=1, le=100_000_000)
+    # La alerta de bolsa baja (ESPEC_economia_oleada0 §1.7): la bolsa está "en
+    # alerta" cuando su saldo queda por DEBAJO de este porcentaje de lo emitido
+    # (`tenants.coin_pool`). Al cruzarlo, `award_coins` escribe una línea WARNING
+    # `bolsa_baja` en el logger `engrama.economia`; NUNCA bloquea una paga. Con 0
+    # la alerta queda apagada. Provisional. Igual que la de arriba, la orden
+    # `python -m src.onboarding bolsa` lee la misma variable del entorno (UE5
+    # exige que los dos defectos coincidan).
+    bolsa_umbral_alerta_pct: int = Field(default=10, ge=0, le=100)
 
     # --- Database ---
     database_url: str = Field(

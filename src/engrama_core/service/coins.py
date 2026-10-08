@@ -16,9 +16,15 @@ Reglas de integridad (WINDSURF §3, §9):
     maneja la transacción. Así, si el caller hace otras escrituras, todo
     va en una sola unidad atómica y el rollback automático del get_db
     dependency las limpia si algo revienta.
+
+Alerta de bolsa baja (docs/ESPEC_economia_oleada0.md §1.7): después de mover
+los saldos, `award_coins` mira si ESA paga hizo que la bolsa de la institución
+cruzara el umbral y, si sí, escribe UNA línea WARNING. Solo avisa: el único
+motivo para rechazar una paga sigue siendo el 402 por fondos insuficientes.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -32,7 +38,12 @@ from src.engrama_core.schemas import (
     LedgerEntryOut,
     WalletOut,
 )
-from src.shared.models import CoinLedger, CoinWallet
+from src.engrama_core.service import economia
+from src.shared.config import settings
+from src.shared.models import CoinLedger, CoinWallet, Tenant
+
+# El operador vigila este logger (o corre `python -m src.onboarding bolsa`).
+logger_economia = logging.getLogger("engrama.economia")
 
 
 # =============================================================================
@@ -83,6 +94,31 @@ async def get_wallet(
 
 
 # =============================================================================
+# 3.1b La alerta de bolsa baja (solo avisa; nunca bloquea)
+# =============================================================================
+async def _avisar_si_la_bolsa_cruza_el_umbral(
+    db: AsyncSession, tenant_id: UUID, saldo_antes: int, saldo_despues: int
+) -> None:
+    """Una línea WARNING `bolsa_baja` si esta paga cruzó el umbral de la institución.
+
+    Cuesta una lectura por clave primaria de `tenants` por paga (`coin_pool` =
+    lo emitido en total). La línea no lleva datos de personas: solo la
+    institución y tres números. Se escribe antes del commit de quien llama: si
+    ese request termina en rollback, el cruce no quedó y el aviso volverá a
+    salir con la paga que sí lo cruce.
+    """
+    emitido = (
+        await db.execute(select(Tenant.coin_pool).where(Tenant.id == tenant_id))
+    ).scalar_one_or_none()
+    umbral = economia.umbral_de_alerta(int(emitido or 0), settings.bolsa_umbral_alerta_pct)
+    if economia.cruza_el_umbral(saldo_antes, saldo_despues, umbral):
+        logger_economia.warning(
+            "bolsa_baja institucion=%s saldo=%s umbral=%s emitido=%s",
+            tenant_id, saldo_despues, umbral, int(emitido or 0),
+        )
+
+
+# =============================================================================
 # 3.2 award_coins — double-entry con lock
 # =============================================================================
 async def award_coins(
@@ -104,6 +140,7 @@ async def award_coins(
       3. Verifica balance suficiente → 402 si no.
       4. INSERT en coin_ledger.
       5. UPDATE de ambos balances en memoria (ORM persiste al flush/commit).
+      6. Aviso de bolsa baja si esta paga cruzó el umbral (no bloquea nada).
 
     `idempotency_key` (033, BUG-13; docs/ESPEC_bug13a15.md §1.1):
       - None: el comportamiento de siempre, idéntico. Devuelve la fila.
@@ -180,10 +217,15 @@ async def award_coins(
         db.add(entry)
 
     # Paso 5 — UPDATE balances. SQLAlchemy emite los UPDATEs al flush.
+    saldo_antes = int(from_wallet.balance)
     from_wallet.balance = from_wallet.balance - amount
     to_wallet.balance = to_wallet.balance + amount
 
     await db.flush()
+    # Paso 6 — la paga ya está hecha; solo queda avisar si dejó la bolsa baja.
+    await _avisar_si_la_bolsa_cruza_el_umbral(
+        db, tenant_id, saldo_antes, int(from_wallet.balance)
+    )
     return entry
 
 

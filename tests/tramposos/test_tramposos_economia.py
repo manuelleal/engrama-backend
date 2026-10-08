@@ -22,9 +22,9 @@ matriz completa se mide aparte (ERR-15, 19 y 23).
   ZT14 la recarga ignora la referencia               -> EP1 (la segunda suma otra vez)
   ZT15 la recarga no deja fila en el libro           -> EP1
   ZT16 la recarga hace commit a mitad                -> EP2 (el saldo quedó movido)
-  ZT17 la recarga no actualiza `coin_pool`           -> EP1
-
-Los de la alerta (ZT18, ZT19) entran con el commit que crea su pieza.
+  ZT17 la recarga no actualiza `coin_pool`           -> EP1, EB2
+  ZT18 el cruce del umbral no avisa                  -> EB1 (0 líneas)
+  ZT19 por debajo del umbral la paga da 402          -> EB1
 """
 from __future__ import annotations
 
@@ -46,11 +46,12 @@ from src.engrama_core.service import economia as economia_mod
 from src.foco import fechas as fechas_mod
 from src.onboarding import recarga as recarga_mod
 from src.shared.config import settings
-from src.shared.models import Attendance
+from src.shared.models import Attendance, CoinWallet, Tenant
 from tests.challenge_engine import test_economia_ganadores as eg
 from tests.challenge_engine import test_economia_retos as er
 from tests.engrama_core import test_attendance as ta
 from tests.engrama_core import test_economia_asistencia as ea
+from tests.engrama_core import test_economia_bolsa as eb
 from tests.onboarding import test_recarga as rec
 
 pytestmark = pytest.mark.integ
@@ -233,8 +234,31 @@ async def _no_sube_lo_emitido(db: AsyncSession, tenant: Any, monedas: int) -> No
     del db, tenant, monedas
 
 
+# =============================================================================
+# ZT18, ZT19 — la alerta de bolsa baja rota
+# =============================================================================
+def _nunca_cruza(saldo_antes: int, saldo_despues: int, umbral: int) -> bool:
+    """ZT18: el cruce del umbral no se detecta: nunca hay aviso."""
+    del saldo_antes, saldo_despues, umbral
+    return False
+
+
+async def _award_402_bajo_el_umbral(db: AsyncSession, *, tenant_id: UUID, amount: int,
+                                    **resto: Any) -> Any:
+    """ZT19: la alerta BLOQUEA: una paga que deja la bolsa bajo el umbral responde 402."""
+    saldo = (await db.execute(select(CoinWallet.balance).where(
+        CoinWallet.owner_type == "tenant", CoinWallet.owner_id == tenant_id))).scalar_one()
+    emitido = (await db.execute(
+        select(Tenant.coin_pool).where(Tenant.id == tenant_id))).scalar_one()
+    umbral = economia_mod.umbral_de_alerta(int(emitido), settings.bolsa_umbral_alerta_pct)
+    if int(saldo) - amount < umbral:
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                            detail="Tenant coin pool below alert threshold")
+    return await _AWARD_BUENO(db, tenant_id=tenant_id, amount=amount, **resto)
+
+
 def correr(test_real: Callable[..., None], **fixtures: Any) -> None:
-    """Corre el cuerpo de un test real con los fixtures que pida (integ, monkeypatch, capsys)."""
+    """Corre el cuerpo de un test real con los fixtures que pida (integ, monkeypatch, ...)."""
     pide = inspect.signature(test_real).parameters
     test_real(**{nombre: valor for nombre, valor in fixtures.items() if nombre in pide})
 
@@ -326,14 +350,27 @@ TRAMPOSOS: dict[str, tuple[Aplicar, list[tuple[Callable[..., None], str]]]] = {
     "ZT17": (_parche(recarga_mod, "_subir_emitido", _no_sube_lo_emitido), [
         (rec.test_ep1_la_recarga_suma_una_vez_y_deja_quien_y_cuando,
          r"EP1: coin_pool quedó en 1000, no 1500"),
+        (eb.test_eb2_la_orden_bolsa_dice_si_esta_en_alerta,
+         r"EB2: tras recargar 500 la orden bolsa dice \(0, \{'institucion': 'inst-a', "
+         r"'saldo': 599, 'emitido': 1000, 'umbral': 100,"),
+    ]),
+    "ZT18": (_parche(economia_mod, "cruza_el_umbral", _nunca_cruza), [
+        (eb.test_eb1_cruzar_el_umbral_avisa_una_vez_y_no_bloquea,
+         r"EB1: 0 líneas bolsa_baja al cruzar, esperada 1"),
+    ]),
+    "ZT19": (_parche(coins_mod, "award_coins", _award_402_bajo_el_umbral), [
+        (eb.test_eb1_cruzar_el_umbral_avisa_una_vez_y_no_bloquea,
+         r"EB1: la paga que cruza el umbral respondió 402"),
     ]),
 }
 
 
 @pytest.mark.parametrize("clave", list(TRAMPOSOS))
-def test_tramposo_pone_rojo_su_test(integ, monkeypatch, capsys, clave: str) -> None:
+def test_tramposo_pone_rojo_su_test(integ, monkeypatch, capsys, caplog, clave: str) -> None:
     aplicar, diagonal = TRAMPOSOS[clave]
     with aplicar(integ, monkeypatch):
         for test_real, motivo in diagonal:
+            integ.truncar_todo()  # cada test real arranca con la base vacía (slugs fijos)
             with pytest.raises(AssertionError, match=motivo):
-                correr(test_real, integ=integ, monkeypatch=monkeypatch, capsys=capsys)
+                correr(test_real, integ=integ, monkeypatch=monkeypatch, capsys=capsys,
+                       caplog=caplog)

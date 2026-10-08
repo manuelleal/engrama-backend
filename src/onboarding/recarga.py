@@ -22,6 +22,16 @@ monto no cambia nada (`repetida: true`); con OTRO monto es un error (salida 1).
 Este módulo solo calcula y mueve monedas: la guardia estática
 (`tests/engrama_core/guardia_monedas.py`) le prohíbe `round`, `float` y `/`.
 A propósito NO importa `src.shared.config`: la CLI no necesita el secreto JWT.
+
+`bolsa` (§1.7) vive aquí también: es la otra mitad de la misma tarea del
+operador (mirar la bolsa y recargarla).
+
+    python -m src.onboarding bolsa --slug <slug>
+    -> {"institucion", "saldo", "emitido", "umbral", "porcentaje", "en_alerta"}
+
+Solo lee. Sale con 0 si la bolsa está bien y con 3 si está en alerta (sirve para
+una tarea programada). `porcentaje` es el de la regla (`BOLSA_UMBRAL_ALERTA_PCT`):
+`umbral` es ese porcentaje de `emitido`.
 """
 from __future__ import annotations
 
@@ -44,6 +54,9 @@ EMISION_MAXIMA = 2_000_000_000
 # El defecto y el rango de `BOLSA_RECARGA_MAXIMA` (los mismos de `Settings`).
 RECARGA_MAXIMA_POR_DEFECTO = 1_000_000
 RECARGA_MAXIMA_RANGO = (1, 100_000_000)
+# Lo mismo para `BOLSA_UMBRAL_ALERTA_PCT` (0 = alerta apagada).
+UMBRAL_PCT_POR_DEFECTO = 10
+UMBRAL_PCT_RANGO = (0, 100)
 
 
 # =============================================================================
@@ -71,6 +84,12 @@ def recarga_maxima() -> int:
     """`BOLSA_RECARGA_MAXIMA`: lo más que se puede recargar en una sola orden."""
     return entero_del_entorno("BOLSA_RECARGA_MAXIMA", RECARGA_MAXIMA_POR_DEFECTO,
                               *RECARGA_MAXIMA_RANGO)
+
+
+def umbral_pct() -> int:
+    """`BOLSA_UMBRAL_ALERTA_PCT`: por debajo de qué porcentaje de lo emitido hay alerta."""
+    return entero_del_entorno("BOLSA_UMBRAL_ALERTA_PCT", UMBRAL_PCT_POR_DEFECTO,
+                              *UMBRAL_PCT_RANGO)
 
 
 def motivo_de_rechazo(*, slug: str | None, monedas: int | None, operador: str | None,
@@ -189,3 +208,23 @@ async def correr_recarga(*, slug: str, monedas: int, operador: str, motivo: str,
             await db.rollback()
             raise
     return datos
+
+
+# =============================================================================
+# 4. `bolsa`: el estado de la bolsa, a pedido (solo lectura)
+# =============================================================================
+async def correr_bolsa(*, slug: str, porcentaje: int, sesiones: Sesiones) -> dict[str, Any]:
+    """Saldo, lo emitido, el umbral y si está en alerta. Con `error` no hay institución."""
+    async with sesiones() as db:
+        tenant = (await db.execute(select(Tenant).where(Tenant.slug == slug))).scalar_one_or_none()
+        if tenant is None:
+            return {"institucion": slug, "error": f"no existe la institución {slug!r}"}
+        saldo = (await db.execute(
+            select(CoinWallet.balance).where(CoinWallet.owner_type == "tenant",
+                                             CoinWallet.owner_id == tenant.id,
+                                             CoinWallet.currency == "COIN")
+        )).scalar_one_or_none()
+    saldo, emitido = int(saldo or 0), int(tenant.coin_pool)
+    umbral = economia.umbral_de_alerta(emitido, porcentaje)
+    return {"institucion": slug, "saldo": saldo, "emitido": emitido, "umbral": umbral,
+            "porcentaje": porcentaje, "en_alerta": economia.en_alerta(saldo, umbral)}

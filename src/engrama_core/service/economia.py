@@ -94,6 +94,29 @@ def llave_recarga(referencia: str) -> str:
     return f"topup:{referencia}"
 
 
+def umbral_de_alerta(emitido: int, porcentaje: int) -> int:
+    """Por debajo de cuántas monedas la bolsa está "baja": `porcentaje` % de lo emitido.
+
+    Con el redondeo único (el 10 % de 1.005 es 100,5 -> 101). Con lo emitido en
+    0 o el porcentaje en 0 da 0, y como ningún saldo es menor que 0 no hay alerta.
+    """
+    return redondear_monedas(max(emitido, 0) * porcentaje, 100)
+
+
+def en_alerta(saldo: int, umbral: int) -> bool:
+    """¿La bolsa está baja? Solo POR DEBAJO del umbral (justo en el umbral, no)."""
+    return saldo < umbral
+
+
+def cruza_el_umbral(saldo_antes: int, saldo_despues: int, umbral: int) -> bool:
+    """¿ESTA paga hizo que la bolsa pasara de estar bien a estar baja?
+
+    Es lo que dispara el aviso: una línea por cruce, no una por cada paga que
+    ocurra mientras la bolsa siga baja.
+    """
+    return not en_alerta(saldo_antes, umbral) and en_alerta(saldo_despues, umbral)
+
+
 def redondear_monedas(numerador: int, denominador: int) -> int:
     """La ÚNICA forma permitida de pasar de una fracción a monedas.
 

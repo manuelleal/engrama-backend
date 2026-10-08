@@ -8,6 +8,9 @@
     python -m src.onboarding recargar --slug <slug> --monedas <n> \\
         --operador "<quién>" --motivo "<por qué>" --referencia <id único>
 
+    python -m src.onboarding bolsa --slug <slug>
+
+`bolsa` (§1.7) solo lee: saldo, lo emitido, el umbral y si está en alerta.
 `recargar` (ESPEC_economia_oleada0 §1.6) EMITE monedas a la bolsa de la
 institución: todo o nada, idempotente por `--referencia`, y deja en el libro
 quién y cuándo. Solo toca la base, como `suspender`.
@@ -22,6 +25,7 @@ Salida del proceso:
      repo del backend (no se escribe NADA: ni base, ni cuentas, ni archivo).
      En `recargar`: falta `--operador`, `--motivo` o `--referencia`, o
      `--monedas` es <= 0 o pasa de `BOLSA_RECARGA_MAXIMA` (la base ni se abre).
+  3  solo `bolsa`: la bolsa está en alerta (por debajo del umbral).
 
 Imprime en stdout un resumen JSON, sin contraseñas. Las contraseñas temporales
 solo van al archivo `--salida`.
@@ -50,9 +54,9 @@ from src.onboarding.restablecer import correr_restablecer
 from src.onboarding.salida import dentro_del_repo
 from src.onboarding.suspension import correr_suspension
 
-SALIDA_OK, SALIDA_CON_ERRORES, SALIDA_NO_CORRIO = 0, 1, 2
+SALIDA_OK, SALIDA_CON_ERRORES, SALIDA_NO_CORRIO, SALIDA_EN_ALERTA = 0, 1, 2, 3
 # Órdenes que solo tocan la base: no usan GoTrue ni escriben credenciales.
-SOLO_BASE = ("suspender", "reactivar", "recargar")
+SOLO_BASE = ("suspender", "reactivar", "recargar", "bolsa")
 
 
 def _monedas(texto: str) -> int:
@@ -97,6 +101,8 @@ def argumentos(argv: Sequence[str]) -> argparse.Namespace:
     rec.add_argument("--motivo", help="por qué (queda en el libro)")
     rec.add_argument("--referencia",
                      help="id único de esta recarga: repetirla con la misma no suma dos veces")
+    bolsa = sub.add_parser("bolsa", help="estado de la bolsa: 0 = bien, 3 = en alerta")
+    bolsa.add_argument("--slug", required=True)
     return p.parse_args(argv)
 
 
@@ -124,6 +130,10 @@ async def _correr(a: argparse.Namespace, cuentas: CuentasAdmin | None,
         datos = await recarga.correr_recarga(
             slug=a.slug, monedas=a.monedas, operador=a.operador, motivo=a.motivo,
             referencia=a.referencia, sesiones=sesiones)
+        return datos, "error" in datos
+    if a.orden == "bolsa":
+        datos = await recarga.correr_bolsa(slug=a.slug, porcentaje=recarga.umbral_pct(),
+                                           sesiones=sesiones)
         return datos, "error" in datos
     if a.orden in SOLO_BASE:
         datos = await correr_suspension(
@@ -163,6 +173,8 @@ def main(argv: Sequence[str] | None = None, *, cuentas: CuentasAdmin | None = No
                 # Antes de abrir la base: una emisión mal pedida no toca nada.
                 print(f"recargar: {rechazo}", file=sys.stderr)
                 return SALIDA_NO_CORRIO
+        if a.orden == "bolsa":
+            recarga.umbral_pct()  # un porcentaje mal escrito es salida 2, antes de la base
         if con_credenciales and cuentas is None:
             cuentas = gotrue_admin_del_entorno()
         sesiones = sesiones if sesiones is not None else sesiones_del_entorno()
@@ -171,7 +183,9 @@ def main(argv: Sequence[str] | None = None, *, cuentas: CuentasAdmin | None = No
         return SALIDA_NO_CORRIO
     resumen, con_errores = asyncio.run(_correr(a, cuentas, sesiones))
     print(json.dumps(resumen, ensure_ascii=False))
-    return SALIDA_CON_ERRORES if con_errores else SALIDA_OK
+    if con_errores:
+        return SALIDA_CON_ERRORES
+    return SALIDA_EN_ALERTA if resumen.get("en_alerta") else SALIDA_OK
 
 
 if __name__ == "__main__":

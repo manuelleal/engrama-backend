@@ -9,10 +9,9 @@ predicho" de la espec); lo que cada tramposo deja verde se mide aparte.
   ZE2  la guardia no mira los float    -> UE2 (0 violaciones donde debe haber una)
   ZE3  la puntualidad se paga siempre  -> UE3 (5:01 da 10)
   ZE4  la misma fecha devuelve 1       -> UE4
+  ZE5  la bolsa nunca está en alerta   -> UE5
   ZE6  el tope no se valida ni se aplica -> UE6 (21 pasa)
   ZE7  `recargar` acepta sin `--operador` -> UE7 (salida distinta de 2)
-
-El de la alerta (ZE5) entra con el commit que crea su pieza.
 """
 from __future__ import annotations
 
@@ -28,6 +27,7 @@ from src.engrama_core.service import economia as economia_mod
 from src.onboarding import recarga as recarga_mod
 from tests.challenge_engine import test_economia_retos as er
 from tests.engrama_core import guardia_monedas as guardia_mod
+from tests.engrama_core import test_economia_bolsa as eb
 from tests.engrama_core import test_economia_unit as ue
 from tests.onboarding import test_recarga as rec
 
@@ -66,6 +66,12 @@ def _sin_tope(coins_reward: int, tope: int) -> int:
     """ZE6: ni valida ni topa (devuelve el valor tal cual)."""
     del tope
     return coins_reward
+
+
+def _nunca_en_alerta(saldo: int, umbral: int) -> bool:
+    """ZE5: la bolsa nunca está en alerta, por baja que esté."""
+    del saldo, umbral
+    return False
 
 
 _RECHAZO_BUENO = recarga_mod.motivo_de_rechazo
@@ -109,6 +115,9 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     "ZE4": (_parche(attendance_mod, "compute_next_streak", _misma_fecha_reinicia),
             ue.test_ue4_la_misma_fecha_no_cambia_la_racha,
             r"UE4: \{'misma fecha': 1,"),
+    "ZE5": (_parche(economia_mod, "en_alerta", _nunca_en_alerta),
+            eb.test_ue5_el_umbral_y_el_cruce_de_la_alerta,
+            r"UE5: en alerta \{'99 de 100': False,"),
     "ZE6": (_varios(_parche(economia_mod, "exigir_tope_del_reto", _sin_tope),
                     _parche(economia_mod, "recompensa_del_reto", _sin_tope)),
             er.test_ue6_el_tope_se_valida_y_se_aplica,
