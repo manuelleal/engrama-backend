@@ -7,8 +7,9 @@ predicho" de la espec); lo que cada tramposo deja verde se mide aparte.
 
   ZE3  la puntualidad se paga siempre  -> UE3 (5:01 da 10)
   ZE4  la misma fecha devuelve 1       -> UE4
+  ZE6  el tope no se valida ni se aplica -> UE6 (21 pasa)
 
-Los demás (ZE1, ZE2, ZE6) entran con el commit que crea su pieza.
+Los demás (ZE1, ZE2) entran con el commit que crea su pieza.
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ import pytest
 
 from src.engrama_core.service import attendance as attendance_mod
 from src.engrama_core.service import economia as economia_mod
+from tests.challenge_engine import test_economia_retos as er
 from tests.engrama_core import test_economia_unit as ue
 
 Aplicar = Callable[[pytest.MonkeyPatch], None]
@@ -40,8 +42,21 @@ def _misma_fecha_reinicia(last_attendance_date: date | None, today: date) -> int
     return 1 if bueno == 0 else bueno
 
 
+def _sin_tope(coins_reward: int, tope: int) -> int:
+    """ZE6: ni valida ni topa (devuelve el valor tal cual)."""
+    del tope
+    return coins_reward
+
+
 def _parche(modulo: Any, nombre: str, valor: Any) -> Aplicar:
     return lambda mp: mp.setattr(modulo, nombre, valor)
+
+
+def _varios(*aplicar: Aplicar) -> Aplicar:
+    def todos(mp: pytest.MonkeyPatch) -> None:
+        for uno in aplicar:
+            uno(mp)
+    return todos
 
 
 TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[], None], str]] = {
@@ -51,6 +66,10 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[], None], str]] = {
     "ZE4": (_parche(attendance_mod, "compute_next_streak", _misma_fecha_reinicia),
             ue.test_ue4_la_misma_fecha_no_cambia_la_racha,
             r"UE4: \{'misma fecha': 1,"),
+    "ZE6": (_varios(_parche(economia_mod, "exigir_tope_del_reto", _sin_tope),
+                    _parche(economia_mod, "recompensa_del_reto", _sin_tope)),
+            er.test_ue6_el_tope_se_valida_y_se_aplica,
+            r"UE6: 21 pasó la validación del tope"),
 }
 
 

@@ -16,8 +16,10 @@ from datetime import datetime
 from typing import Annotated, Any, Literal, get_args
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, Strict
+from pydantic import BaseModel, ConfigDict, Field, Strict, field_validator
 
+from src.engrama_core.service import economia
+from src.shared.config import settings
 
 _STRICT = ConfigDict(strict=True, extra="forbid")
 
@@ -89,6 +91,12 @@ class ChallengeCreate(BaseModel):
     max_winners: int = Field(default=10, ge=1)
     group_id: UUIDIn | None = None  # None = visible a todo el tenant
     questions: list[ChallengeQuestionIn] = Field(min_length=1)
+
+    @field_validator("coins_reward")
+    @classmethod
+    def _dentro_del_tope(cls, valor: int) -> int:
+        """Un reto no puede valer más del tope (422 en `coins_reward`). Se lee al validar."""
+        return economia.exigir_tope_del_reto(valor, settings.reto_monedas_tope)
 
 
 class ChallengeGenerateRequest(BaseModel):

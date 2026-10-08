@@ -47,6 +47,23 @@ def desglose_asistencia(
     return DesgloseAsistencia(base=base, puntualidad=bono if puntual else 0, puntual=puntual)
 
 
+def exigir_tope_del_reto(coins_reward: int, tope: int) -> int:
+    """Valida el valor de un reto NUEVO: pasar del tope es un error (el schema lo hace 422)."""
+    if coins_reward > tope:
+        raise ValueError(f"coins_reward no puede pasar de {tope} monedas por reto")
+    return coins_reward
+
+
+def recompensa_del_reto(coins_reward: int, tope: int) -> int:
+    """Lo que un reto paga Y muestra: el menor entre lo guardado y el tope.
+
+    Un reto sembrado antes del tope (o insertado a mano) puede tener más de lo
+    permitido en la base; la columna no se reescribe (la casa no tiene castigos
+    retroactivos), pero lo que se muestra y se paga es lo mismo: el tope.
+    """
+    return min(coins_reward, tope)
+
+
 def llave_asistencia(group_id: UUID, student_id: UUID, dia: date) -> str:
     """La llave de idempotencia de la paga de asistencia: un pago por estudiante, grupo y día.
 

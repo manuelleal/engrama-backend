@@ -91,6 +91,11 @@ class Settings(BaseSettings):
     asistencia_monedas_base: int = Field(default=5, ge=0, le=50)
     asistencia_monedas_puntualidad: int = Field(default=5, ge=0, le=50)
     asistencia_minutos_puntualidad: int = Field(default=5, ge=0, le=60)
+    # Lo máximo que puede valer un reto (ESPEC_economia_oleada0 §1.4): el reto
+    # individual vale 10 y el tope de una sesión en vivo de EVA es 20; con el
+    # tope en 20 ningún reto individual paga más que una sesión entera de EVA.
+    # Provisional; se valida al crear y se aplica al pagar y al mostrar.
+    reto_monedas_tope: int = Field(default=20, ge=1, le=1000)
 
     # --- Database ---
     database_url: str = Field(

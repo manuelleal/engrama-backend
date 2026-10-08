@@ -16,8 +16,10 @@ matriz completa se mide aparte (ERR-15, 19 y 23).
   ZT8  la segunda sesión del día reinicia la racha a 1 -> ER1
   ZT9  la segunda sesión del día suma racha          -> ER1
   ZT10 la segunda sesión del día responde 409 y no registra -> ED1
+  ZT11 al pagar no se aplica el tope                 -> ET1 (recibe 50)
+  ZT12 al crear no se valida el tope                 -> ET1 (201 con 21)
 
-Los demás (ZT11-ZT19) entran con el commit que crea su pieza.
+Los demás (ZT13-ZT19) entran con el commit que crea su pieza.
 """
 from __future__ import annotations
 
@@ -38,6 +40,7 @@ from src.engrama_core.service import economia as economia_mod
 from src.foco import fechas as fechas_mod
 from src.shared.config import settings
 from src.shared.models import Attendance
+from tests.challenge_engine import test_economia_retos as er
 from tests.engrama_core import test_attendance as ta
 from tests.engrama_core import test_economia_asistencia as ea
 from tests.tramposos.test_tramposos_bug13 import correr
@@ -152,6 +155,21 @@ async def _check_in_409_si_ya_marco_hoy(db: AsyncSession, *, student_id: UUID, t
     return await _CHECK_IN_BUENO(db, student_id=student_id, tenant_id=tenant_id, **resto)
 
 
+# =============================================================================
+# ZT11, ZT12 — el tope roto
+# =============================================================================
+def _paga_lo_guardado(coins_reward: int, tope: int) -> int:
+    """ZT11: al pagar (y mostrar) no se aplica el tope."""
+    del tope
+    return coins_reward
+
+
+def _no_valida_el_tope(coins_reward: int, tope: int) -> int:
+    """ZT12: al crear no se valida el tope."""
+    del tope
+    return coins_reward
+
+
 def _parche(objetivo: Any, nombre: str, valor: Any) -> Aplicar:
     def aplicar(_integ: Any, mp: pytest.MonkeyPatch) -> AbstractContextManager[Any]:
         mp.setattr(objetivo, nombre, valor)
@@ -202,6 +220,14 @@ TRAMPOSOS: dict[str, tuple[Aplicar, list[tuple[Callable[..., None], str]]]] = {
     "ZT10": (_parche(attendance_mod, "check_in", _check_in_409_si_ya_marco_hoy), [
         (ea.test_ed1_una_segunda_sesion_del_dia_se_registra_pero_no_paga,
          r"ED1: 1 filas en attendance, esperadas 2"),
+    ]),
+    "ZT11": (_parche(economia_mod, "recompensa_del_reto", _paga_lo_guardado), [
+        (er.test_et1_el_tope_al_crear_al_pagar_y_al_mostrar,
+         r"ET1: quien lo gana recibe 50, no 20"),
+    ]),
+    "ZT12": (_parche(economia_mod, "exigir_tope_del_reto", _no_valida_el_tope), [
+        (er.test_et1_el_tope_al_crear_al_pagar_y_al_mostrar,
+         r"ET1: crear con 21 respondió 201"),
     ]),
 }
 

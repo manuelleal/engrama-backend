@@ -35,6 +35,8 @@ from src.challenge_engine.schemas import (
     ChallengeQuestionOut,
 )
 from src.curriculo import service as curriculo_service
+from src.engrama_core.service import economia
+from src.shared.config import settings
 from src.shared.models import (
     Challenge,
     ChallengeAttempt,
@@ -343,7 +345,9 @@ def challenge_to_schema(
         cefr_level=challenge.cefr_level,
         skill=challenge.skill,
         topic=challenge.topic,
-        coins_reward=challenge.coins_reward,
+        # Lo que se muestra es lo que se paga: el valor guardado, con el tope.
+        coins_reward=economia.recompensa_del_reto(challenge.coins_reward,
+                                                  settings.reto_monedas_tope),
         xp_reward=challenge.xp_reward,
         max_attempts=challenge.max_attempts,
         max_winners=challenge.max_winners,

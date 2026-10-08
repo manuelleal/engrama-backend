@@ -49,7 +49,9 @@ from src.challenge_engine.schemas import (
 )
 from src.challenge_engine.service import challenges as challenges_service
 from src.engrama_core.service import coins as coins_service
+from src.engrama_core.service import economia
 from src.refuerzo import cola as refuerzo_cola
+from src.shared.config import settings
 from src.shared.models import (
     Challenge,
     ChallengeAttempt,
@@ -268,11 +270,14 @@ async def submit_attempt(
     coins_earned = 0
     xp_earned = 0
     if is_correct and challenge.current_winners < challenge.max_winners:
+        # Se paga lo mismo que se muestra: el valor guardado, con el tope (§1.4).
+        recompensa = economia.recompensa_del_reto(challenge.coins_reward,
+                                                  settings.reto_monedas_tope)
         entrada = await coins_service.award_coins(
             db,
             student_id=student_id,
             tenant_id=tenant_id,
-            amount=challenge.coins_reward,
+            amount=recompensa,
             action="challenge",
             metadata={
                 "challenge_id": str(challenge.id),
@@ -281,7 +286,7 @@ async def submit_attempt(
             idempotency_key=llave_reto(challenge.id, student_id),
         )
         if entrada is not None:
-            coins_earned = challenge.coins_reward
+            coins_earned = recompensa
             xp_earned = challenge.xp_reward
             # XP al perfil.
             profile = await db.get(Profile, student_id)
