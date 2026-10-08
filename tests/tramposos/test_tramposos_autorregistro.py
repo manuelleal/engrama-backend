@@ -1,4 +1,4 @@
-"""Tramposos ZR1-ZR19 del autorregistro — `docs/ESPEC_autorregistro.md` §3.
+"""Tramposos ZR1-ZR19 del autorregistro — `docs/ESPEC_autorregistro.md` §3 (y §11: ZR24+).
 
 Una versión ROTA a propósito, inyectada con monkeypatch en el módulo donde se
 USA; se corre el cuerpo del test real y se exige `AssertionError` con el
@@ -36,6 +36,7 @@ from src.shared.db import get_db
 from src.shared.models import CodigoInscripcion, Group, SolicitudInscripcion, Tenant
 from src.teachers.service import access as access_mod
 from tests.registro import _ayuda as ay
+from tests.registro import test_auditoria03 as ta
 from tests.registro import test_codigo as tc
 from tests.registro import test_limite as tl
 from tests.registro import test_registro as tr
@@ -178,6 +179,12 @@ async def _codigo_sin_candado(db: AsyncSession, huella_del_codigo: str,
     return None if fila is None else (fila[0], bool(fila[1]))
 
 
+# --- ZR24 (auditoría 03, S-7): la confirmación sin proteger, como antes ------
+async def _confirma_sin_proteger(db: AsyncSession, cuentas: Any, reserva: Any,
+                                 datos: Any) -> None:
+    await service_mod._confirmar(db, reserva, datos)
+
+
 def _varios(*aplicar: Aplicar) -> Aplicar:
     def todos(mp: pytest.MonkeyPatch) -> None:
         for uno in aplicar:
@@ -246,6 +253,11 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     "ZR19": (_parche(service_mod, "_codigo_con_candado", _codigo_sin_candado),
              tc.test_ar4_el_cupo_no_se_pasa,
              r"'carrera': \{'estados': \[201, 201\], 'usos': 1, 'solicitudes': 2, 'cuentas': 2"),
+    # --- Auditoría 03 (ESPEC §11) ---
+    "ZR24": (_parche(service_mod, "_confirmar_o_deshacer", _confirma_sin_proteger),
+             ta.test_ar12_si_falla_la_confirmacion_no_queda_cuenta,
+             r"AR12: \{'t2_falla': \{'respuesta': \(500, None\), "
+             r"'borrar_la_cuenta_del_perfil': False, 'cuenta': True"),
 }
 
 

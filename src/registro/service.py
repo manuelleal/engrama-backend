@@ -24,7 +24,7 @@ from uuid import UUID
 
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.onboarding.csv_personas import con_prefijo
@@ -277,6 +277,40 @@ async def _confirmar(db: AsyncSession, reserva: Reserva, datos: RegistroIn) -> N
     await db.commit()
 
 
+async def _confirmar_o_deshacer(db: AsyncSession, cuentas: CuentasDeRegistro,
+                                reserva: Reserva, datos: RegistroIn) -> None:
+    """T2 protegida (auditoría 03, S-7; ESPEC §11.1).
+
+    Aquí la cuenta de GoTrue YA existe. Si la confirmación falla y no se hace
+    nada, queda una cuenta huérfana: el estudiante ve "espera a tu profe" y
+    el profe nunca lo ve en su lista (la solicitud sigue en `creando`). Por
+    eso se compensa igual que cuando falla GoTrue: se borra la cuenta, se
+    borra el perfil y se devuelve el uso. Responde 502: se puede reintentar.
+
+    Se atrapa TODA excepción (no solo las de la base): cualquier fallo aquí
+    deja la misma cuenta huérfana. No se calla: se registra y sale como 502.
+    """
+    try:
+        await _confirmar(db, reserva, datos)
+    except Exception as exc:
+        logger.error("registro: no se pudo confirmar la solicitud %s (%s); se deshace",
+                     reserva.solicitud_id, type(exc).__name__)
+        try:
+            # La transacción quedó rota: sin ROLLBACK no se puede escribir más.
+            await db.rollback()
+        except SQLAlchemyError as roto:
+            logger.error("registro: ROLLBACK de la solicitud %s falló (%s)",
+                         reserva.solicitud_id, type(roto).__name__)
+        try:
+            await _deshacer(db, cuentas, reserva, puede_haber_cuenta=True)
+        except SQLAlchemyError as roto:
+            # La cuenta ya se borró en GoTrue (va primero); las filas quedan en
+            # `creando`, sin cuenta, y las recoge el reintento (§1.5).
+            logger.error("registro: la solicitud %s queda en 'creando' sin cuenta (%s)",
+                         reserva.solicitud_id, type(roto).__name__)
+        raise RegistroNoDisponible() from exc
+
+
 async def registrar(db: AsyncSession, cuentas: CuentasDeRegistro, datos: RegistroIn) -> str:
     """Registra y devuelve `creado`, `ocupado` o `correo_en_uso`.
 
@@ -297,6 +331,6 @@ async def registrar(db: AsyncSession, cuentas: CuentasDeRegistro, datos: Registr
     if resultado != CREADA:
         await _deshacer(db, cuentas, reserva, puede_haber_cuenta=False)
         return CORREO_EN_USO
-    await _confirmar(db, reserva, datos)
+    await _confirmar_o_deshacer(db, cuentas, reserva, datos)
     logger.info("registro: solicitud %s pendiente", reserva.solicitud_id)
     return CREADO
