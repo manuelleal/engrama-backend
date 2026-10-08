@@ -82,3 +82,19 @@ def llave_asistencia(group_id: UUID, student_id: UUID, dia: date) -> str:
     qué cuenta como "el mismo pago".
     """
     return f"attendance:{group_id}:{student_id}:{dia.isoformat()}"
+
+
+def redondear_monedas(numerador: int, denominador: int) -> int:
+    """La ÚNICA forma permitida de pasar de una fracción a monedas.
+
+    El entero más cercano a numerador/denominador, con la MITAD HACIA ARRIBA
+    (2,5 -> 3; 0,5 -> 1), usando solo aritmética entera. Python tiene
+    `round(2.5) == 2` (redondeo bancario) y JavaScript `Math.round(2.5) == 3`:
+    el backend y la web darían monedas distintas por el mismo cálculo. Esta
+    función no usa `round` ni `float`, así que da lo mismo en cualquier lenguaje
+    (la web debe hacer `Math.floor((2 * n + d) / (2 * d))`).
+    """
+    if numerador < 0 or denominador <= 0:
+        raise ValueError(f"redondear_monedas({numerador}, {denominador}): "
+                         "exige numerador >= 0 y denominador > 0")
+    return (2 * numerador + denominador) // (2 * denominador)

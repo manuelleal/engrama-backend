@@ -2,20 +2,24 @@
 
   UE3  la asistencia: 5 por asistir + 5 por puntualidad (C1)
   UE4  `compute_next_streak`: la misma fecha (o una futura) = 0, "sin cambio" (C6)
+  UE1  `redondear_monedas`: la mitad hacia arriba, solo con enteros (C22)
+  UE2  la guardia estática: ni `round`, ni `float`, ni `/` donde se calculan monedas (C23)
 
 Cada test llama a la función por el módulo (`economia.f(...)`, no `from ... import`)
 para que su tramposo (`tests/tramposos/test_tramposos_economia_unit.py`) pueda
-reemplazarla. Los siguientes commits de la oleada agregan aquí UE4 (racha),
-UE1 y UE2 (redondeo y guardia estática).
+reemplazarla.
 """
 from __future__ import annotations
 
 import inspect
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
+
 from src.engrama_core.service import attendance as attendance_mod
 from src.engrama_core.service import economia
 from src.shared.config import Settings
+from tests.engrama_core import guardia_monedas as guardia
 
 APERTURA = datetime(2026, 10, 6, 23, 0, tzinfo=UTC)  # las 18:00 de Bogotá
 
@@ -78,3 +82,40 @@ def test_ue4_la_misma_fecha_no_cambia_la_racha() -> None:
     }
     assert resultado == {"misma fecha": 0, "fecha futura": 0, "nunca": 1, "ayer": -1,
                          "hace dos días": 1, "hace una semana": 1}, f"UE4: {resultado}"
+
+
+def test_ue1_el_redondeo_es_la_mitad_hacia_arriba() -> None:
+    """C22: 2,5 -> 3 y 0,5 -> 1 (Python con round() daría 2 y 0); el denominador 0 es un error."""
+    f = economia.redondear_monedas
+    tabla = {"5/2": f(5, 2), "1/2": f(1, 2), "3/2": f(3, 2), "7/2": f(7, 2), "12/5": f(12, 5),
+             "13/5": f(13, 5), "0/7": f(0, 7), "20/1": f(20, 1)}
+    assert tabla == {"5/2": 3, "1/2": 1, "3/2": 2, "7/2": 4, "12/5": 2, "13/5": 3, "0/7": 0,
+                     "20/1": 20}, f"UE1: {tabla}"
+    for numerador, denominador in ((1, 0), (1, -2), (-1, 2)):
+        with pytest.raises(ValueError):
+            f(numerador, denominador)
+
+
+def test_ue2_la_guardia_estatica_del_redondeo() -> None:
+    """C23: 0 violaciones sobre el código real; y SÍ ve un `round(`, un `float` y un `/`."""
+    # El control: la guardia mira de verdad el módulo de monedas (no un directorio vacío).
+    assert (guardia.RAIZ_SRC / guardia.MODULOS_DE_MONEDAS[0]).is_file(), "UE2: no hay economia.py"
+    real = guardia.revisar_codigo()
+    assert real == {}, f"UE2: el código real tiene violaciones: {real}"
+
+    casos = {  # texto -> (solo_monedas, violaciones esperadas)
+        "round(": ("monto = round(n)\n", True, 1),
+        "round( en todo src": ("monto = round(n)\n", False, 1),
+        "float": ("monto = BASE * 1.5\n", True, 1),
+        "float() ": ("monto = float(n)\n", True, 1),
+        "división /": ("monto = n / d\n", True, 1),
+        "/= ": ("monto /= 2\n", True, 1),
+        # Fuera de los módulos de monedas el float y el / son legítimos (geocerca, porcentaje).
+        "float fuera de monedas": ("distancia = 2 * 6371.5 / 3\n", False, 0),
+        # Lo permitido: división entera y enteros.
+        "// entera": ("monto = (2 * n + d) // (2 * d)\n", True, 0),
+    }
+    medido = {nombre: len(guardia.violaciones(texto, solo_monedas=monedas))
+              for nombre, (texto, monedas, _) in casos.items()}
+    esperado = {nombre: n for nombre, (_, _, n) in casos.items()}
+    assert medido == esperado, f"UE2: violaciones por texto {medido}, esperadas {esperado}"
