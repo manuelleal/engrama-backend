@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import consentimiento
 from src.auth.schemas import AuthContext
-from src.registro import codigos, decision, limite, service
+from src.registro import codigos, decision, limite, piso, service
 from src.registro.cuentas import CuentasDeRegistro, get_cuentas_de_registro
 from src.registro.schemas import (
     CodigoCreadoOut,
@@ -31,7 +31,8 @@ from src.shared.db import get_db
 from src.shared.deps import require_teacher
 from src.teachers.service import access as access_service
 
-publico = APIRouter()
+# La ruta pública lleva el piso de tiempo común (S-5, ESPEC §12.2); la del profe no.
+publico = APIRouter(route_class=piso.RutaConPiso)
 docente = APIRouter()
 
 NO_CONFIGURADO = "registro_no_configurado"

@@ -10,10 +10,13 @@ el módulo donde el test la usa y se exige `AssertionError` con el mecanismo.
   ZR28  (§11.2) IPv6 por dirección completa, como antes  -> UL3
   ZR29  (§11.5) la contraseña se acota solo en caracteres -> UR3
   ZR30  (§12.1) la contraseña sin regla de composición, como antes -> UR4
+  ZR34  (§12.2) el piso espera con `time.sleep` y bloquea el bucle   -> UP2
+  ZR35  (§12.2) el piso sin componente aleatorio                     -> UP1
 """
 from __future__ import annotations
 
 import hashlib
+import time
 from collections import deque
 from collections.abc import Callable
 from typing import Any
@@ -24,8 +27,10 @@ from pydantic import Field, create_model
 from src.auth import politica_clave as politica_mod
 from src.registro import codigos as codigos_mod
 from src.registro import limite as limite_mod
+from src.registro import piso as piso_mod
 from src.registro import schemas as schemas_mod
 from tests.registro import test_limite as tl
+from tests.registro import test_piso as tp
 from tests.registro import test_unit as tu
 
 Aplicar = Callable[[pytest.MonkeyPatch], None]
@@ -49,6 +54,11 @@ def _huella_sin_llave(codigo: str) -> str:
 def _nunca_vence(self: limite_mod.Limitador, llave: str, ahora: float) -> deque[float] | None:
     """ZR22: los eventos viejos se quedan para siempre."""
     return self._eventos.get(llave)
+
+
+async def _dormir_bloqueando(segundos: float) -> None:
+    """ZR34: parece una espera asíncrona, pero congela el bucle de eventos entero."""
+    time.sleep(segundos)
 
 
 _ClaveCorta = create_model("RegistroConClaveCorta", __base__=schemas_mod.RegistroIn,
@@ -83,6 +93,12 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[], None], str]] = {
     "ZR30": (_parche(politica_mod, "cumple_composicion", lambda clave: True),
              tu.test_ur4_la_contrasena_pide_letra_y_numero_o_simbolo,
              r"UR4: \{'pasa': \{'solo_letras': True, 'solo_digitos': True"),
+    # Auditoría 03, S-5 (ESPEC §12.2): el piso que bloquea el bucle y el que no sortea nada.
+    "ZR34": (_parche(piso_mod, "_dormir", _dormir_bloqueando),
+             tp.test_up2_la_espera_no_bloquea_el_bucle,
+             r"UP2: \{'espero_lo_pedido': True, 'otro_corrio_mientras': False\}"),
+    "ZR35": (_parche(piso_mod, "_azar", lambda: 0.0), tp.test_up1_el_piso_puro,
+             r"'esperas_distintas': False"),
 }
 
 

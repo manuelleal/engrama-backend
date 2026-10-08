@@ -21,6 +21,7 @@ Todo es sintético: ninguna contraseña de aquí sirve en ningún sistema.
 """
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID, uuid4
@@ -48,7 +49,10 @@ class CuentasFalsas:
     """Cuentas en memoria: `id -> {"correo", "clave"}`, y el registro de llamadas."""
 
     def __init__(self, *, sesiones: Any = None, fallar_en: set[str] | None = None,
-                 observador: Observador | None = None) -> None:
+                 observador: Observador | None = None, espera_crear: float = 0.0) -> None:
+        # Segundos que tarda `crear`, como un GoTrue real (hashea la contraseña).
+        # Solo lo usa la medición de tiempo del registro (AR18); 0 para todos los demás.
+        self.espera_crear = espera_crear
         # Para el autorregistro: con `fallar_crear` o `fallar_borrar`, esa
         # llamada falla como un GoTrue caído (`ErrorCuenta`).
         self.fallar_crear = False
@@ -69,6 +73,8 @@ class CuentasFalsas:
 
     async def crear(self, id: UUID | None, correo: str, clave: str) -> str:
         self.creadas.append((id, correo))
+        if self.espera_crear:
+            await asyncio.sleep(self.espera_crear)
         if self.observador is not None:
             self.observado.append(await self.observador(id))
         if self.fallar_crear:

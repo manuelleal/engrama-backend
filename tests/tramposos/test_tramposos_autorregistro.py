@@ -11,7 +11,9 @@ barrera de grupo (`access._requiere_asignacion`, el X2 de grupos; ERR-26).
 """
 from __future__ import annotations
 
+import asyncio
 import inspect
+import time
 from collections.abc import Callable, Iterator
 from typing import Any
 from uuid import UUID
@@ -29,11 +31,13 @@ from src.registro import codigos as codigos_mod
 from src.registro import decision as decision_mod
 from src.registro import documento as documento_mod
 from src.registro import limite as limite_mod
+from src.registro import piso as piso_mod
 from src.registro import router as router_mod
 from src.registro import service as service_mod
 from src.registro.cuentas import get_cuentas_de_registro
 from src.registro.schemas import RegistroOut
 from src.shared import deps as deps_mod
+from src.shared.config import settings
 from src.shared.db import get_db
 from src.shared.models import CodigoInscripcion, Group, SolicitudInscripcion, Tenant
 from src.teachers.service import access as access_mod
@@ -42,6 +46,7 @@ from tests.registro import _ayuda as ay
 from tests.registro import test_auditoria03 as ta
 from tests.registro import test_codigo as tc
 from tests.registro import test_limite as tl
+from tests.registro import test_piso as tp
 from tests.registro import test_registro as tr
 from tests.registro import test_solicitudes as ts
 
@@ -202,6 +207,28 @@ async def _solo_el_texto_exacto(db: AsyncSession, slug: str, codigo: str) -> lis
     return [] if perfil is None else [perfil]
 
 
+# --- ZR32 y ZR33 (S-5): el piso de tiempo solo en un camino, o ninguno ---------
+async def _sin_piso(inicio: float, **_: Any) -> float:
+    """ZR33: la ruta no espera nada (el código de antes)."""
+    return 0.0
+
+
+def _piso_solo_en_ocupado(mp: pytest.MonkeyPatch) -> None:
+    """ZR32: alguien rellenó la rama `ocupado` (la rápida) y se olvidó de las demás."""
+    registrar_bueno = service_mod.registrar
+
+    async def registrar_con_piso_en_uno(db: AsyncSession, cuentas: Any, datos: Any) -> str:
+        inicio = time.perf_counter()
+        resultado = await registrar_bueno(db, cuentas, datos)
+        if resultado == service_mod.OCUPADO:
+            await asyncio.sleep(max(0.0, settings.registro_piso_ms / 1000
+                                    - (time.perf_counter() - inicio)))
+        return resultado
+
+    mp.setattr(piso_mod, "esperar", _sin_piso)
+    mp.setattr(service_mod, "registrar", registrar_con_piso_en_uno)
+
+
 def _varios(*aplicar: Aplicar) -> Aplicar:
     def todos(mp: pytest.MonkeyPatch) -> None:
         for uno in aplicar:
@@ -289,6 +316,12 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     "ZR31": (_parche(politica_mod, "cumple_composicion", lambda clave: True),
              ta.test_ar17_la_contrasena_sin_letra_o_sin_numero_da_422,
              r"AR17: \{'estados': \{'solo_letras': 201, 'solo_digitos': 201\}"),
+    # --- Cierre de S-5 (ESPEC §12.2): el piso de tiempo en un solo camino, o ninguno ---
+    "ZR32": (_piso_solo_en_ocupado, tp.test_ar18_el_201_y_el_403_del_registro_no_delatan_por_tiempo,
+             r"'con_piso_pegados': False"),
+    "ZR33": (_parche(piso_mod, "esperar", _sin_piso),
+             tp.test_ar18_el_201_y_el_403_del_registro_no_delatan_por_tiempo,
+             r"'con_piso_pegados': False, 'nadie_bajo_el_piso': False"),
 }
 
 

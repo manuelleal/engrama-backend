@@ -63,6 +63,13 @@ class Settings(BaseSettings):
     # `POST /auth/registro` responde 503 `registro_sin_aviso` (falla cerrado,
     # ESPEC_autorregistro §11.5).
     aviso_versiones_validas: str = Field(default="")
+    # Piso de tiempo de TODA respuesta de `POST /auth/registro`, en ms
+    # (ESPEC_autorregistro §12.2, auditoría 03 S-5): el 201 del registro no debe
+    # delatar por el tiempo si la cuenta se creó, el correo ya existía o el
+    # código estudiantil ya estaba inscrito. PROVISIONAL: debe quedar por
+    # encima del camino más lento medido con el GoTrue real (lo mide el
+    # despliegue). 0 = sin piso (los tests que no miden tiempo).
+    registro_piso_ms: int = Field(default=250, ge=0, le=5000)
     # Secretos HMAC de la puerta de eventos del anillo, UNO POR ORIGEN
     # (ESPEC_eventos_anillo §1.2): EVA firma como `live` y SET como `set`. 32
     # caracteres o más, al azar. Vacío = ese origen está apagado (401). No son

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 # Valores deterministas para tests. Se setean ANTES de importar
 # src.shared.config (que sucede cuando un test importa cualquier cosa
 # bajo src/).
@@ -28,3 +30,16 @@ os.environ.setdefault("APP_ENV", "test")
 # Fixture de integración con Postgres en Docker (docs/ESPEC_fixture_integracion.md).
 # Solo se activa en los tests marcados `integ`; `-m "not integ"` no necesita Docker.
 pytest_plugins = ["tests.integ_db"]
+
+
+@pytest.fixture(autouse=True)
+def _registro_sin_piso_de_tiempo(monkeypatch: pytest.MonkeyPatch) -> None:
+    """El registro de los tests no espera el piso de 250 ms (ESPEC_autorregistro §12.2).
+
+    Cada registro de la suite (los 40 de HA1, los de AR10...) esperaría un
+    cuarto de segundo. Los tests que miden el tiempo (AR18, UP1, UP2) lo
+    vuelven a poner por su cuenta.
+    """
+    from src.shared.config import settings
+
+    monkeypatch.setattr(settings, "registro_piso_ms", 0)
