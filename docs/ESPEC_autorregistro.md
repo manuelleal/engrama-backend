@@ -595,3 +595,10 @@ El límite vive en la memoria de **cada proceso**. Con `--workers 2` (el `CMD` d
 - **Respuestas nuevas de `POST /auth/registro`:** 503 `registro_sin_aviso`; 422 por contraseña de más de 72 bytes; 502 (antes 500) si la segunda transacción falla.
 - **IPv6:** el límite cuenta por /64. `PROXIES_DE_CONFIANZA` no cambia de significado.
 - **`--workers`:** cada tope vale por proceso (§11.4).
+
+### 11.11 Medido (2026-10-08, sobre `f864e11`)
+- **Suite completa: 625 passed + 23 skipped, 0 fallos** (826 s; una sola corrida, sin `WinError 10055`). **no-integ: 149. `ruff check .`: 0.** Igual a §11.8. `mypy` no se corrió en este encargo.
+- **Los 7 tramposos nuevos, rojos por su razón en su primera corrida** (ZR24-ZR29 y ZE20), con el mensaje predicho. Los existentes siguen rojos: ZR3, ZR4, ZR6 (con la firma ajustada), ZR9 (con su mismo mensaje), ZR14 y ZH13.
+- **Predicción refutada antes de implementar:** que `documento_de` normalizara un código interno (§11.0).
+- **Errata de §11.7 (una edición que la adenda no listó):** el corredor de los tramposos puros de eventos (`tests/tramposos/test_tramposos_eventos.py`) llamaba al test sin argumentos; ahora le pasa `monkeypatch` si lo pide (UE3 lo pide).
+- **No medido:** nada contra un GoTrue real (que rechace más de 72 bytes; `borrar` tras un fallo de T2); el límite con dos procesos ni detrás de Caddy con IPv6 real; la matriz completa de cruces de los tramposos nuevos (solo la diagonal); el piloto en marcha (`engrama-piloto`) no se tocó ni se reconstruyó con este código.
