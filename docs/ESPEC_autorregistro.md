@@ -602,3 +602,108 @@ El límite vive en la memoria de **cada proceso**. Con `--workers 2` (el `CMD` d
 - **Predicción refutada antes de implementar:** que `documento_de` normalizara un código interno (§11.0).
 - **Errata de §11.7 (una edición que la adenda no listó):** el corredor de los tramposos puros de eventos (`tests/tramposos/test_tramposos_eventos.py`) llamaba al test sin argumentos; ahora le pasa `monkeypatch` si lo pide (UE3 lo pide).
 - **No medido:** nada contra un GoTrue real (que rechace más de 72 bytes; `borrar` tras un fallo de T2); el límite con dos procesos ni detrás de Caddy con IPv6 real; la matriz completa de cruces de los tramposos nuevos (solo la diagonal); el piloto en marcha (`engrama-piloto`) no se tocó ni se reconstruyó con este código.
+
+## 12. Adenda 2026-10-08 · lo que midió el autorregistro contra un GoTrue real (S-5 y S-6; preregistro)
+Implementador · sobre `a25bde2` (no-integ **149**; ruff 0; suite 625 passed + 23 skipped). Origen: `ENGRAMA/despliegue/docs/ESPEC_anillo_docker.md` §15.22 (solo lectura) y los hallazgos S-5 y S-6 de `investigacion/seguridad/03-auditoria-autorregistro-y-eventos-2026-10-07.md`. **Esta adenda se commitea antes del código.** Cada punto es un commit. **Sin migración** (la cabeza sigue en `041_refuerzo`).
+
+### 12.0 Lo medido en el despliegue (no se repite aquí) y lo leído en el código
+| Hecho | Fuente |
+|---|---|
+| El autorregistro crea la cuenta por `POST /admin/users`, que **no** aplica la regla de clases: con solo letras, `POST /api/auth/registro` dio **201** | §15.22, fila SP2 |
+| `POST /api/auth/contrasena` con solo letras → 422 `password_rejected`: ahí sí la aplica GoTrue | §15.22, fila SP2 |
+| La regla del piloto: `GOTRUE_PASSWORD_REQUIRED_CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:0123456789-_.!@#$$%&*+"` (dos conjuntos: letras ASCII; dígitos y los símbolos `-_.!@#$%&*+`; el `$$` es un `$` escapado de compose) | `despliegue/docker-compose.yml:95` |
+| Tiempos (30 repeticiones intercaladas): `creado` 131,2 ms de mediana (p10-p90 124,0-188,4; máx. 270,2), `correo_en_uso` 90,3 ms, `ocupado` 9,9 ms. `ocupado` se distingue 60 de 60 veces con un umbral | §15.22, S-5 |
+| `CambioDeClaveIn.nueva` solo valida el **largo** (`Field(min_length=CLAVE_MIN, max_length=CLAVE_MAX)`); el router pasa la clave a GoTrue y convierte su 422 en `password_rejected`. **El backend no valida la composición en ese camino** | `src/auth/schemas.py:117`, `src/auth/router.py:126-157` |
+| `RegistroIn.contrasena`: largo en caracteres + validador de 72 bytes | `src/registro/schemas.py:37,53-63` |
+| `registrarse` devuelve: 201 (`creado`, `ocupado`, `correo_en_uso`), 403 uniforme, 429, 502, 503, y el 422 sale de FastAPI antes de entrar | `src/registro/router.py:96-123` |
+
+### 12.1 S-6 · la regla de la contraseña también en el registro
+**Qué cambia (una cosa):** `RegistroIn.contrasena` exige, además de lo de hoy (10 caracteres como mínimo, 72 **bytes** como máximo), **al menos una letra y al menos un dígito o símbolo**.
+
+- **Una sola fuente:** un módulo nuevo, `src/auth/politica_clave.py`, con la función `cumple_composicion(clave) -> bool`, el conjunto `SIMBOLOS` y el texto del error. `RegistroIn` la llama desde un validador. Los límites de largo siguen en `CLAVE_MIN` y `CLAVE_MAX` (`auth/schemas.py`); no se mueven.
+- **Qué es una letra:** cualquier carácter para el que `str.isalpha()` sea verdadero. Cuentan las tildes y la `ñ` (`é`, `Ñ`) y también las letras de otros alfabetos. **Qué es un dígito:** `0` a `9` (los dígitos ASCII, no `²` ni los árabes). **Qué es un símbolo:** exactamente los de GoTrue, `- _ . ! @ # $ % & * +`.
+  - **Por qué los símbolos de GoTrue y no "cualquier carácter que no sea letra":** una contraseña como `mi clave secreta` (letras y espacios) o `clave?????` pasaría por el registro y GoTrue la **rechazaría el día que la persona la cambie** (su regla es una lista). Con la lista idéntica, la web puede explicar una sola regla y la persona no choca con la otra.
+  - **Límite declarado (lo que NO queda igual a GoTrue):** GoTrue cuenta como letras solo las **ASCII** (`a-z`, `A-Z`). Aquí `ñ` cuenta como letra, como se pidió. Una contraseña como `ñññññññññ1` (ninguna letra ASCII) **pasa el registro** y GoTrue **la rechazaría al cambiarla**. Es raro (hacen falta diez letras sin ninguna ASCII) y falla del lado seguro (no se cuela nada: la persona no podría cambiarla a esa). Si se quiere cerrar, es una línea (`isalpha` pasa a `isascii and isalpha`) y la decide Christiam.
+- **El 422** sale por el validador: `{"detail": [{"loc": ["body", "contrasena"], "msg": "Value error, la contraseña debe tener al menos una letra y al menos un número o un símbolo (- _ . ! @ # $ % & * +)", ...}]}`. El prefijo `Value error, ` lo pone Pydantic (igual que en el de los 72 bytes); la web puede quitarlo o mostrar el resto.
+- **Orden de los errores de la contraseña** (el primero que falle): largo en caracteres → 72 bytes → composición. Una contraseña de solo letras y de 80 bytes da el de los bytes.
+- **`POST /auth/contrasena` NO se toca.** Hoy no valida la composición en el backend (solo el largo, que ya comparte las constantes); la regla la aplica GoTrue y el backend ya la traduce a 422 `password_rejected` (medido, §15.22). Meterla ahí cambiaría la forma del error que la web ya sabe leer (de `password_rejected` a una lista) y dejaría dos reglas que pueden separarse cuando alguien cambie `GOTRUE_PASSWORD_REQUIRED_CHARACTERS` en el despliegue. **Aviso:** por la misma razón, la copia que esta adenda pone en el backend (la lista de símbolos) **debe actualizarse a mano** si el despliegue cambia la variable de GoTrue; el test UR4 fija la lista actual.
+
+| # | Criterio | Test |
+|---|---|---|
+| C25 | **Pura:** `solo letras` (`abcdefghij`) → error; `solo dígitos` (`1234567890`) → error; `letra + dígito` (`abcdefghi1`) → pasa; `letra + símbolo` (`abcdefghi!`) → pasa; `letras con tilde o ñ + dígito` (`contraseña1`, `Ñandú-Ñoño1`) → pasa; `ñ` sin ninguna letra ASCII (`ñññññññññ1`) → pasa (límite declarado); `solo símbolos` (`-_.!@#$%&*+`) → error; símbolo fuera de la lista (`clave?????`) → error; espacios (`mi clave aa`) → error; `²` o un dígito árabe como único "número" → error; el error lleva el texto de arriba; las constantes de largo no cambian (`CLAVE_MIN`, `CLAVE_MAX` = 10, 72) y el de los bytes sigue ganando | UR4 |
+| C26 | **En la ruta:** `solo letras` (`abcdefghij`) → **422** con el texto de la regla, 0 perfiles, 0 solicitudes, 0 llamadas a `crear`, `usos = 0`; `solo dígitos` → 422; `letra + dígito`, `letra + símbolo` y `ñ + dígito` → **201** | AR17 |
+
+**Tramposos (el esquema de hoy: `cumple_composicion` siempre verdadera):**
+- **ZR30** (no-integ). Rojo predicho: **UR4** (as: `solo letras` pasa).
+- **ZR31** (integ). Rojo predicho: **AR17** (as: `solo letras` da 201). Verde predicho: el resto del autorregistro (todas sus contraseñas traen letra y símbolo o dígito **después** de editar los tests, ver abajo).
+
+**Edición a lo existente (ERR-25), todas porque la regla nueva vuelve inválida una contraseña de prueba que era solo de letras:**
+- `tests/registro/test_registro.py` (AR9): `clave_de_9` `x*9` pasa a `x*8 + "1"`, `clave_de_73` `x*73` a `x*72 + "1"`, `control_de_10` `x*10` a `x*9 + "1"`, `control_de_72` `x*72` a `x*71 + "1"`. Sin eso, los controles darían 422 por la regla nueva y los dos casos de largo darían 422 por otra razón.
+- `tests/registro/test_unit.py`: `_acepta_mayor` (`x*10` pasa a `x*9 + "1"`) y UR3 (`x*72`, `ñ*36`, `ñ*37`, `x*73` y los emojis: cada uno gana un dígito o se acorta para seguir en el mismo número de bytes; los valores exactos quedan en el test).
+- `tests/registro/test_auditoria03.py` (AR14): `ñ*40` pasa a `ñ*39 + "1"` (79 bytes) y `ñ*36` a `ñ*35 + "12"` (72 bytes).
+- Ningún otro test del repo manda una contraseña de solo letras al registro: `ay.CLAVE` (`clave-sintetica-de-prueba`) trae guiones. Si una corrida encuentra otro, se corrige aquí primero.
+
+### 12.2 S-5 · el 201 del registro no delata por tiempo
+**Qué cambia (una cosa):** **toda** respuesta de `POST /auth/registro` tarda al menos un **piso común** más un pequeño componente aleatorio.
+
+- **Dónde:** una clase de ruta, `RutaConPiso(APIRoute)`, en el módulo nuevo `src/registro/piso.py`. Envuelve el manejador de la ruta: mide desde que entra, deja que corra (también si lanza `HTTPException` o falla la validación del cuerpo) y, antes de devolver, **espera lo que falte**. Como envuelve la ruta entera, cubre las tres variantes del 201, el 403 uniforme, el 429, el 502, el 503 **y el 422**; ninguna se escapa por una rama. Solo `POST /auth/registro` (el router público) la usa; las rutas del profe no.
+- **Sin bloquear el bucle:** la espera es `await asyncio.sleep(...)`. **Sin trabajo de mentira:** no se calcula ninguna huella; solo se espera.
+- **El piso:** `settings.registro_piso_ms` (variable `REGISTRO_PISO_MS`), entero entre 0 y 5000, **por defecto 250** (PROVISIONAL: debe quedar por encima del camino más lento medido; en §15.22 `creado` fue 131 ms de mediana y 270 de máximo, así que 250 queda por encima de la mediana y del p90, **no del máximo**). En `0` no espera nada. Se lee **en cada petición**, no al importar (los tests lo cambian).
+- **El componente aleatorio:** al piso se le suma `azar × 20 %` del piso (0 a 50 ms con 250), con `random.random()`. El tiempo total objetivo es `piso × (1 + 0,2·u)`, con `u` en `[0, 1)`. Es para que la respuesta no caiga siempre en el mismo milisegundo: **no es** un secreto y no protege contra quien promedie miles de repeticiones (el ruido de red ya es mayor).
+- **Si un camino tarda más que el piso, no se acorta ni se alarga:** responde cuando termina. Ahí el piso ya no esconde nada: por eso el valor debe quedar por encima del camino más lento **real**.
+- **Límites declarados:**
+  - **NO se ha medido contra un GoTrue real.** Los tiempos del `creado` con el GoTrue de mentira de los tests no dicen nada del GoTrue del piloto. **Lo mide el despliegue** (§15.21/§15.22 repetido con el piso puesto): hay que correr `medir_autorregistro.mjs` otra vez, mirar que los tres caminos y el 403 queden pegados y que el máximo de `creado` quede por debajo del piso (si no, subir `REGISTRO_PISO_MS`).
+  - Con una red o un GoTrue lentos, `creado` quedará por encima del piso en algunas respuestas y `ocupado` siempre en el piso: se distinguirían solo en esas colas. Subir el piso lo cierra, a costa de latencia para todos.
+  - Una espera asíncrona retiene la conexión, no un hilo: 250 ms por petición. Con el límite por IP (150 por ventana) el costo está acotado.
+  - **El 502 sigue distinguiéndose** (GoTrue caído: §1.3 ya lo declara). El 429 y el 503 no dependen de nada secreto; llevan el piso por uniformidad, no porque filtren.
+
+**Cómo se mide (los números se fijan AQUÍ, antes de correr nada):**
+- **Qué se compara:** cuatro caminos, **intercalados** (uno de cada, en orden, repetido): `creado` (código estudiantil nuevo, correo nuevo), `correo_en_uso` (código estudiantil nuevo, correo de una cuenta existente), `ocupado` (código estudiantil ya registrado) y `403` (código de grupo inventado). **10 repeticiones de cada uno**, con `TestClient` y el GoTrue de mentira.
+- **El GoTrue de mentira tiene latencia:** `CuentasFalsas(espera_crear=0.06)` hace esperar 60 ms a `crear` (por defecto 0: nadie más lo nota). Sin eso, `creado` y `ocupado` solo difieren en las transacciones de la base y la diferencia puede quedar dentro del ruido; con 60 ms, **sin piso** `creado` debe quedar claramente por encima de `ocupado`.
+- **Tiempos:** `time.perf_counter()` alrededor de `client.post`. Se compara la **mediana** de cada camino.
+- **Dos bloques:** (1) **sin piso** (`registro_piso_ms = 0`): la diferencia entre la mediana mayor y la menor debe ser **mayor o igual que 25 ms** (si no, el test no puede ver la fuga y no vale como prueba); (2) **con piso** de **150 ms** (más pequeño que el de producción para no alargar la suite; el aleatorio llega a 30 ms): la diferencia entre la mediana mayor y la menor de los cuatro caminos debe ser **menor que 25 ms**, y la mediana de `creado` sin piso debe ser menor que 150 ms (el piso está por encima del camino más lento del test).
+- **El umbral, 25 ms, se fijó antes de medir.** Con 10 repeticiones, la mediana de un camino al piso varía unos 3 ms (desviación) por el aleatorio; la diferencia entre dos, unos 5 ms: 25 ms son cinco desviaciones. Si la máquina está cargada y el test sale rojo por ruido, **se repite una vez y se dice**; el umbral **no se mueve** para que calce.
+- **Predicción de lo que dirá la corrida sin piso** (para refutarla): `creado` ≈ 60 ms (la espera) + 20-50 ms (dos transacciones) ≈ 80-110 ms; `ocupado` ≈ 8-20 ms; `correo_en_uso` ≈ 70-100 ms; `403` ≈ 5-15 ms. Es decir, **el 403 también difiere** del `creado` (como `ocupado`), y los cuatro quedan pegados con el piso.
+
+| # | Criterio | Test |
+|---|---|---|
+| C27 | **Puro** (reloj, azar y sueño inyectados): con piso 250, `azar = 0` y 0 ms gastados espera 250 ms; con `azar` casi 1 espera casi 300 (nunca más del 20 %); con 100 ms gastados espera lo que falta y nunca menos; con más gastado que el piso espera **0**; con piso 0 no espera aunque haya azar; con 50 llamadas y el azar real, las esperas **no son todas iguales** y todas caen en `[250, 300)`. El valor por defecto de `registro_piso_ms` es 250 y el máximo, 5000 | UP1 |
+| C28 | **No bloquea el bucle:** mientras `esperar` espera 200 ms, otra corrutina que se despierta cada 10 ms alcanza **al menos 10 despertares** (con una espera que bloquea, 0 o 1) | UP2 |
+| C29 | **En la ruta, los cuatro caminos pegados:** el bloque sin piso y el bloque con piso de arriba. Además, con piso, cada camino responde lo mismo que sin piso (201 `{"estado": "pendiente"}` los tres; 403 `codigo_no_valido`) y ninguno tarda menos que el piso | AR18 |
+
+**Tramposos:**
+- **ZR32** (integ): el piso se aplica **solo al camino `ocupado`** (la ruta general no espera; una espera suelta dentro de `service.registrar` cuando el resultado es `ocupado`). Rojo predicho: **AR18** (as: las medianas se separan más de 25 ms). Verde predicho: AR17 y el resto del autorregistro (no miden tiempo).
+- **ZR33** (integ): el piso no existe (`esperar` no hace nada: el código de hoy). Rojo predicho: **AR18** (as: el bloque con piso no cierra la diferencia).
+- **ZR34** (no-integ): la espera **bloquea** el bucle (`time.sleep` en vez de `asyncio.sleep`). Rojo predicho: **UP2** (as: menos de 10 despertares). Cruce: UP1 sigue verde (no mide el bucle).
+- **ZR35** (no-integ): sin componente aleatorio (`azar` siempre 0). Rojo predicho: **UP1** (as: todas las esperas iguales).
+
+**Edición a lo existente (ERR-25):**
+- `src/shared/config.py`: `registro_piso_ms` (por defecto 250).
+- `src/registro/router.py`: `publico = APIRouter(route_class=piso.RutaConPiso)`.
+- `tests/conftest.py`: una fixture `autouse` que pone `registro_piso_ms = 0` en **todos** los tests (los que miden el tiempo lo vuelven a poner). Sin ella, cada registro de la suite (los 40 de HA1, los de AR10...) esperaría 250 ms.
+- `tests/cuentas_falsas.py`: el parámetro `espera_crear` (0 por defecto).
+
+### 12.3 Qué NO se toca y "para después"
+**No se toca:** `POST /auth/contrasena` (ver 12.1), la API de administración de GoTrue ni su configuración (`despliegue`), `engrama-web`, EVA, SET, el piloto ni los stacks Docker. Ninguna migración.
+
+**Para después:**
+- Medir los tiempos contra el GoTrue real del piloto, con el piso puesto (lo hace el despliegue).
+- Decidir si `ñ` y las tildes deben contar como letra también en GoTrue (hoy no: su lista es ASCII) o si el backend debe excluirlas de la regla.
+- La lista de contraseñas filtradas (HIBP) y el bloqueo por cuenta (S-6, segunda mitad: del despliegue y de otra pieza).
+- Un piso adaptativo (medido en vivo) en lugar de una constante.
+
+### 12.4 Cuentas predichas (ERR-10)
+| Grupo | integ | no-integ |
+|---|---|---|
+| UR4, ZR30 | — | 2 |
+| AR17, ZR31 | 2 | — |
+| UP1, UP2, ZR34, ZR35 | — | 4 |
+| AR18, ZR32, ZR33 | 3 | — |
+| **Nuevos** | **5** | **6** |
+
+- **no-integ:** 149 + 2 = **151** tras S-6 y 151 + 4 = **155** tras S-5. **Suite completa:** 625 + 11 = **636 passed**; skipped sin cambio (**23**). `ruff check .` en 0.
+- Solo se mide la diagonal de los tramposos nuevos (cada uno contra su test); los cruces no se miden. Queda dicho.
+
+### 12.5 Qué cambia para el despliegue y para la web
+- **Despliegue:** variable nueva `REGISTRO_PISO_MS` (opcional; 250 por defecto). Volver a medir los tiempos del registro con ella puesta (§12.2). Si el despliegue cambia `GOTRUE_PASSWORD_REQUIRED_CHARACTERS`, hay que actualizar a mano la lista de símbolos de `src/auth/politica_clave.py` (el test UR4 la fija).
+- **Web:** `POST /auth/registro` responde ahora **422 por la contraseña** si no trae una letra y un número o símbolo (el texto exacto va en 12.1); y **toda respuesta del registro tarda al menos ~250 ms** (hasta ~300): la pantalla no debe tratar eso como lentitud ni reintentar sola. La regla debe mostrarse **antes** de enviar (junto al campo), no solo como error.
