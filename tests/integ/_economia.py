@@ -8,6 +8,11 @@ asistencia fijado por la costura `attendance._ahora`.
 Las claves de las respuestas se leen con `.get()` y los estados se CUENTAN (no
 se exigen): si una regla está rota, el humo debe terminar y mostrar números
 distintos, no morir a mitad con una excepción.
+
+Lo que NO se cuenta como un número más es un 500: el cliente deja pasar las
+excepciones del servidor. Si la máquina se queda sin sockets a mitad del humo
+(`OSError WinError 10055`), eso se ve como lo que es, una excepción del arnés, y
+no como "una paga menos".
 """
 from __future__ import annotations
 
@@ -24,7 +29,7 @@ from sqlalchemy import text
 from src.engrama_core.service import attendance as attendance_mod
 from src.main import app
 
-client = TestClient(app, raise_server_exceptions=False)
+client = TestClient(app)
 BOGOTA = timezone(timedelta(hours=-5))
 MUY_ACTIVO, TIPICO, SOLO_ASISTE = "muy_activo", "tipico", "solo_asiste"
 PERFILES = (MUY_ACTIVO, TIPICO, SOLO_ASISTE)
