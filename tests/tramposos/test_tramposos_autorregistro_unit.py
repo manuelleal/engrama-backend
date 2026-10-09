@@ -12,6 +12,7 @@ el módulo donde el test la usa y se exige `AssertionError` con el mecanismo.
   ZR30  (§12.1) la contraseña sin regla de composición, como antes -> UR4
   ZR34  (§12.2) el piso espera con `time.sleep` y bloquea el bucle   -> UP2
   ZR35  (§12.2) el piso sin componente aleatorio                     -> UP1
+  ZR36  (§13.2) el valor por defecto del piso sigue en 250           -> UP1
 """
 from __future__ import annotations
 
@@ -29,6 +30,7 @@ from src.registro import codigos as codigos_mod
 from src.registro import limite as limite_mod
 from src.registro import piso as piso_mod
 from src.registro import schemas as schemas_mod
+from src.shared.config import Settings
 from tests.registro import test_limite as tl
 from tests.registro import test_piso as tp
 from tests.registro import test_unit as tu
@@ -99,6 +101,9 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[], None], str]] = {
              r"UP2: \{'espero_lo_pedido': True, 'otro_corrio_mientras': False\}"),
     "ZR35": (_parche(piso_mod, "_azar", lambda: 0.0), tp.test_up1_el_piso_puro,
              r"'esperas_distintas': False"),
+    # ESPEC §13.2: el valor por defecto del piso sube de 250 a 400 (el 376 ms medido).
+    "ZR36": (_parche(Settings.model_fields["registro_piso_ms"], "default", 250),
+             tp.test_up1_el_piso_puro, r"'por_defecto_y_maximo': \(250, 'rechazado'\)"),
 }
 
 

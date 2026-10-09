@@ -106,7 +106,7 @@ def test_up1_el_piso_puro() -> None:
         "piso_cero": (0.0, True),
         "esperas_distintas": True,
         "todas_en_rango": True,
-        "por_defecto_y_maximo": (250, "rechazado"),
+        "por_defecto_y_maximo": (400, "rechazado"),  # §13.2: subió de 250 a 400
     }, f"UP1: {observado}"
 
 

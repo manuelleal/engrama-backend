@@ -34,10 +34,10 @@ pytest_plugins = ["tests.integ_db"]
 
 @pytest.fixture(autouse=True)
 def _registro_sin_piso_de_tiempo(monkeypatch: pytest.MonkeyPatch) -> None:
-    """El registro de los tests no espera el piso de 250 ms (ESPEC_autorregistro §12.2).
+    """El registro de los tests no espera el piso de 400 ms (ESPEC_autorregistro §12.2, §13.2).
 
-    Cada registro de la suite (los 40 de HA1, los de AR10...) esperaría un
-    cuarto de segundo. Los tests que miden el tiempo (AR18, UP1, UP2) lo
+    Cada registro de la suite (los 40 de HA1, los de AR10...) esperaría
+    cerca de medio segundo. Los tests que miden el tiempo (AR18, UP1, UP2) lo
     vuelven a poner por su cuenta.
     """
     from src.shared.config import settings

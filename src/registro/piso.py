@@ -35,15 +35,15 @@ from src.shared.config import settings
 from src.shared.validacion import RutaSinEco
 
 # El componente aleatorio llega hasta esta fracción del piso (0,2 = 20 %): con
-# 250 ms, de 0 a 50 ms más. Es para que la respuesta no caiga siempre en el
-# mismo milisegundo; no es un secreto.
+# 400 ms (el valor por defecto), de 0 a 80 ms más. Es para que la respuesta no
+# caiga siempre en el mismo milisegundo; no es un secreto.
 FRACCION_ALEATORIA = 0.2
 
 # Las tres piezas del tiempo, como atributos del módulo y no como valores por
 # defecto de la función: así los tests (y el tramposo que bloquea el bucle)
 # las reemplazan aquí y la ruta real las usa.
 # Reloj de alta resolución: en Windows `time.monotonic` avanza a saltos de
-# ~15 ms y mediría mal una espera de 250 ms.
+# ~15 ms y mediría mal una espera de 400 ms.
 _ahora: Callable[[], float] = time.perf_counter
 _azar: Callable[[], float] = random.random
 _dormir: Callable[[float], Awaitable[None]] = asyncio.sleep

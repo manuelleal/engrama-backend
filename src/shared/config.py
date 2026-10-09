@@ -69,7 +69,10 @@ class Settings(BaseSettings):
     # código estudiantil ya estaba inscrito. PROVISIONAL: debe quedar por
     # encima del camino más lento medido con el GoTrue real (lo mide el
     # despliegue). 0 = sin piso (los tests que no miden tiempo).
-    registro_piso_ms: int = Field(default=250, ge=0, le=5000)
+    # 400 y no 250 (ESPEC_autorregistro §13.2): en el piloto, con 250, 1 de 60
+    # respuestas `creado` tardó 376 ms y se salió del techo (250 + 20 % = 300).
+    # 400 queda por encima de ese máximo; el despliegue lo vuelve a medir.
+    registro_piso_ms: int = Field(default=400, ge=0, le=5000)
     # Secretos HMAC de la puerta de eventos del anillo, UNO POR ORIGEN
     # (ESPEC_eventos_anillo §1.2): EVA firma como `live` y SET como `set`. 32
     # caracteres o más, al azar. Vacío = ese origen está apagado (401). No son
