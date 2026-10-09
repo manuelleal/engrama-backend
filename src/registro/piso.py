@@ -30,9 +30,9 @@ from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any
 
 from fastapi import Request, Response
+from fastapi.routing import APIRoute
 
 from src.shared.config import settings
-from src.shared.validacion import RutaSinEco
 
 # El componente aleatorio llega hasta esta fracción del piso (0,2 = 20 %): con
 # 400 ms (el valor por defecto), de 0 a 80 ms más. Es para que la respuesta no
@@ -89,12 +89,12 @@ async def esperar(inicio: float, *, piso_ms: int | None = None,
     return esperado
 
 
-class RutaConPiso(RutaSinEco):
+class RutaConPiso(APIRoute):
     """Una ruta cuya respuesta, sea la que sea, tarda al menos el piso común.
 
-    Hereda de `RutaSinEco`: el 422 del registro tampoco devuelve lo que se
-    envió (ESPEC §13.1). El piso envuelve POR FUERA, así que ese 422 también
-    espera.
+    El 422 del cuerpo también espera: sale de aquí como excepción DESPUÉS del
+    piso, y lo responde (sin los valores enviados) el manejador global de
+    `src/shared/validacion.py`.
     """
 
     def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:

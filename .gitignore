@@ -30,3 +30,4 @@ tests/_salida/humo_economia_oleada0.json
 
 # Salidas sueltas de herramientas
 *_output.txt
+tests/_salida/humo_422_sin_eco.json

@@ -40,7 +40,6 @@ from src.auth.service import (
 from src.engrama_core.service import level
 from src.shared.db import get_db
 from src.shared.deps import _extract_bearer_token, get_current_user
-from src.shared.validacion import RutaSinEco
 
 router = APIRouter()
 
@@ -124,6 +123,7 @@ async def logout(
     return {"status": "ok"}
 
 
+@router.post("/contrasena", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
 async def cambiar_contrasena(
     payload: CambioDeClaveIn,
     auth: AuthContext = Depends(get_current_user),
@@ -135,7 +135,8 @@ async def cambiar_contrasena(
 
     Es una de las 4 rutas que se pueden usar con la contraseña temporal. Un
     `nueva` de menos de 10 o más de 72 caracteres ya dio 422 antes de llegar
-    aquí (sin llamar a GoTrue).
+    aquí (sin llamar a GoTrue), y ese 422 no devuelve la contraseña: lo limpia
+    el manejador global (`src/shared/validacion.py`).
       - GoTrue 200            -> bandera en false, commit y 204.
       - GoTrue 422            -> 422 `password_rejected` (bandera igual).
       - sin respuesta, 5xx... -> 502 `password_change_failed` (bandera igual).
@@ -157,14 +158,6 @@ async def cambiar_contrasena(
     await quitar_contrasena_temporal(db, auth.profile_id)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-# Se registra con `RutaSinEco` (y no con el decorador, que no admite la clase de
-# ruta): el 422 de una contraseña inválida no devuelve la contraseña en `input`
-# (ESPEC_autorregistro §13.1). Solo esta ruta; el resto de /auth no cambia.
-router.add_api_route("/contrasena", cambiar_contrasena, methods=["POST"],
-                     status_code=status.HTTP_204_NO_CONTENT, response_class=Response,
-                     route_class_override=RutaSinEco)
 
 
 @router.post("/consentimiento", response_model=ConsentimientoOut, status_code=status.HTTP_200_OK)

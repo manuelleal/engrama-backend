@@ -11,6 +11,7 @@ from src.grader.router import router as grader_router
 from src.refuerzo.router import router as refuerzo_router
 from src.registro.router import docente as registro_docente_router
 from src.registro.router import publico as registro_publico_router
+from src.shared import validacion
 from src.teachers.admin_router import router as admin_router
 from src.teachers.router import router as teachers_router
 from src.webhooks.router import router as events_router
@@ -19,6 +20,11 @@ app = FastAPI(
     title="Engrama 2.0 API",
     version="0.1.0",
 )
+
+# Ningún 422 de validación devuelve lo que el cliente envió (ni `input`, ni el
+# detalle del analizador): un solo manejador para todas las rutas, las de hoy y
+# las que vengan (docs/ESPEC_422_sin_eco.md).
+validacion.instalar(app)
 
 # Módulos de dominio — orden alfabético para evitar drift.
 app.include_router(admin_router, prefix="/admin", tags=["admin"])
