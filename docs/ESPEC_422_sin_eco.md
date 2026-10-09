@@ -38,7 +38,7 @@ Por cada error de la lista `detail`:
 ## 2. Qué debe pasar, medible
 Un "422 de validación" es una respuesta 422 cuyo `detail` es una lista. Sobre toda respuesta así, "limpia" quiere decir: el centinela no aparece en el texto de la respuesta; ningún error trae `input`; cada error trae `loc`, `msg` y `type`; ningún `ctx` trae una clave fuera de la lista de §1.
 
-Cada caso se envía **dos veces**, con dos centinelas distintos del mismo largo (`CENTINELA-9f3a7c` y `ZQWXKVJYP+8b2d4e`) en los mismos lugares. Las dos respuestas deben ser **idénticas byte a byte**: la respuesta no depende del valor enviado. Eso cubre las fugas parciales (un carácter, una posición) que buscar el centinela entero no ve.
+Cada caso se envía **dos veces**, con dos centinelas distintos del mismo largo (`CENTINELA-9f3a7c` y `ZQWXKVJYP-8b2d4e`; ver la errata de §7) en los mismos lugares. Las dos respuestas deben ser **idénticas byte a byte**: la respuesta no depende del valor enviado. Eso cubre las fugas parciales (un carácter, una posición) que buscar el centinela entero no ve.
 
 | # | Criterio | Test |
 |---|---|---|
@@ -90,3 +90,8 @@ No-integ: 167 + 11 = **178**. Suite completa: 655 + 11 = **666 passed**, 23 skip
 
 ## 7. Medido al cerrar
 (Se llena al terminar: cuentas reales, la matriz medida de los tramposos y las predicciones refutadas.)
+
+### 7.1 Errata del preregistro (2026-10-09, antes del commit del código)
+- **El segundo centinela estaba mal elegido.** La espec lo fijó en `ZQWXKVJYP+8b2d4e`. Al medir SE2 con el código ya limpio, 20 casos de 4 rutas (`/admin/groups/{gid}/students`, `/auth/registro`, `/grader/examenes/{codigo}`, `/grader/resultados`) dieron respuestas distintas con los dos centinelas, y **ninguna era eco**: los campos con patrón `[A-Za-z0-9_-]` aceptan `CENTINELA-9f3a7c` y rechazan el que trae `+`, así que la lista de errores cambia. Eso mide la validez del valor, no si viaja de vuelta.
+- **Corrección (al dato de prueba, no al criterio):** el segundo centinela pasa a `ZQWXKVJYP-8b2d4e`: mismo largo y, en cada posición, la misma clase de carácter que el primero. El criterio "las dos respuestas son idénticas byte a byte" no cambia. La fuga del UUID se sigue viendo (`N` en la posición 3 contra `Z` en la 1), y ZE3 lo comprueba.
+- **Candidato a ERR:** un criterio de "la respuesta no depende del valor" exige valores gemelos (misma clase de carácter por posición); se validó el criterio contra el código de hoy solo para el centinela entero, no para la pareja.
