@@ -1,0 +1,142 @@
+{
+ "contrasena: cuerpo lista": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"model_attributes_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary or object to extract fields from\"}]}"
+ },
+ "contrasena: cuerpo vacio": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"nueva\"],\"msg\":\"Field required\"}]}"
+ },
+ "contrasena: falta nueva y campo de mas": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"nueva\"],\"msg\":\"Field required\"},{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"viejo\"],\"msg\":\"Extra inputs are not permitted\"}]}"
+ },
+ "contrasena: json roto": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",10],\"msg\":\"JSON decode error\",\"ctx\":{\"error\":\"Unterminated string starting at\"}}]}"
+ },
+ "contrasena: nueva corta": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"string_too_short\",\"loc\":[\"body\",\"nueva\"],\"msg\":\"String should have at least 10 characters\",\"ctx\":{\"min_length\":10}}]}"
+ },
+ "contrasena: nueva en lista": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"nueva\"],\"msg\":\"Input should be a valid string\"}]}"
+ },
+ "contrasena: nueva larga": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"string_too_long\",\"loc\":[\"body\",\"nueva\"],\"msg\":\"String should have at most 72 characters\",\"ctx\":{\"max_length\":72}}]}"
+ },
+ "contrasena: nueva numerica": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"nueva\"],\"msg\":\"Input should be a valid string\"}]}"
+ },
+ "registro: aviso con espacio al borde": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"string_pattern_mismatch\",\"loc\":[\"body\",\"aviso_version\"],\"msg\":\"String should match pattern '^\\\\S(.*\\\\S)?$'\",\"ctx\":{\"pattern\":\"^\\\\S(.*\\\\S)?$\"}}]}"
+ },
+ "registro: campo de mas": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"rol\"],\"msg\":\"Extra inputs are not permitted\"},{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"tenant_id\"],\"msg\":\"Extra inputs are not permitted\"}]}"
+ },
+ "registro: codigo en lista": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"codigo\"],\"msg\":\"Input should be a valid string\"}]}"
+ },
+ "registro: codigo estudiantil con símbolos": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"string_pattern_mismatch\",\"loc\":[\"body\",\"codigo_estudiantil\"],\"msg\":\"String should match pattern '^[A-Za-z0-9-]{1,24}$'\",\"ctx\":{\"pattern\":\"^[A-Za-z0-9-]{1,24}$\"}}]}"
+ },
+ "registro: codigo largo": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"string_too_long\",\"loc\":[\"body\",\"codigo\"],\"msg\":\"String should have at most 20 characters\",\"ctx\":{\"max_length\":20}}]}"
+ },
+ "registro: contrasena corta": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"string_too_short\",\"loc\":[\"body\",\"contrasena\"],\"msg\":\"String should have at least 10 characters\",\"ctx\":{\"min_length\":10}}]}"
+ },
+ "registro: contrasena de mas de 72 bytes": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"value_error\",\"loc\":[\"body\",\"contrasena\"],\"msg\":\"Value error, la contraseña no puede pasar de 72 bytes (las tildes, la ñ y los emojis ocupan más de uno)\",\"ctx\":{\"error\":{}}}]}"
+ },
+ "registro: contrasena de mas de 72 caracteres": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"string_too_long\",\"loc\":[\"body\",\"contrasena\"],\"msg\":\"String should have at most 72 characters\",\"ctx\":{\"max_length\":72}}]}"
+ },
+ "registro: contrasena de solo letras": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"value_error\",\"loc\":[\"body\",\"contrasena\"],\"msg\":\"Value error, la contraseña debe tener al menos una letra y al menos un número o un símbolo (- _ . ! @ # $ % & * +)\",\"ctx\":{\"error\":{}}}]}"
+ },
+ "registro: contrasena de solo numeros": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"value_error\",\"loc\":[\"body\",\"contrasena\"],\"msg\":\"Value error, la contraseña debe tener al menos una letra y al menos un número o un símbolo (- _ . ! @ # $ % & * +)\",\"ctx\":{\"error\":{}}}]}"
+ },
+ "registro: contrasena numerica": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"contrasena\"],\"msg\":\"Input should be a valid string\"}]}"
+ },
+ "registro: correo sin arroba": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"string_pattern_mismatch\",\"loc\":[\"body\",\"correo\"],\"msg\":\"String should match pattern '^[^@\\\\s]+@[^@\\\\s]+\\\\.[^@\\\\s]+$'\",\"ctx\":{\"pattern\":\"^[^@\\\\s]+@[^@\\\\s]+\\\\.[^@\\\\s]+$\"}}]}"
+ },
+ "registro: cuerpo lista": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"model_attributes_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary or object to extract fields from\"}]}"
+ },
+ "registro: cuerpo texto": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"model_attributes_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary or object to extract fields from\"}]}"
+ },
+ "registro: cuerpo vacio": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"codigo\"],\"msg\":\"Field required\"},{\"type\":\"missing\",\"loc\":[\"body\",\"nombre\"],\"msg\":\"Field required\"},{\"type\":\"missing\",\"loc\":[\"body\",\"correo\"],\"msg\":\"Field required\"},{\"type\":\"missing\",\"loc\":[\"body\",\"codigo_estudiantil\"],\"msg\":\"Field required\"},{\"type\":\"missing\",\"loc\":[\"body\",\"contrasena\"],\"msg\":\"Field required\"},{\"type\":\"missing\",\"loc\":[\"body\",\"mayor_de_edad\"],\"msg\":\"Field required\"},{\"type\":\"missing\",\"loc\":[\"body\",\"aviso_version\"],\"msg\":\"Field required\"}]}"
+ },
+ "registro: falta aviso_version": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"aviso_version\"],\"msg\":\"Field required\"}]}"
+ },
+ "registro: falta codigo": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"codigo\"],\"msg\":\"Field required\"}]}"
+ },
+ "registro: falta codigo_estudiantil": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"codigo_estudiantil\"],\"msg\":\"Field required\"}]}"
+ },
+ "registro: falta contrasena": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"contrasena\"],\"msg\":\"Field required\"}]}"
+ },
+ "registro: falta correo": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"correo\"],\"msg\":\"Field required\"}]}"
+ },
+ "registro: falta mayor_de_edad": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"mayor_de_edad\"],\"msg\":\"Field required\"}]}"
+ },
+ "registro: falta nombre": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"nombre\"],\"msg\":\"Field required\"}]}"
+ },
+ "registro: json roto": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",15],\"msg\":\"JSON decode error\",\"ctx\":{\"error\":\"Unterminated string starting at\"}}]}"
+ },
+ "registro: menor de edad": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"value_error\",\"loc\":[\"body\",\"mayor_de_edad\"],\"msg\":\"Value error, el autorregistro es solo para mayores de edad\",\"ctx\":{\"error\":{}}}]}"
+ },
+ "registro: nombre con espacio al borde": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"string_pattern_mismatch\",\"loc\":[\"body\",\"nombre\"],\"msg\":\"String should match pattern '^\\\\S(.*\\\\S)?$'\",\"ctx\":{\"pattern\":\"^\\\\S(.*\\\\S)?$\"}}]}"
+ },
+ "registro: nombre en diccionario": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"nombre\"],\"msg\":\"Input should be a valid string\"}]}"
+ },
+ "registro: sin cuerpo": {
+  "status": 422,
+  "texto": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\"],\"msg\":\"Field required\"}]}"
+ }
+}
