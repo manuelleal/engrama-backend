@@ -47,6 +47,39 @@ def desglose_asistencia(
     return DesgloseAsistencia(base=base, puntualidad=bono if puntual else 0, puntual=puntual)
 
 
+class CobroAsistencia(NamedTuple):
+    """Lo que el check-in le DICE al cliente: el desglose y si la paga de hoy ya estaba cobrada.
+
+    Invariante: `base + puntualidad == total`, y si `ya_cobrada_hoy` los tres
+    primeros son 0, 0 y falso (ESPEC_economia_oleada0 §13).
+    """
+
+    base: int
+    puntualidad: int
+    puntual: bool
+    ya_cobrada_hoy: bool
+
+    @property
+    def total(self) -> int:
+        return self.base + self.puntualidad
+
+
+def cobro_de_asistencia(pago: DesgloseAsistencia, *, ya_cobrada: bool) -> CobroAsistencia:
+    """Convierte lo que la regla HABRÍA pagado en lo que ESTA marca pagó de verdad.
+
+    - Si la paga del día ya estaba cobrada (otra sesión del mismo día), esta
+      marca pagó 0: el desglose es 0, 0 y no-puntual. Mostrar "puntual" con 0
+      monedas confundiría, y lo que ella habría pagado no es información útil.
+    - Si NO estaba cobrada, se cuenta el desglose tal cual. Ojo: una
+      configuración en 0 también da `total == 0`, pero ahí `ya_cobrada` es falso;
+      por eso la bandera NO se deduce de `coins_awarded == 0`.
+    """
+    if ya_cobrada:
+        return CobroAsistencia(base=0, puntualidad=0, puntual=False, ya_cobrada_hoy=True)
+    return CobroAsistencia(base=pago.base, puntualidad=pago.puntualidad,
+                           puntual=pago.puntual, ya_cobrada_hoy=False)
+
+
 def exigir_tope_del_reto(coins_reward: int, tope: int) -> int:
     """Valida el valor de un reto NUEVO: pasar del tope es un error (el schema lo hace 422)."""
     if coins_reward > tope:

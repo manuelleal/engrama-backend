@@ -103,7 +103,14 @@ class CheckInRequest(BaseModel):
 
 
 class CheckInResult(BaseModel):
-    """Respuesta de check-in: cuántas coins + estado del streak."""
+    """Respuesta de check-in: cuántas coins + estado del streak + el desglose.
+
+    El desglose (ESPEC_economia_oleada0 §13) evita que la web pida el historial
+    para saber cuánto fue por asistir y cuánto por puntualidad. Invariante:
+    `base + puntualidad == coins_awarded`; con `ya_cobrada_hoy` los tres son
+    0/falso. Los cuatro campos nuevos tienen valor por defecto: un cliente (o
+    un doble de prueba) que no los conoce sigue funcionando.
+    """
 
     model_config = _STRICT
 
@@ -111,6 +118,10 @@ class CheckInResult(BaseModel):
     coins_awarded: int
     streak: int
     message: str
+    base: int = 0  # lo pagado por asistir
+    puntualidad: int = 0  # lo pagado por llegar a tiempo (0, o el bono)
+    puntual: bool = False  # llegó a tiempo (aunque el bono valga 0)
+    ya_cobrada_hoy: bool = False  # la paga de hoy ya estaba cobrada: esta marca dio 0
 
 
 class AttendanceRecordOut(BaseModel):

@@ -354,6 +354,7 @@ async def check_in(
     # UN solo pago por estudiante, grupo y día: la llave la garantiza el UNIQUE
     # de la 033, también si dos check-ins a dos sesiones llegan a la vez. Si la
     # llave ya estaba (None), la asistencia SÍ se registra, con 0 monedas.
+    ya_cobrada = False  # solo `award_coins` sabe si la llave del día estaba
     if coins_awarded > 0:
         asiento = await coins_service.award_coins(
             db, student_id=student_id, tenant_id=tenant_id, amount=coins_awarded,
@@ -366,6 +367,10 @@ async def check_in(
         )
         if asiento is None:
             coins_awarded = record.coins_awarded = 0
+            ya_cobrada = True  # la llave del día ya estaba: esta marca no pagó
+
+    # El desglose que se le dice al cliente (§13): lo que ESTA marca pagó.
+    cobro = economia.cobro_de_asistencia(pago, ya_cobrada=ya_cobrada)
 
     await db.flush()
     return CheckInResult(
@@ -373,6 +378,10 @@ async def check_in(
         coins_awarded=coins_awarded,
         streak=new_streak,
         message=f"Check-in exitoso! +{coins_awarded} coins",
+        base=cobro.base,
+        puntualidad=cobro.puntualidad,
+        puntual=cobro.puntual,
+        ya_cobrada_hoy=cobro.ya_cobrada_hoy,
     )
 
 
