@@ -88,8 +88,40 @@ No-integ: 167 + 11 = **178**. Suite completa: 655 + 11 = **666 passed**, 23 skip
 - `/auth/registro` y `/auth/contrasena`: nada (C1, byte a byte).
 - Las demás rutas: sus 422 de validación dejan de traer `input`; `loc`, `msg` y `type` siguen. El `msg` de un UUID, una fecha o una hora inválidos pierde el detalle del analizador (queda `"Input should be a valid UUID"`), y `ctx.error` desaparece de esos errores.
 
-## 7. Medido al cerrar
-(Se llena al terminar: cuentas reales, la matriz medida de los tramposos y las predicciones refutadas.)
+## 7. Medido al cerrar (2026-10-09, sobre `3e45b56`)
+- **No-integ:** **178 passed** (511 deselected), como se predijo (167 + 11). **Suite completa:** **666 passed + 23 skipped** en 857 s, como se predijo, en un contenedor propio (`engrama-test-pg-422eco`, puerto 45477; borrado al terminar). `ruff check .`: 0. **Ningún test existente se editó.**
+- **Humo** (`tests/_salida/humo_422_sin_eco.json`): SE2 recorrió **21** rutas con cuerpo, 340 casos por dos centinelas, **330** con 422 de validación (los otros 10 son cuerpos que resultan válidos, por ejemplo un campo opcional omitido); SE3, **31** rutas y 35 parámetros de ruta, **34** con 422 (el otro es `group_code`, que es texto); SE4, **4** rutas y 4 parámetros de consulta, 4 con 422. 0 problemas.
+- **Cuántas devolvían eco antes:** con ZE2 (lo que había en `59fe08a`), SE2 se pone rojo en **19 de las 21** rutas con cuerpo, SE3 en **30 de las 31** con parámetros de ruta y SE4 en las **4** con consulta.
+- **SE0:** las 35 respuestas congeladas de `/auth/registro` y `/auth/contrasena` siguen idénticas byte a byte.
+- **El 422 del registro sigue esperando el piso** (medido a mano, no es un test nuevo): 16 ms con piso 0 y 440 ms con piso 400.
+
+**Matriz medida de los tramposos** (cada uno contra cada test; R = rojo, v = verde):
+
+| | SE0 | SE1 | SE2 | SE3 | SE4 | SE5 | SE6 | VE1 | VE2 | VE3 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| código bueno | v | v | v | v | v | v | v | v | v | v |
+| ZE1 | R | v | **R** | R | R | v | R | v | R | R |
+| ZE2 | v | v | **R** | R | R | v | R | v | v | v |
+| ZE3 | v | **R** | R | **R** | v | v | R | v | v | v |
+| ZE4 | R | R | R | R | R | **R** | R | R | R | R |
+
+En negrita, la diagonal que se automatiza (`tests/tramposos/test_tramposos_422_sin_eco.py`).
+
+**Predicciones refutadas:**
+1. **ZE3 contra SE2: se predijo verde y es rojo** (48 problemas en 4 rutas: `POST /challenges/`, `POST /challenges/generate`, `POST /challenges/refuerzo/{entrada_id}/respuestas` y `PUT /teachers/groups/{gid}/foco`). Esos cuerpos tienen campos que pasan por un analizador de Pydantic, que también deja su detalle en `ctx.error` (no se miró cuál tipo en cada ruta). La fuga parcial no era solo de los parámetros de ruta: también estaba en el cuerpo. El código la cierra igual; solo la predicción era corta.
+2. **El segundo centinela** (§7.1, errata commiteada antes del código).
+3. **El descubrimiento de campos del cuerpo falló en una ruta** en la primera corrida (`POST /teachers/groups/{gid}/codigo-inscripcion`, cuyo cuerpo es opcional, `CodigoIn | None`): SE2 lo dijo con su propia guarda ("rutas cuyo cuerpo no se pudo recorrer campo a campo") y se corrigió el ayudante del test antes del commit.
+
+**No medido:**
+- Nada contra el piloto (`engrama-piloto`): no se tocó ni se reconstruyó con este código. El 422 real de `POST /auth/consentimiento` del piloto seguirá trayendo `input` hasta que se reconstruya la imagen.
+- `engrama-web` contra este backend: no se abrió ninguna pantalla. Lo que se afirma de la web sale de SE0 y SE5.
+- La matriz se midió una vez, fuera de la suite (un guion suelto); solo la diagonal queda automatizada.
+- Los tipos de error que ninguna ruta produce hoy (`union_tag_invalid`, zonas horarias, URL): solo en la función pura (SE1), con errores sintéticos.
+
+**Para después:**
+- `loc` devuelve nombres de clave que elige el cliente (el campo de más y las claves de los campos de tipo diccionario). Declarado en §5; decidir si se recorta.
+- Los 422 del dominio que sí devuelven algo enviado: `nodo_desconocido` devuelve los ids de nodo que no existen (`src/curriculo/service.py`) y el importador de CSV devuelve `[{fila, motivo}]`. No son de validación y no se tocaron; revisar con el mismo método si importa.
+- Otros `detail` con texto enviado fuera de los 422 (`group_code ... already exists`, `Group '...' not found`, `Invalid or expired JWT: ...`): fuera del alcance de este cierre.
 
 ### 7.1 Errata del preregistro (2026-10-09, antes del commit del código)
 - **El segundo centinela estaba mal elegido.** La espec lo fijó en `ZQWXKVJYP+8b2d4e`. Al medir SE2 con el código ya limpio, 20 casos de 4 rutas (`/admin/groups/{gid}/students`, `/auth/registro`, `/grader/examenes/{codigo}`, `/grader/resultados`) dieron respuestas distintas con los dos centinelas, y **ninguna era eco**: los campos con patrón `[A-Za-z0-9_-]` aceptan `CENTINELA-9f3a7c` y rechazan el que trae `+`, así que la lista de errores cambia. Eso mide la validez del valor, no si viaja de vuelta.

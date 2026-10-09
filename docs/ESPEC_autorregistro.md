@@ -721,6 +721,8 @@ Implementador · sobre `a25bde2` (no-integ **149**; ruff 0; suite 625 passed + 2
 Implementador · sobre `539a06a` (no-integ **155**; ruff 0; suite 636 passed + 23 skipped). Origen: lo medido contra el backend real por la web y el despliegue. **Esta adenda se commitea antes del código.** Cada punto es un commit. **Sin migración** (la cabeza sigue en `041_refuerzo`).
 
 ### 13.1 El 422 de `POST /auth/registro` (y de `POST /auth/contrasena`) no trae de vuelta valores
+> **Reemplazado en el cómo (2026-10-09):** la clase `RutaSinEco` se retiró; la limpieza la hace un manejador global para toda la API (`docs/ESPEC_422_sin_eco.md`). Los criterios C36 a C38 y sus tests siguen vigentes y verdes.
+
 **Lo medido (por quien probó contra el backend real):** el 422 del registro incluye el valor rechazado en `input`; por ejemplo `"input": "abcdefghijkl"` para la contraseña.
 
 **Lo leído en el código (antes de tocar nada):**
