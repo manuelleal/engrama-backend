@@ -716,3 +716,75 @@ Implementador · sobre `a25bde2` (no-integ **149**; ruff 0; suite 625 passed + 2
 - **Errata de UP2 (C28):** la espec pedía "al menos 10 despertares de una corrutina que duerme 10 ms"; en Windows `sleep(0.01)` despierta cada ~15 ms y depende de la carga. UP2 cuenta los turnos que cede una corrutina con `sleep(0)` (al menos 50 en 200 ms; una espera que bloquea da 0 o 1).
 - **Cambio de implementación no previsto:** `esperar` usa `time.perf_counter` (en Windows `time.monotonic` avanza a saltos de ~15 ms) y vuelve a mirar el reloj tras dormir, hasta 4 veces, porque un `sleep` puede despertar antes; así el piso es de verdad un "al menos".
 - **No medido:** nada contra un GoTrue real (ni los tiempos con el piso, ni que GoTrue rechace más de 72 bytes); la matriz de cruces de los tramposos nuevos (solo la diagonal); AR18 depende de la carga de la máquina (se repite una vez y se dice); el piloto (`engrama-piloto`) no se tocó ni se reconstruyó con este código.
+
+## 13. Adenda 2026-10-08 · el 422 no devuelve lo que se envió, y el piso del registro sube a 400 (preregistro)
+Implementador · sobre `539a06a` (no-integ **155**; ruff 0; suite 636 passed + 23 skipped). Origen: lo medido contra el backend real por la web y el despliegue. **Esta adenda se commitea antes del código.** Cada punto es un commit. **Sin migración** (la cabeza sigue en `041_refuerzo`).
+
+### 13.1 El 422 de `POST /auth/registro` (y de `POST /auth/contrasena`) no trae de vuelta valores
+**Lo medido (por quien probó contra el backend real):** el 422 del registro incluye el valor rechazado en `input`; por ejemplo `"input": "abcdefghijkl"` para la contraseña.
+
+**Lo leído en el código (antes de tocar nada):**
+- Es el formato de Pydantic v2: cada error de `RequestValidationError.errors()` trae `type`, `loc`, `msg`, `input` y, a veces, `ctx` y `url`. El manejador por defecto de FastAPI los devuelve tal cual (`{"detail": [...]}`).
+- **Es peor que un campo suelto:** cuando falta un campo, el `input` de ese error es **el cuerpo entero** (con la contraseña, el código de grupo y el correo de los otros campos). Cuando sobra un campo, el `input` es su valor. Cuando el cuerpo no es un objeto, es el cuerpo crudo. Un arreglo que mirara solo el campo `contrasena` los dejaría pasar.
+- `POST /auth/contrasena` tiene el mismo defecto: `CambioDeClaveIn.nueva` rechazada (menos de 10 o más de 72 caracteres) devuelve la contraseña nueva en `input`. Se cierra igual (el encargo lo pide).
+- `ctx` y `url` no llevan valores enviados: `ctx` trae el límite o el patrón (`min_length`, `pattern`) o, en un `ValueError` propio, el mensaje fijo de nuestro validador; `url` es un enlace a la documentación de Pydantic. Se conservan.
+
+**Qué cambia (una cosa):** el `input` desaparece de **todos** los errores de validación de esas dos rutas. `loc`, `msg`, `type` (y `ctx`, `url`) no cambian: la web ya lee `msg`.
+
+**Dónde (un solo sitio que cubra todos los 422 de la ruta):** una clase de ruta, `RutaSinEco(APIRoute)`, en el módulo nuevo `src/shared/validacion.py`. Envuelve el manejador de la ruta y, si lanza `RequestValidationError` (cuerpo, parámetros o cabeceras: todo lo que valida FastAPI antes del manejador), lo vuelve a lanzar **sin el campo `input`**. Como envuelve la ruta entera, no importa cuál campo o cuál validador falló. Una función pura, `sin_valores_enviados(errores)`, hace la limpieza y es lo que se prueba sola.
+- `RutaConPiso` (el piso de tiempo de §12.2) pasa a **heredar** de `RutaSinEco`: el registro lleva las dos cosas, y el 422 sigue esperando el piso (el piso envuelve por fuera).
+- `POST /auth/contrasena` usa `route_class_override=RutaSinEco` (solo esa ruta; el resto de `/auth` no cambia).
+- **Por qué no un manejador global de la aplicación:** quitaría `input` de todas las rutas (retos, grupos, EVA...), que son del alcance de otros y que la web puede estar leyendo; el encargo es el registro y la contraseña. Un manejador global queda en "para después" como decisión de Christiam.
+- **Lo que NO cubre, declarado:** las otras rutas que reciben secretos en el cuerpo (login del piloto, PIN) y los 422 que no pasan por FastAPI. Se reportan en "para después", no se tocan.
+
+| # | Criterio | Test |
+|---|---|---|
+| C36 | **Pura:** `sin_valores_enviados` quita `input` de cada error, sea texto, número, diccionario (el cuerpo entero) o lista; no toca `loc`, `msg`, `type`, `ctx` ni `url`; no modifica la lista que recibe; una lista vacía da una lista vacía | VE1 |
+| C37 | **En la ruta del registro:** para **cada campo** de `RegistroIn` con un valor inválido que lleva una marca reconocible, para **cada campo** omitido (con los demás válidos y con marcas), con un campo de más, con tipos equivocados, con un cuerpo que no es un objeto y con un JSON roto: 422; ni la respuesta en texto ni ningún `input` contienen **ninguna** de las marcas enviadas (contraseña, código de grupo, correo, código estudiantil, nombre); cada error conserva `loc`, `msg` y `type`; los mensajes de la contraseña (72 bytes, composición) siguen siendo los de §11.5 y §12.1; 0 llamadas a `crear` | VE2 |
+| C38 | **En `POST /auth/contrasena`:** una `nueva` demasiado corta o larga con marca, un cuerpo sin `nueva` y con un campo de más con marca, un cuerpo que no es objeto: 422 sin ninguna marca y con `loc`, `msg` y `type` | VE3 |
+
+**Tramposos (no-integ):**
+- **ZV1:** `sin_valores_enviados` devuelve la lista tal cual (el comportamiento de hoy). Rojo predicho: **VE1**, **VE2** y **VE3** (as: aparece la marca en la respuesta).
+- **ZV2:** `sin_valores_enviados` quita `input` solo cuando es texto (los errores de campo) y deja pasar el diccionario del cuerpo entero (lo del campo faltante). Rojo predicho: **VE1**, **VE2** y **VE3** (as: la marca de la contraseña vuelve en el error del campo omitido).
+- **ZV3:** `sin_valores_enviados` deja solo `msg` (cambia la forma del error). Rojo predicho: **VE1** (as: faltan `loc` y `type`), **VE2** y **VE3** (la forma).
+
+**Edición a lo existente (ERR-25):** ninguna. `piso.RutaConPiso` cambia de base (hereda de `RutaSinEco`); `test_piso.py` no la nombra.
+
+### 13.2 `REGISTRO_PISO_MS` por defecto: 250 a 400 (PROVISIONAL)
+**Qué cambia (una cosa):** el valor por defecto de `registro_piso_ms` (`src/shared/config.py`) pasa de **250** a **400**. El resto de §12.2 (cómo se espera, el 20 % aleatorio, el máximo de 5000) no cambia. **Y no se toca el umbral de AR18** (25 ms): AR18 usa su propio piso de 400 ms (§12.6), no el valor por defecto.
+
+**Por qué (medido en el piloto, no en estos tests):** con el piso en 250 ms, el tiempo de una respuesta va de 250 a 300 ms. De 60 respuestas `creado`, **1 tardó 376 ms**: se salió del techo (300) y esa sola respuesta sí delata que la cuenta se creó, porque ninguna de las otras rutas llega a 376. §12.2 lo había dicho al fijar 250: "queda por encima de la mediana y del p90, **no del máximo**". Con 400 el rango pasa a 400-480 ms: el 376 medido queda por debajo del piso, con 24 ms de margen. Es un parche a una cola larga que se vio una vez en 60.
+
+**Lo que cuesta:** toda respuesta del registro (también el 403 y el 422) tarda 400-480 ms en vez de 250-300. El registro ocurre una vez por persona; el límite por IP (150 por ventana) acota la retención de conexiones.
+
+**PROVISIONAL, y el despliegue lo vuelve a medir:** 400 sale de un único máximo observado (376 de 60), no de una distribución. El despliegue debe repetir la medición de §15.21/§15.22 con 400 (la escalera ya prevista en `ESPEC_anillo_docker.md`: 250, 350, 500, 750, 1000) y mirar que el máximo de `creado` quede por debajo del piso; si no, subir `REGISTRO_PISO_MS` por variable de entorno, sin tocar el código.
+
+| # | Criterio | Test |
+|---|---|---|
+| C39 | El valor por defecto de `registro_piso_ms` es **400** y el máximo sigue en 5000 (5001 se rechaza) | UP1 (se edita su fila `por_defecto_y_maximo`, de `(250, ...)` a `(400, ...)`) |
+
+**Edición a lo existente (ERR-25):** `tests/registro/test_piso.py`, UP1: la fila `por_defecto_y_maximo` pasa de `250` a `400`. Las demás filas de UP1 usan `piso_ms=250` **explícito** (pruebas de la función `esperar` con un piso cualquiera) y no dependen del valor por defecto: no cambian. Los comentarios que nombran 250 como el valor de producción (`tests/conftest.py`, `piso.py`, `config.py`) se actualizan; §12.2 y §12.5 no se reescriben: esta adenda las corrige.
+
+**Tramposo ZR36 (no-integ):** el valor por defecto sigue en 250 (el de hoy). Rojo predicho: **UP1** (as: `por_defecto_y_maximo` dice 250, no 400). Existentes: ZR32, ZR33, ZR34 y ZR35 no dependen del valor por defecto; siguen rojos por su razón.
+
+### 13.3 Cuentas predichas (ERR-10)
+| Grupo | integ | no-integ |
+|---|---|---|
+| VE1, VE2, VE3 | — | 3 |
+| ZV1, ZV2, ZV3 | — | 3 |
+| ZR36 | — | 1 |
+| **Nuevos** | **0** | **7** |
+
+Y de `ESPEC_economia_oleada0.md` §13: 5 no-integ y 7 integ. **Total del encargo:** no-integ 155 + 5 + 7 = **167**; integ + 7; suite completa 636 + 19 = **655 passed**, skipped sin cambio (**23**). UP1 y las demás ya existentes cambian de valor, no de cuenta. `ruff check .` en 0. Solo se mide la diagonal de los tramposos.
+
+### 13.4 Qué NO se toca y "para después"
+**No se toca:** el resto de §12 y de §11, `RutaConPiso` salvo su clase base, el umbral de AR18, `engrama-web`, `despliegue`, EVA, SET, el piloto ni los stacks Docker. Ninguna migración.
+
+**Para después:**
+- Decidir si el `input` se quita en **toda** la API con un manejador global (hoy se quita solo en el registro y en el cambio de contraseña).
+- Revisar las demás rutas que reciben un secreto en el cuerpo (login del piloto, PIN) con el mismo método de VE2.
+- Volver a medir el piso en el despliegue con 400 (arriba) y, si la cola larga persiste, un piso adaptativo (ya anotado en §12.3).
+
+### 13.5 Qué cambia para el despliegue y para la web
+- **Despliegue:** el valor por defecto de `REGISTRO_PISO_MS` pasa a 400; si el compose no la fija, la respuesta del registro tarda 400-480 ms. Volver a medir (§13.2).
+- **Web:** los 422 de `POST /auth/registro` y `POST /auth/contrasena` ya **no traen `input`**; si alguna pantalla lo leía, deja de verlo (la web real lee `msg`, según quien pidió el cambio).

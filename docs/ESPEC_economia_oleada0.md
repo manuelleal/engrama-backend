@@ -362,3 +362,70 @@ E1-E3 son rutinarios una vez leída esta espec (Implementador). E7 y E8 tocan el
 - **NO:** un estudiante cobra dos asistencias el mismo día; una segunda sesión cambia la racha; vuelve un multiplicador; un reto paga más que el tope; un acierto queda sin paga por cupo en un reto sin cupo indicado; una recarga se duplica o queda a medias; un saldo o un asiento anterior cambia; HE0 no coincide con §3.4; un tramposo queda verde.
 
 Si un número de §3.4 no sale, **no se ajusta la predicción**: se registra como ERR con su causa y se escribe el criterio nuevo antes de volver a correr (METODO, regla 8).
+
+## 13. Adenda 2026-10-08 · el check-in dice el desglose (preregistro)
+Implementador · sobre `539a06a` (no-integ **155**; ruff 0; suite 636 passed + 23 skipped). Origen pedido: la web (§7, punto 2: "el desglose no se distingue en pantalla"). **Esta adenda se commitea antes del código.** Un cambio, un commit. **Sin migración** (la cabeza sigue en `041_refuerzo`).
+
+### 13.0 Errata de §1.1, §7 y §8
+Esas secciones dicen que `CheckInResult` no cambia de forma. **Cambia, solo agregando:** cuatro campos con valor por defecto. Un cliente viejo que no los lee no se rompe; uno que valida con `extra="forbid"` sí vería campos que no conoce, y por eso se avisa a la web (el cliente real no valida la respuesta, §7).
+
+### 13.1 Qué cambia (una cosa)
+La respuesta de `POST /core/attendance/check-in` trae, además de `{success, coins_awarded, streak, message}`:
+
+| Campo | Tipo | Defecto | Qué dice |
+|---|---|---|---|
+| `base` | int | 0 | lo que pagó por asistir |
+| `puntualidad` | int | 0 | lo que pagó por llegar a tiempo (0, o el bono) |
+| `puntual` | bool | false | si llegó a `ASISTENCIA_MINUTOS_PUNTUALIDAD` minutos o menos de que el profe abrió la sesión |
+| `ya_cobrada_hoy` | bool | false | la paga de asistencia de hoy (estudiante, grupo y día, §1.3) **ya estaba cobrada**, y por eso esta marca dio 0 |
+
+- **Invariante:** `base + puntualidad == coins_awarded` siempre.
+- **Cuando `ya_cobrada_hoy` es verdadero**, `base`, `puntualidad` y `puntual` son 0, 0 y `false`, y `coins_awarded` es 0. Razón: esta marca no pagó nada; el desglose de lo que ella habría pagado (y que puede ser distinto al de la primera) no es información útil y confundiría ("puntual" pero 0 monedas).
+- **Distinción con la configuración en cero:** `coins_awarded == 0` puede ser (a) la segunda marca del día o (b) `ASISTENCIA_MONEDAS_BASE` y `_PUNTUALIDAD` en 0. Solo en (a) `ya_cobrada_hoy` es verdadero. En (b) es **falso**, `base` y `puntualidad` son 0 y `puntual` dice la verdad sobre la hora (la llegada fue o no puntual aunque el bono valga 0). `ya_cobrada_hoy` sale de lo que ya ocurre: `award_coins` devuelve `None` cuando la llave del día estaba (§1.3); con el monto en 0 no se llama a `award_coins` y por tanto no hay forma de que sea verdadero.
+- **Dónde:** una función pura nueva en `engrama_core/service/economia.py`, `cobro_de_asistencia(pago, *, ya_cobrada) -> CobroAsistencia` (un `NamedTuple` con los cuatro valores y `total`). `check_in` la llama después de `award_coins` y arma la respuesta con ella. `message` conserva su formato (`Check-in exitoso! +N coins`). El asiento del libro **no cambia** (ya lleva `base`, `puntualidad`, `puntual`, §1.1).
+- **No cambia:** los códigos HTTP, `AttendanceRecordOut`, el 409 de la misma sesión, la racha, `attendance.coins_awarded`.
+
+### 13.2 Criterios y tests
+| # | Criterio | Test |
+|---|---|---|
+| C30 | **Puro:** tabla de `cobro_de_asistencia`: puntual y no cobrada → `(5, 5, True, False)`; tarde y no cobrada → `(5, 0, False, False)`; con base y bono en 0 y puntual → `(0, 0, True, False)` (la configuración en cero **no** es "ya cobrada"); ya cobrada, sea puntual o no → `(0, 0, False, True)`. Para toda combinación de {puntual, tarde} × {cobrada, no} × {(5,5), (4,3), (0,0), (7,0)}: `base + puntualidad == total` y, si `ya_cobrada_hoy`, los tres son 0/falso | UK1 |
+| C31 | **El esquema:** `CheckInResult` se construye con solo `success`, `coins_awarded`, `streak`, `message` (un cliente o un doble viejo) y los cuatro campos nuevos valen 0, 0, `false`, `false` | UK2 |
+| C32 | **En la ruta, puntual:** a los 2 minutos → 200 con `coins_awarded 10`, `base 5`, `puntualidad 5`, `puntual true`, `ya_cobrada_hoy false`; la suma cuadra y coincide con el asiento del libro | CK1 |
+| C33 | **En la ruta, tarde:** a los 5:01 → `coins_awarded 5`, `base 5`, `puntualidad 0`, `puntual false`, `ya_cobrada_hoy false`. A los 5:00 exactos → `puntual true` (límite inclusivo, igual que §1.1) | CK2 |
+| C34 | **En la ruta, ya cobrada:** la primera sesión del día paga 10; una segunda sesión el mismo día (aunque la hora sea puntual para ella) → 200 con `coins_awarded 0`, `base 0`, `puntualidad 0`, `puntual false`, `ya_cobrada_hoy true`; la asistencia se registró (2 filas) y hay 1 solo asiento | CK3 |
+| C35 | **En la ruta, configuración en cero:** con `asistencia_monedas_base = 0` y `_puntualidad = 0`, una marca puntual → 200 con todo en 0, `puntual true` y `ya_cobrada_hoy false`; 0 asientos | CK4 |
+
+**Tramposos** (la versión rota se inyecta en `economia.cobro_de_asistencia`, que `check_in` usa; cada uno se corre contra el test puro y contra el de la ruta):
+| Tramposo | Rota así | Rojo predicho (puro / ruta) |
+|---|---|---|
+| ZK1 / ZK4 | el desglose no suma (`base + 1`) | UK1 / CK1 (as: `base + puntualidad` ≠ `coins_awarded`) |
+| ZK2 / ZK5 | `ya_cobrada_hoy` siempre falso (ignora el argumento y devuelve el pago entero) | UK1 / CK3 (as: la segunda marca dice `ya_cobrada_hoy false`) |
+| ZK3 / ZK6 | `puntual` siempre verdadero (aunque haya llegado tarde) | UK1 / CK2 (as: a los 5:01 `puntual true`) |
+
+**Existentes (ERR-26):** ZT2 y ZT3 reemplazan `desglose_asistencia` (no la función nueva): siguen rojos por EA1. EA1 a ED3 no leen los campos nuevos y siguen verdes. ZT10 reemplaza `attendance.check_in` entero y sigue rojo por ED1.
+
+### 13.3 Cuentas (ERR-10)
+| Grupo | integ | no-integ |
+|---|---|---|
+| UK1, UK2 | — | 2 |
+| ZK1, ZK2, ZK3 (contra UK1) | — | 3 |
+| CK1-CK4 | 4 | — |
+| ZK4-ZK6 (contra CK1-CK3) | 3 | — |
+| **Nuevos** | **7** | **5** |
+
+Solo se mide la diagonal; los cruces no.
+
+### 13.4 Para la web (contrato de la respuesta nueva)
+```
+POST /core/attendance/check-in  200
+{"success": true, "coins_awarded": 10, "streak": 3, "message": "Check-in exitoso! +10 coins",
+ "base": 5, "puntualidad": 5, "puntual": true, "ya_cobrada_hoy": false}
+```
+Con ello la pantalla puede decir "+5 por asistir, +5 por puntualidad" sin pedir el historial, y "La de hoy ya la cobraste" cuando `ya_cobrada_hoy` es verdadero (el texto propuesto de §7, punto 1).
+
+### 13.5 Qué NO se toca y "para después" (pedidos abiertos de la web, sin código en esta adenda)
+**No se toca:** `LedgerEntryOut`, `AttendanceSessionOut`, `award_coins`, `compute_next_streak`, `engrama-web`, `despliegue`.
+
+**Para después (anotado aquí para no perderlo):**
+- **Tipar `LedgerEntryOut.metadata` para la asistencia.** Hoy es `dict[str, Any]` (`schemas.py:47`); el historial de monedas devuelve `base`, `puntualidad`, `puntual`, `streak`, `geo_status`, `session_id` y `dia` sin contrato. Un esquema por `action` (`attendance` primero) dejaría a la web leer el desglose de **entradas anteriores** al cambio de este apartado y de las futuras, sin adivinar claves.
+- **`GET /core/attendance/sessions/active` debería traer el grupo.** `AttendanceSessionOut` no tiene un campo de grupo propio (`schemas.py:82-92`; el `group_code` solo viaja dentro de `qr_payload`, un diccionario sin contrato, `attendance.py:160-165`): tras recargar la página, la app del profe recupera una asistencia abierta sin saber de qué grupo es. Hace falta un campo `group_code` (y quizá el nombre del grupo) de primer nivel en esa respuesta, con la misma visibilidad que ya aplica `access.py` (hoy esa ruta muestra todo el colegio; es el hueco que `access.py:12` ya declara).
