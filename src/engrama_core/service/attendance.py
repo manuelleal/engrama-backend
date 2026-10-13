@@ -39,6 +39,7 @@ from src.engrama_core.schemas import (
 from src.engrama_core.service import coins as coins_service
 from src.engrama_core.service import economia
 from src.foco import fechas
+from src.racha import service as racha_service
 from src.shared.config import settings
 from src.shared.models import (
     Attendance,
@@ -323,6 +324,10 @@ async def check_in(
         profile.current_streak = new_streak
         profile.longest_streak = max(profile.longest_streak, new_streak)
         profile.last_attendance_date = today
+
+    # 5b. Asistir hace ACTIVO el día de la racha semanal de esta institución
+    # (ESPEC_racha_semanal §1.1). No toca `profiles.current_streak` ni la paga.
+    await racha_service.anotar_asistencia(db, tenant_id=tenant_id, profile_id=student_id)
 
     # 6. Coins: 5 por asistir + 5 si llegó puntual, sin multiplicar por racha
     # (regla pura en economia.py).

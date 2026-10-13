@@ -97,6 +97,20 @@ class Settings(BaseSettings):
     refuerzo_dias_repaso: int = Field(default=7, ge=1, le=60)
     # Cuántas entradas de la cola se sirven a la vez.
     refuerzo_max_por_vez: int = Field(default=5, ge=1, le=20)
+    # La racha SEMANAL por institución (ESPEC_racha_semanal; dictamen 04 §1.1 y
+    # §1.2). Los siete números son juicio del pedagogo, sin evidencia propia:
+    # por eso son configuración y cada uno tiene su dato de vigilancia.
+    #   - una semana (lunes a domingo) se cumple al 3.er día activo;
+    #   - el 5.º día activo de una semana gana un protector (tope 2; nace con 1);
+    #   - un día es activo por asistir, o por 6 preguntas con 4 correctas;
+    #   - cumplir la semana paga 5 monedas, una vez (0 = sin bono).
+    racha_dias_por_semana: int = Field(default=3, ge=1, le=7)
+    racha_dias_protector: int = Field(default=5, ge=1, le=7)
+    racha_respuestas_dia: int = Field(default=6, ge=1, le=100)
+    racha_correctas_dia: int = Field(default=4, ge=0, le=100)
+    racha_protector_inicial: int = Field(default=1, ge=0, le=10)
+    racha_protector_tope: int = Field(default=2, ge=0, le=10)
+    racha_bono_semana: int = Field(default=5, ge=0, le=50)
 
     # La asistencia (ESPEC_economia_oleada0 §1.1 y §5). TODOS ESTOS NÚMEROS SON
     # PROVISIONALES del arquitecto y Christiam puede vetarlos: por eso viven aquí

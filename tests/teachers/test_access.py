@@ -164,9 +164,14 @@ _REFUERZO: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/teachers/groups/{gid}/refuerzo", frozenset({"GET"})): "teacher",
 }
 
+# docs/ESPEC_racha_semanal.md: la racha de semanas del estudiante, por institución.
+_RACHA: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/core/racha", frozenset({"GET"})): "user",
+}
+
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS, **_EVENTOS,
-    **_CATALOGO, **_GRADER, **_FOCO, **_REFUERZO}
+    **_CATALOGO, **_GRADER, **_FOCO, **_REFUERZO, **_RACHA}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:

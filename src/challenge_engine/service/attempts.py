@@ -50,7 +50,10 @@ from src.challenge_engine.schemas import (
 from src.challenge_engine.service import challenges as challenges_service
 from src.engrama_core.service import coins as coins_service
 from src.engrama_core.service import economia
+from src.racha import reglas as racha_reglas
+from src.racha import service as racha_service
 from src.refuerzo import cola as refuerzo_cola
+from src.refuerzo.reglas import clave_de_forma
 from src.shared.config import settings
 from src.shared.models import (
     Challenge,
@@ -116,6 +119,39 @@ def is_attempt_correct(challenge_type: str, score_percent: float) -> bool:
         return score_percent >= _PARTIAL_CREDIT_THRESHOLD
     # multiple_choice, listening → exige 100%.
     return score_percent >= 100.0
+
+
+def respondidas(
+    questions: list[ChallengeQuestion], details: list[dict[str, Any]]
+) -> list[tuple[str, bool]]:
+    """`(identidad de la pregunta, ¿acertó?)` de cada pregunta CON respuesta.
+
+    Es lo que un intento aporta al día activo de la racha semanal
+    (ESPEC_racha_semanal §1.1): una pregunta dejada en blanco no es una
+    respuesta. La identidad es la del banco (`item_ref`) o, sin ella, la
+    pregunta misma: el mismo ítem en dos retos cuenta una vez al día.
+    """
+    por_id = {str(q.id): q for q in questions}
+    return [
+        (clave_de_forma(por_id[str(d["question_id"])].item_ref, d["question_id"]),
+         bool(d["is_correct"]))
+        for d in details
+        if str(d.get("given_answer") or "").strip() and str(d["question_id"]) in por_id
+    ]
+
+
+async def ya_lo_gano(
+    db: AsyncSession, *, tenant_id: UUID, student_id: UUID, challenge_id: UUID
+) -> bool:
+    """¿Este estudiante ya tiene un intento GANADO de este reto? (repetir lo ganado)."""
+    stmt = select(ChallengeAttempt.id).where(
+        ChallengeAttempt.tenant_id == tenant_id,
+        ChallengeAttempt.challenge_id == challenge_id,
+        ChallengeAttempt.student_id == student_id,
+        ChallengeAttempt.status == "completed",
+        ChallengeAttempt.is_correct.is_(True),
+    ).limit(1)
+    return (await db.execute(stmt)).scalar_one_or_none() is not None
 
 
 # =============================================================================
@@ -261,6 +297,19 @@ async def submit_attempt(
     # 3. Calificar.
     score_percent, details = grade_answers(questions, answers)
     is_correct = is_attempt_correct(challenge.challenge_type, score_percent)
+
+    # 3b. Lo respondido cuenta para el día activo de la racha semanal
+    # (ESPEC_racha_semanal §1.1). Va ANTES de la paga para tomar los candados
+    # siempre en el mismo orden (racha, después billeteras). No cambia el
+    # resultado ni la paga del reto.
+    repetido = await ya_lo_gano(
+        db, tenant_id=tenant_id, student_id=student_id, challenge_id=challenge.id
+    )
+    await racha_service.anotar_respuestas(
+        db, tenant_id=tenant_id, profile_id=student_id,
+        respuestas=respondidas(questions, details),
+        origen=racha_reglas.ORIGEN_RETO_REPETIDO if repetido else racha_reglas.ORIGEN_RETO,
+    )
 
     # 4. Premios. Respetamos el cupo de max_winners: si justo se llenó
     # entre que el estudiante abrió el challenge y envió, no duplicamos

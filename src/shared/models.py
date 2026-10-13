@@ -1691,3 +1691,95 @@ class ReinforcementAnswer(Base):
                         name="reinforcement_answers_stage_check"),
         Index("idx_reinforcement_answers_profile", "tenant_id", "profile_id"),
     )
+
+
+# -----------------------------------------------------------------------------
+# 042 — la racha semanal por institución (docs/ESPEC_racha_semanal.md §1.4)
+# -----------------------------------------------------------------------------
+class ActivityDay(Base):
+    """Un día local de un estudiante en una institución.
+
+    `preguntas` es `{identidad de la pregunta: 0 | 1}` con su MEJOR resultado
+    del día: cada pregunta cuenta una vez. `primeras_correctas` y `por_origen`
+    son datos de vigilancia (dictamen 04 §2); no deciden nada.
+    """
+
+    __tablename__ = "activity_days"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    local_date: Mapped[date] = mapped_column(Date, nullable=False)
+    via_asistencia: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("FALSE")
+    )
+    respuestas: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    correctas: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    primeras_correctas: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
+    preguntas: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    por_origen: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "profile_id", "local_date",
+                         name="activity_days_owner_date_key"),
+        CheckConstraint(
+            "respuestas >= 0 AND correctas >= 0 AND primeras_correctas >= 0 "
+            "AND correctas <= respuestas AND primeras_correctas <= correctas",
+            name="activity_days_counts_check"),
+    )
+
+
+class StreakState(Base):
+    """La racha de SEMANAS de un estudiante en una institución (cierra BUG-12).
+
+    `ultima_semana_cerrada` es el lunes de la última semana ya cerrada: el
+    cierre es perezoso (se calcula al leer o escribir, sin tarea programada).
+    """
+
+    __tablename__ = "streak_state"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    racha_semanas: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    mejor_racha: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    semanas_cumplidas: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    protectores: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    ultima_semana_cerrada: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "profile_id", name="streak_state_owner_key"),
+        CheckConstraint(
+            "racha_semanas >= 0 AND mejor_racha >= racha_semanas "
+            "AND semanas_cumplidas >= 0 AND protectores BETWEEN 0 AND 10",
+            name="streak_state_counts_check"),
+    )

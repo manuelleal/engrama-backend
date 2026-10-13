@@ -34,6 +34,8 @@ from src.engrama_core.schemas import (
 )
 from src.engrama_core.service import attendance as attendance_service
 from src.engrama_core.service import coins as coins_service
+from src.racha import service as racha_service
+from src.racha.schemas import RachaOut
 from src.shared.db import get_db
 from src.shared.deps import get_current_user, require_teacher
 
@@ -181,3 +183,19 @@ async def read_student_attendance_history(
     return await attendance_service.get_attendance_history(
         db, student_id, auth.tenant_id, limit=limit
     )
+
+
+# =============================================================================
+# RACHA SEMANAL (docs/ESPEC_racha_semanal.md §1.5)
+# =============================================================================
+@router.get(
+    "/racha",
+    response_model=RachaOut,
+    status_code=status.HTTP_200_OK,
+)
+async def read_weekly_streak(
+    auth: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> RachaOut:
+    """La racha de SEMANAS en la institución activa, con la semana en curso. No escribe."""
+    return await racha_service.leer(db, tenant_id=auth.tenant_id, profile_id=auth.profile_id)

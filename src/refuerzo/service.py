@@ -18,6 +18,8 @@ from src.challenge_engine.schemas import AnswerSubmit
 from src.challenge_engine.service import attempts as attempts_service
 from src.challenge_engine.service import challenges as challenges_service
 from src.foco import service as foco_service
+from src.racha import reglas as racha_reglas
+from src.racha import service as racha_service
 from src.refuerzo import formas, reglas
 from src.refuerzo.reglas import Estado, Forma, Regla
 from src.refuerzo.schemas import PendienteOut, RefuerzoOut, RespuestaOut
@@ -163,5 +165,9 @@ async def responder(db: AsyncSession, *, tenant_id: UUID, profile_id: UUID,
         stage=etapa, answer=answer, is_correct=acerto, status_after=nuevo.status,
         due_after=nuevo.next_due_at))
     await db.flush()
+    # El repaso paga 0 pero SÍ cuenta para el día activo (ESPEC_racha_semanal §1.1).
+    await racha_service.anotar_respuestas(
+        db, tenant_id=tenant_id, profile_id=profile_id, origen=racha_reglas.ORIGEN_REPASO,
+        respuestas=[(reglas.clave_de_forma(pregunta.item_ref, pregunta.id), acerto)])
     return _salida(entrada.id, pregunta, acerto=acerto, estado=nuevo.status,
                    proxima=nuevo.next_due_at, repetida=False)

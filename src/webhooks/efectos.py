@@ -19,6 +19,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.engrama_core.service import coins, level
+from src.racha import reglas as racha_reglas
+from src.racha import service as racha_service
 from src.shared import events
 from src.shared.models import LearningEvent
 from src.webhooks.schemas import EventoIn, MonedasPayload, NivelPayload
@@ -93,9 +95,27 @@ async def confirmar_nivel(db: AsyncSession, evento: EventoIn, datos: NivelPayloa
     return (NIVEL_PUESTO if puesto else NIVEL_ANTERIOR), 0
 
 
+async def contar_respuesta(db: AsyncSession, evento: EventoIn) -> None:
+    """Un `answer.submitted` NUEVO de EVA cuenta para el día activo de la racha semanal.
+
+    ESPEC_racha_semanal §1.1. Solo con `item_ref` (la identidad: sin ella no se
+    puede contar "una vez al día") y con `payload.correct` booleano. No es un
+    `effect`: la fila queda en `none`, y no toca monedas, nivel ni XP.
+    """
+    correcta = evento.payload.get("correct")
+    if evento.subject_id is None or evento.item_ref is None or not isinstance(correcta, bool):
+        return
+    await racha_service.anotar_respuestas(
+        db, tenant_id=evento.tenant_id, profile_id=evento.subject_id,
+        respuestas=[(evento.item_ref, correcta)], origen=racha_reglas.ORIGEN_EVA)
+
+
 async def aplicar(db: AsyncSession, evento: EventoIn, payload: Any,
                   fila_id: int) -> tuple[str, int]:
     """El efecto de un evento NUEVO, según su tipo. Para los demás, ninguno."""
+    if evento.type == events.ANSWER_SUBMITTED:
+        await contar_respuesta(db, evento)
+        return SIN_EFECTO, 0
     if evento.type == events.COINS_GRANTED:
         return await acreditar_monedas(db, evento, payload)
     if evento.type == events.LEVEL_ASSESSED:
