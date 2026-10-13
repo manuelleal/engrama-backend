@@ -126,3 +126,125 @@ L1-U1 a U3 (3 no-integ) + L1-A1 a A5 (5 integ) + MG42 + humo + 4 tramposos no-in
 ## 9. Veredicto (cuando se implemente)
 - **FUNCIONA:** las cuentas medidas, la matriz medida, el humo escrito y los previos verdes (con `/submit` idéntico).
 - **NO:** la correcta o la explicación salen antes de responder; la segunda respuesta cambia la primera; `/finish` paga dos veces; "don’t" no acierta "don't"; "fewer" acierta "fever"; un tramposo queda verde.
+
+---
+
+## 10. Adenda del 2026-10-13 (preregistro; manda sobre lo anterior donde choquen)
+
+F4 · Creador · sobre el bloque 3 (`ESPEC_solo_refuerzo.md`; meta **731 passed + 23 skipped y 197 no-integ**). Bloque 4 de 5 del encargo "reto del día sin profe". Manda el dictamen `investigacion/pedagogia/04-dictamen-racha-y-reto-del-dia.md` §1.5 y hecho 3; el dueño confirmó el 2026-10-12: **explicación en español para A1 y A2, en inglés sencillo desde B1.**
+
+### 10.1 Lo que cambia frente a §1 a §4
+| Tema | Antes (2026-10-06) | Ahora |
+|---|---|---|
+| Migración | `042_correccion_por_pregunta` | **`045_correccion_por_pregunta`** |
+| Vocabulario ("palabra válida") | tabla `lexicon_words` y una orden de carga | **Un archivo de texto** (una palabra por línea), en `LEXICO_ARCHIVO`; sin tabla (toda tabla nueva lleva institución, y el vocabulario no es de nadie). Vacío = ninguna palabra es "válida" |
+| `ChallengeQuestionOut` | ganaba `pista` | **No cambia** (su forma está fijada por tres tests: regresión). La letra de la pista sale en la ruta nueva `GET …/answers` |
+| La explicación | `{regla, por_opcion, ejemplo}` | El formato del dictamen: §10.2 |
+| El segundo intento | sin tratar | §10.4 |
+| Reetiquetar (`PUT /teachers/challenges/{cid}/nodos`) | aceptaba la explicación | No: se resiembra. Para después |
+| Humo `humo_l1.json` | propio | Va dentro del humo del bloque 5 (`humo_reto_del_dia.json`, sección `l1`) |
+
+`(2)` tolerancia y `(3)` pista siguen **sin la firma del pedagogo** (§7): quedan en el código, **apagadas por defecto** (`exacta`, sin pista). No sembrar ítems con `1_letra` ni con pista hasta esa firma.
+
+### 10.2 La explicación tras cada respuesta (dictamen §1.5)
+Por pregunta, `POST /challenges/` acepta `explanation` con la forma del banco (`item.explicacion` tal cual):
+```json
+{"regla": "…", "por_opcion": {"A": "…", "B": "…"}, "ejemplo": "…", "idioma": "es", "oracion_correcta": "…"}
+```
+`idioma` y `oracion_correcta` son opcionales. Lo que **sale** tras responder:
+
+| Parte del dictamen | Campo de la respuesta | De dónde |
+|---|---|---|
+| 1. Veredicto, con la oración completa correcta | `is_correct` y **`oracion_correcta`** (siempre, haya o no explicación) | la que mandó el sembrador o, si no, el enunciado con el hueco (`___`) relleno con el texto de la opción correcta (en opción múltiple) o con la respuesta aceptada (escrita). Sin hueco, o con más de uno: el texto de la correcta |
+| 2. Regla | `explanation.regla` | el banco |
+| 3. Por qué no la suya | `explanation.por_opcion` (un **texto**, o `null`) | la línea de la opción **que eligió**, **solo si falló** |
+| 4. Ejemplo | `explanation.ejemplo` | el banco |
+| Idioma | `explanation.idioma` (`es` o `en`) | el del banco o, si no viene, por el nivel del reto: **A1 y A2 → `es`; B1 en adelante → `en`**; sin nivel → `es` |
+
+- Al acertar salen 1, 2 y 4 (`por_opcion: null`). El ícono y el texto del veredicto son de la web; nunca elogio a la persona.
+- El servidor **no traduce ni recorta**: el idioma dice en qué está escrito el texto. Los límites de palabras del dictamen (45 y 60) son del validador de contenido, no de esta ruta.
+- Sin explicación sembrada: `explanation: null` (la `oracion_correcta` sale igual).
+- El repaso (`POST /challenges/refuerzo/{id}/respuestas`) llena `explanation` con esta misma forma y gana `oracion_correcta`; califica con `calificar` (§1.6).
+
+### 10.3 Las rutas (todas NUEVAS; `/submit` y `/attempt` no cambian de contrato)
+```
+POST /challenges/attempts/{attempt_id}/answers   {"question_id": "uuid", "answer": "B"}
+→ 200 {"question_id": "uuid", "is_correct": false, "answer": "B", "correct_answer": "A",
+       "oracion_correcta": "She goes to school every day.",
+       "explanation": {"idioma": "es", "regla": "Con he, she, it el verbo lleva -s.",
+                       "por_opcion": "Go es para I, you, we, they.", "ejemplo": "He plays football."},
+       "repetida": false, "respondidas": 1, "total": 3}
+
+GET  /challenges/attempts/{attempt_id}/answers   (para retomar; no escribe)
+→ 200 {"status": "in_progress", "total": 3, "pistas": {"uuid": "c"},
+       "respondidas": [ lo mismo que respondió cada POST, con "repetida": true ]}
+
+POST /challenges/attempts/{attempt_id}/finish    (sin cuerpo)
+→ 200 AttemptSubmitOut (la misma forma de /submit)
+```
+- `answer` en la respuesta es **la guardada** (gana la primera): si llega otra, la web ve cuál quedó.
+- `respondidas` y `total`: cuando son iguales, la web llama a `/finish`.
+- **La clave no sale antes de responder ESA pregunta:** `/answers` solo habla de la pregunta respondida; el `GET` solo de las ya respondidas; `/attempt`, el detalle, el feed y la tanda siguen sin clave ni explicación.
+- 404: intento ajeno, de otra institución o inexistente; pregunta que no es de ESE intento. 409: intento que no está `in_progress`.
+- **`/submit` sobre un intento que ya tiene respuestas por `/answers` → 409 `intento_con_respuestas`** (si no, "gana la primera" se salta enviando todo de nuevo). Un intento sin respuestas guardadas se envía como siempre.
+- `/finish` y `/submit` cierran por el MISMO camino (`attempts.cerrar_intento`): la misma llave de paga, la racha, la cola de repaso y la escalera.
+- La racha cuenta al cerrar (`/finish`), no en cada `/answers`: un intento sin terminar no cuenta.
+- Cada respuesta guarda su instante (`answered_at`, reloj del servidor): es el dato del riesgo 1 ("menos de 3 s por respuesta"), que no existía.
+
+### 10.4 El segundo intento (hecho 3 del dictamen)
+- **Variable `SEGUNDO_INTENTO_PAGA`**, sin valor por defecto = **como hoy**: el segundo intento paga lo mismo que el primero. Con un número (el dictamen propone 5), del segundo intento en adelante el reto paga `min(su valor, ese número)`. **El primer intento paga siempre lo mismo.** Vale para `/submit` y `/finish`. El dueño no ha respondido si baja a 5: no se cambia.
+- **Con L1 el reintento usa la forma gemela si existe.** Cuando un estudiante que ya respondió ese reto por `/answers` (ya vio sus claves) abre otro intento, cada pregunta con `familia` se reemplaza por una forma **de la misma familia que no ha visto** (gemela, después repaso), de un reto activo que su grupo ve, del mismo tipo de pregunta. `POST /challenges/{id}/attempt` devuelve esas preguntas (misma forma de siempre; cambian los ids) y el intento las recuerda (`challenge_attempts.served_questions`). `/answers`, `/finish` y `/submit` califican **las preguntas de ESE intento**: las claves copiadas del primer intento no sirven (sus ids ya no son de este intento).
+- **Si una pregunta no tiene gemela sin ver, se repite la misma** y el intento paga según la variable. Se declara: con la variable sin poner y sin gemelas, copiar la clave en el segundo intento cobra lo de hoy (10). Es la pregunta 5 del dictamen, que sigue abierta; el humo del bloque 5 la mide.
+- Quien nunca usó `/answers` (la web de hoy) no recibe formas distintas: su segundo intento es idéntico al de hoy.
+- Una gemela servida en un reintento queda vista: no vuelve a servirse en la cola ni en la segunda vuelta.
+
+### 10.5 Migración `045_correccion_por_pregunta` (aditiva)
+- `challenge_questions`: `explanation JSONB NULL`, `accepted_answers TEXT[] NULL`, `tolerance TEXT NOT NULL DEFAULT 'exacta'` (CHECK `exacta` | `1_letra`), `hint_initial BOOLEAN NOT NULL DEFAULT FALSE`.
+- `challenge_attempts`: `served_questions UUID[] NULL`.
+- `challenge_attempt_answers (id, tenant_id, attempt_id, profile_id, question_id, answer, is_correct, answered_at; UNIQUE (attempt_id, question_id))`, con RLS activo y sin políticas, como las demás.
+- Bajada: la tabla y las cinco columnas. En producción no se baja.
+
+Variables: `SEGUNDO_INTENTO_PAGA` (sin valor; 0 a 50) y `LEXICO_ARCHIVO` (vacío).
+
+### 10.6 Criterios (reemplazan la tabla de §2)
+| # | Criterio | Test |
+|---|---|---|
+| C1 a C3 | Los de §2, sin cambio (normalización, `1_letra`, pista) | L1-U1 a L1-U3 (no-integ) |
+| C4 | **Puro:** opción por label o por `value`; `por_opcion` solo de la elegida y solo si falló; la paga del intento (primero igual; segundo "como hoy" sin la variable y `min(valor, n)` con ella) | L1-U4 (no-integ) |
+| C5 | **Puro:** la oración correcta (hueco relleno; sin hueco; la del sembrador manda); el idioma por nivel (A1 y A2 `es`; B1 a C1 `en`); el del banco manda | L1-U5 (no-integ) |
+| C6 | **Respuesta por pregunta:** `is_correct`, la correcta, la oración y la explicación con su idioma; `por_opcion` de la elegida solo si falló; el `value` correcto acierta; sin explicación, `null`; no paga y no cierra | L1-A1 |
+| C7 | **Idempotencia:** otra respuesta devuelve la primera con `repetida: true` y hay 1 fila; dos a la vez → 1 fila y la misma en las dos; el `GET` retoma | L1-A2 |
+| C8 | **Aislamiento:** intento ajeno, de otra institución o pregunta de otro reto → 404; intento terminado → 409; la fila guarda su institución y su dueño | L1-A3 |
+| C9 | **Nada se filtra antes de tiempo:** el detalle, `/attempt`, el feed, la tanda y el `GET …/answers` sin responder no traen la clave ni la explicación; `/answers` no revela nada de las otras preguntas; `ChallengeQuestionOut` tiene los campos de siempre | L1-A4 |
+| C10 | **`/finish`:** califica con lo guardado; lo que falta es incorrecto; paga una vez (ni `/finish` + `/submit` ni dos `/finish` pagan dos veces); `answers` con la forma de hoy; lo fallado entra a la cola; cuenta para la racha; `/submit` con respuestas guardadas → 409 | L1-A5 |
+| C11 | **El segundo intento:** sin gemela, las mismas preguntas y la paga de la variable (sin ponerla, 10; con 5, 5; el primer intento, 10 en los dos casos); con gemelas, preguntas distintas: las claves viejas dan 404 en `/answers` y no ganan por `/submit`; quien no usó `/answers` recibe las de siempre | L1-A6 |
+| C12 | `/submit` idéntico: sus tests, sin editar | la suite |
+| C13 | Migración up/down/up idéntica | MG45 |
+
+### 10.7 Tramposos (reemplazan la tabla de §3; diagonal PREDICHA)
+| Id | Rompe | Rojo predicho |
+|---|---|---|
+| ZL1 a ZL4 (no-integ) | Los de §3 | L1-U1, U2, U2 y U3 |
+| ZL5 | "La última respuesta gana" | L1-A2 |
+| ZL6 | La pregunta que ve el estudiante trae la explicación | L1-A4 |
+| ZL7 | El intento se busca sin su dueño | L1-A3 |
+| ZL8 | `/finish` paga sin la llave | L1-A5 |
+| ZL9 | `/answers` devuelve la `por_opcion` de todas las opciones | L1-A1 |
+| ZL10 | `/finish` no llama al gancho del refuerzo | L1-A5 |
+| ZL11 | El reintento repite las mismas preguntas aunque haya gemelas | L1-A6 |
+| ZL12 | `/submit` acepta un intento con respuestas guardadas | L1-A5 |
+| ZL13 (no-integ) | El segundo intento ignora la variable | L1-U4 |
+| ZL14 (no-integ) | La explicación de A2 sale marcada en inglés | L1-U5 |
+
+**Tramposos existentes sobre el camino tocado (ERR-26):** Y2 (`_tomar_intento`), Y11 (`start_attempt`), A3 (`question_to_schema`), A4 (`is_attempt_correct`), A5 (`submit_attempt`), ZW6 (`respondidas`), ZC10 (`desde_intento`), ZP9 y ZP10. Ninguna de esas firmas cambia; `/finish` pasa por `_tomar_intento`, `is_attempt_correct`, `respondidas` y `desde_intento`.
+
+### 10.8 Ediciones a lo existente (ERR-25)
+`alembic_version` → `045_correccion_por_pregunta` (12 líneas); `tablas_con_rls` 45 → 46; `tests/seguridad/test_sin_acceso.py` 46 → 47; `tests/teachers/test_access.py` gana 3 rutas; `src/challenge_engine/schemas.py` (`ChallengeQuestionIn` gana `explanation`, `accepted_answers`, `tolerancia` y `pista_inicial`), `service/challenges.py` (los guarda), `service/attempts.py` (`submit_attempt` se parte en dos sin cambiar lo que hace: lo que cierra el intento pasa a `cerrar_intento`; califica las preguntas del intento; 409 con respuestas guardadas; la paga del intento; `start_attempt` sirve las formas del reintento), `router.py` (tres rutas); `src/refuerzo/service.py`, `schemas.py` y `formas.py` (`vistas` cuenta las formas servidas en un reintento); `src/engrama_core/service/economia.py`; `src/shared/config.py` y `models.py`; `docs/PEDIDO_sembrador.md`.
+
+### 10.9 Cuentas
+L1-U1 a U5 (5) + ZL1 a ZL4, ZL13 y ZL14 (6) no-integ; L1-A1 a A6 y MG45 (7) + ZL5 a ZL12 (8) integ = **15 integ y 11 no-integ**. Sobre 731 + 23 y 197: **757 passed + 23 skipped y 208 no-integ**; ruff 0.
+
+### 10.10 Preguntas nuevas
+- **Al dueño:** ¿el segundo intento paga 5? (Pregunta 5 del dictamen; provisional: como hoy.) ¿Y un reintento con gemelas (preguntas que no ha visto) paga completo aunque la variable esté en 5? (Provisional: no; del segundo intento en adelante manda la variable.)
+- **Al pedagogo:** una gemela usada en un reintento ya no sirve a la cola de repaso ni a la segunda vuelta: ¿prioridad a cuál? (Provisional: el reintento la usa.)
+- §8.1 queda respondida de hecho: `/submit` no adopta la normalización nueva y convive hasta que engrama-web use `/answers` + `/finish`.
