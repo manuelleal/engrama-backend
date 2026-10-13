@@ -9,7 +9,7 @@ from collections import defaultdict
 from collections.abc import Collection
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, any_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.challenge_engine.service import challenges as challenges_service
@@ -65,6 +65,15 @@ async def vistas(db: AsyncSession, tenant_id: UUID,
         .where(ChallengeAttempt.tenant_id == tenant_id,
                ChallengeAttempt.student_id.in_(ids)).distinct())).all()
     for estudiante, question_id, item_ref in en_retos:
+        visto[estudiante].add(clave_de_forma(item_ref, question_id))
+    servidas = (await db.execute(  # las formas que se le sirvieron en un reintento
+        select(ChallengeAttempt.student_id, ChallengeQuestion.id, ChallengeQuestion.item_ref)
+        .join(ChallengeQuestion,
+              ChallengeQuestion.id == any_(ChallengeAttempt.served_questions))
+        .where(ChallengeAttempt.tenant_id == tenant_id,
+               ChallengeAttempt.student_id.in_(ids),
+               ChallengeAttempt.served_questions.is_not(None)).distinct())).all()
+    for estudiante, question_id, item_ref in servidas:
         visto[estudiante].add(clave_de_forma(item_ref, question_id))
     en_refuerzo = (await db.execute(
         select(ReinforcementAnswer.profile_id, ReinforcementAnswer.form_key)

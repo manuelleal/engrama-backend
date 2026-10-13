@@ -107,6 +107,20 @@ def paga_de_refuerzo(recompensa: int, paga_segunda_vuelta: int) -> int:
     return min(recompensa, max(paga_segunda_vuelta, 0))
 
 
+def paga_del_intento(recompensa: int, numero_intento: int,
+                     segundo_intento_paga: int | None) -> int:
+    """Lo que paga ganar un reto en ESE intento (1 = el primero).
+
+    El primer intento paga siempre el valor del reto. Del segundo en adelante,
+    `min(valor, segundo_intento_paga)`; sin esa variable (`None`), lo mismo que
+    el primero, como hoy. El segundo intento ya vio la correcta: ganar ahí es
+    reconocerla, no dominarla (dictamen 04, hecho 3).
+    """
+    if numero_intento <= 1 or segundo_intento_paga is None:
+        return recompensa
+    return min(recompensa, max(segundo_intento_paga, 0))
+
+
 def cupo_por_defecto(estudiantes_activos: int, piso: int) -> int:
     """`max_winners` de un reto creado SIN indicarlo: el tamaño del grupo, con piso.
 

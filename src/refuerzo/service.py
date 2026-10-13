@@ -14,9 +14,8 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.challenge_engine.schemas import AnswerSubmit
-from src.challenge_engine.service import attempts as attempts_service
 from src.challenge_engine.service import challenges as challenges_service
+from src.challenge_engine.service import explicar
 from src.foco import service as foco_service
 from src.racha import reglas as racha_reglas
 from src.racha import service as racha_service
@@ -24,7 +23,12 @@ from src.refuerzo import formas, reglas
 from src.refuerzo.reglas import Estado, Forma, Regla
 from src.refuerzo.schemas import PendienteOut, RefuerzoOut, RespuestaOut
 from src.shared.config import settings
-from src.shared.models import ChallengeQuestion, ReinforcementAnswer, ReinforcementQueue
+from src.shared.models import (
+    Challenge,
+    ChallengeQuestion,
+    ReinforcementAnswer,
+    ReinforcementQueue,
+)
 
 NO_TOCA = "no_toca_todavia"
 FORMA_NO_VIGENTE = "forma_no_vigente"
@@ -121,10 +125,16 @@ def _exigir_forma_vigente(forma: Forma | None, question_id: UUID) -> None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=FORMA_NO_VIGENTE)
 
 
-def _salida(entrada_id: int, pregunta: ChallengeQuestion, *, acerto: bool, estado: str,
-            proxima: datetime | None, repetida: bool) -> RespuestaOut:
+async def _salida(db: AsyncSession, entrada_id: int, pregunta: ChallengeQuestion, *,
+                  respuesta: str, acerto: bool, estado: str, proxima: datetime | None,
+                  repetida: bool) -> RespuestaOut:
+    """Lo que se dice tras responder: la correcta, su oración y la explicación (ESPEC_l1 §10.2)."""
+    reto = await db.get(Challenge, pregunta.challenge_id)
+    oracion, explicacion = explicar.retroalimentar(
+        pregunta, None if reto is None else reto.cefr_level, respuesta=respuesta, acerto=acerto)
     return RespuestaOut(entrada_id=entrada_id, question_id=pregunta.id, is_correct=acerto,
-                        correct_answer=pregunta.correct_answer or "", explanation=None,
+                        correct_answer=pregunta.correct_answer or "",
+                        oracion_correcta=oracion, explanation=explicacion,
                         estado=estado, proxima_fecha=proxima, repetida=repetida, coins_earned=0)
 
 
@@ -138,8 +148,9 @@ async def responder(db: AsyncSession, *, tenant_id: UUID, profile_id: UUID,
     previa = await _respuesta_previa(db, entrada.id, question_id)
     pregunta = await db.get(ChallengeQuestion, question_id)
     if previa is not None and pregunta is not None:  # gana la primera: se devuelve lo guardado
-        return _salida(entrada.id, pregunta, acerto=previa.is_correct,
-                       estado=previa.status_after, proxima=previa.due_after, repetida=True)
+        return await _salida(db, entrada.id, pregunta, respuesta=previa.answer,
+                             acerto=previa.is_correct, estado=previa.status_after,
+                             proxima=previa.due_after, repetida=True)
     ahora = _ahora()
     if not reglas.toca(entrada.status, entrada.next_due_at, ahora):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=NO_TOCA)
@@ -148,10 +159,8 @@ async def responder(db: AsyncSession, *, tenant_id: UUID, profile_id: UUID,
     _exigir_forma_vigente(plan.get(entrada.id), question_id)
     if pregunta is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=FORMA_NO_VIGENTE)
-    # La MISMA calificación de `/submit`: una sola fuente.
-    _puntaje, detalle = attempts_service.grade_answers(
-        [pregunta], [AnswerSubmit(question_id=question_id, answer=answer)])
-    acerto = bool(detalle[0]["is_correct"])
+    # La MISMA calificación de la respuesta por pregunta (`/answers`): una sola fuente.
+    acerto = explicar.acerto(pregunta, answer)
     etapa = reglas.etapa_de(entrada.status) or ""
     nuevo = reglas.transicion(
         Estado(entrada.status, entrada.hits, entrada.next_due_at, entrada.mastered_at),
@@ -169,5 +178,5 @@ async def responder(db: AsyncSession, *, tenant_id: UUID, profile_id: UUID,
     await racha_service.anotar_respuestas(
         db, tenant_id=tenant_id, profile_id=profile_id, origen=racha_reglas.ORIGEN_REPASO,
         respuestas=[(reglas.clave_de_forma(pregunta.item_ref, pregunta.id), acerto)])
-    return _salida(entrada.id, pregunta, acerto=acerto, estado=nuevo.status,
-                   proxima=nuevo.next_due_at, repetida=False)
+    return await _salida(db, entrada.id, pregunta, respuesta=answer, acerto=acerto,
+                         estado=nuevo.status, proxima=nuevo.next_due_at, repetida=False)

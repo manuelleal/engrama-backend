@@ -175,9 +175,16 @@ _TANDA: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/challenges/tanda", frozenset({"POST"})): "user",
 }
 
+# docs/ESPEC_l1_correccion_por_pregunta.md §10.3: responder pregunta por pregunta.
+_L1: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/challenges/attempts/{attempt_id}/answers", frozenset({"POST"})): "user",
+    ("/challenges/attempts/{attempt_id}/answers", frozenset({"GET"})): "user",
+    ("/challenges/attempts/{attempt_id}/finish", frozenset({"POST"})): "user",
+}
+
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS, **_EVENTOS,
-    **_CATALOGO, **_GRADER, **_FOCO, **_REFUERZO, **_RACHA, **_TANDA}
+    **_CATALOGO, **_GRADER, **_FOCO, **_REFUERZO, **_RACHA, **_TANDA, **_L1}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:

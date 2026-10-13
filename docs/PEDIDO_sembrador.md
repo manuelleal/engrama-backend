@@ -65,6 +65,24 @@ Hoy el sembrador pone en el feed, pagando 10 cada uno, el original, la gemela y 
 - **Requiere la migración 044 aplicada:** sin ella `POST /challenges/` responde 500 (falta la columna).
 - **Lo ya sembrado no cambia solo:** los retos de rol `gemela` y `repaso` que ya están en el feed siguen ahí hasta que se resiembren (o se archiven y se vuelvan a crear con el campo).
 
+## 3b. La explicación de cada pregunta (YA EXISTE desde la migración 045; `docs/ESPEC_l1_correccion_por_pregunta.md` §10.2)
+
+Para que la web muestre, tras cada respuesta, la correcta y la explicación, cada pregunta puede llevar `explanation`, con **la misma forma que `item.explicacion` del banco** (se manda tal cual):
+
+```json
+{"question_text": "Metrolínea is ___ than a taxi.", "correct_answer": "C", "...": "lo demás igual",
+ "explanation": {"regla": "Adjetivo de una sílaba o de dos con -y: -er + than.",
+                 "por_opcion": {"A": "…", "B": "…", "D": "…"},
+                 "ejemplo": "The 5:45 bus is faster than the 6:30 bus.",
+                 "idioma": "es"}}
+```
+
+- Todos los campos de `explanation` son opcionales. `idioma` es `es` o `en`; si no viene, el servidor pone `es` para retos A1 y A2 y `en` de B1 en adelante.
+- `oracion_correcta` (opcional, dentro de `explanation`): la oración completa correcta. Si no viene, el servidor rellena el hueco (`___`) del enunciado con el texto de la opción correcta; **conviene que cada enunciado tenga un solo hueco**.
+- Límites: `regla` y cada línea de `por_opcion` hasta 600 caracteres; `ejemplo` hasta 400; hasta 10 opciones. Pasarse responde 422.
+- **Requiere la migración 045 aplicada.** Sin `explanation`, la web muestra la correcta y la oración, sin regla ni ejemplo.
+- **Todavía no mandar** `tolerancia`, `pista_inicial` ni `accepted_answers` (son para respuestas escritas y esperan la firma del pedagogo).
+
 ## 4. Recomendaciones (no bloquean)
 
 - `max_attempts`: con 2, un reto ganado solo se puede repetir una vez, y el modo "repetir lo ganado" de la tanda (cuando el nivel se agota) se acaba pronto. Subirlo es decisión del dueño porque toca cuántas veces se puede intentar cobrar.

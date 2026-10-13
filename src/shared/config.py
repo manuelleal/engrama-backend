@@ -139,6 +139,14 @@ class Settings(BaseSettings):
     # o más, y paga a lo sumo `segunda_vuelta_paga`. Juicio del pedagogo.
     segunda_vuelta_dias: int = Field(default=21, ge=1, le=365)
     segunda_vuelta_paga: int = Field(default=5, ge=0, le=50)
+    # Lo que paga un reto del SEGUNDO intento en adelante (ESPEC_l1 §10.4; dictamen
+    # 04, hecho 3 y pregunta 5). SIN VALOR = como hoy: paga lo mismo que el primero.
+    # Con un número, `min(valor del reto, ese número)`. El primer intento nunca
+    # cambia. El dictamen propone 5; el dueño no ha respondido: no se pone.
+    segundo_intento_paga: int | None = Field(default=None, ge=0, le=50)
+    # El vocabulario para la tolerancia de una letra (ESPEC_l1 §10.1): un archivo
+    # de texto con una palabra por línea. Vacío = ninguna palabra es "válida".
+    lexico_archivo: str = Field(default="")
 
     # La asistencia (ESPEC_economia_oleada0 §1.1 y §5). TODOS ESTOS NÚMEROS SON
     # PROVISIONALES del arquitecto y Christiam puede vetarlos: por eso viven aquí

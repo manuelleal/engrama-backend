@@ -153,6 +153,11 @@ async def create_challenge(
                 item_ref=q.item_ref,
                 family_ref=q.familia,
                 form_role=q.rol,
+                explanation=(None if q.explanation is None
+                             else q.explanation.model_dump(exclude_none=True)),
+                accepted_answers=list(q.accepted_answers) or None,
+                tolerance=q.tolerancia,
+                hint_initial=q.pista_inicial,
             )
         )
     await db.flush()

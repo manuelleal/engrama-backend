@@ -48,12 +48,15 @@ from src.challenge_engine.schemas import (
     CorrectAnswerReveal,
 )
 from src.challenge_engine.service import challenges as challenges_service
+from src.challenge_engine.service import intento_formas
 from src.engrama_core.service import coins as coins_service
+from src.engrama_core.service import economia
 from src.practica import service as practica_service
 from src.racha import reglas as racha_reglas
 from src.racha import service as racha_service
 from src.refuerzo import cola as refuerzo_cola
 from src.refuerzo.reglas import clave_de_forma
+from src.shared.config import settings
 from src.shared.models import (
     Challenge,
     ChallengeAttempt,
@@ -214,17 +217,32 @@ async def start_attempt(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="No attempts remaining for this challenge",
             )
+        # Quien ya vio las claves de este reto por `/answers` reintenta con las
+        # formas GEMELAS que existan (ESPEC_l1 §10.4). El primer intento, y quien
+        # nunca respondió por pregunta, reciben las del reto: `None`.
+        servidas = None
+        if total_attempts > 0:
+            servidas = await intento_formas.formas_del_reintento(
+                db, tenant_id=tenant_id, student_id=student_id, group_code=group_code,
+                challenge=challenge,
+            )
         attempt = ChallengeAttempt(
             tenant_id=tenant_id,
             challenge_id=challenge_id,
             student_id=student_id,
             status="in_progress",
+            served_questions=servidas,
         )
         db.add(attempt)
         await db.flush()
         total_attempts += 1
 
-    challenge_schema = await challenges_service.hydrate(db, challenge)
+    if attempt.served_questions:
+        challenge_schema = intento_formas.esquema_del_intento(
+            challenge, await intento_formas.preguntas_del_intento(db, attempt)
+        )
+    else:
+        challenge_schema = await challenges_service.hydrate(db, challenge)
     return AttemptStartOut(
         attempt_id=attempt.id,
         challenge=challenge_schema,
@@ -235,6 +253,9 @@ async def start_attempt(
 # =============================================================================
 # 4.2 submit_attempt
 # =============================================================================
+CON_RESPUESTAS = "intento_con_respuestas"
+
+
 def llave_reto(challenge_id: UUID, student_id: UUID) -> str:
     """Llave de idempotencia de la paga de un reto (mismo formato que el backfill de la 033)."""
     return f"challenge:{challenge_id}:{student_id}"
@@ -285,11 +306,20 @@ async def submit_attempt(
             detail="Attempt already completed or abandoned",
         )
 
-    # 2. Cargar challenge + preguntas.
+    # 1b. Un intento que ya se respondió pregunta por pregunta se cierra con
+    # `/finish`: enviar todo de nuevo saltaría "gana la primera" (ESPEC_l1 §10.3).
+    if await intento_formas.tiene_respuestas(db, attempt.id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=CON_RESPUESTAS,
+        )
+
+    # 2. Cargar challenge + las preguntas DE ESTE INTENTO (las del reto, salvo
+    # un reintento con formas gemelas).
     challenge = await challenges_service.get_challenge(
         db, attempt.challenge_id, tenant_id
     )
-    questions = await challenges_service.get_questions(db, challenge.id)
+    questions = await intento_formas.preguntas_del_intento(db, attempt)
     if len(answers) != len(questions):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -298,8 +328,44 @@ async def submit_attempt(
             ),
         )
 
-    # 3. Calificar.
+    # 3. Calificar y cerrar.
     score_percent, details = grade_answers(questions, answers)
+    return await cerrar_intento(
+        db, attempt=attempt, challenge=challenge, questions=questions, details=details,
+        score_percent=score_percent, student_id=student_id, tenant_id=tenant_id,
+    )
+
+
+async def _numero_de_intento(db: AsyncSession, attempt: ChallengeAttempt) -> int:
+    """Qué intento es ESTE entre los completados del estudiante en el reto (1 = el primero)."""
+    previos = (await db.execute(
+        select(func.count()).select_from(ChallengeAttempt).where(
+            ChallengeAttempt.tenant_id == attempt.tenant_id,
+            ChallengeAttempt.challenge_id == attempt.challenge_id,
+            ChallengeAttempt.student_id == attempt.student_id,
+            ChallengeAttempt.status == "completed",
+        )
+    )).scalar_one()
+    return int(previos) + 1
+
+
+async def cerrar_intento(
+    db: AsyncSession,
+    *,
+    attempt: ChallengeAttempt,
+    challenge: Challenge,
+    questions: list[ChallengeQuestion],
+    details: list[dict[str, Any]],
+    score_percent: float,
+    student_id: UUID,
+    tenant_id: UUID,
+) -> AttemptSubmitOut:
+    """Cierra un intento ya calificado: racha, paga (una, con llave), cola y escalera.
+
+    El ÚNICO camino de cierre: lo usan `/submit` (todas las respuestas juntas)
+    y `/finish` (las guardadas pregunta por pregunta). Quien llama ya tiene el
+    intento bloqueado y `in_progress`.
+    """
     is_correct = is_attempt_correct(challenge.challenge_type, score_percent)
 
     # 3b. Lo respondido cuenta para el día activo de la racha semanal
@@ -326,6 +392,10 @@ async def submit_attempt(
         # Se paga lo mismo que se muestra: el valor guardado, con el tope (§1.4)
         # y, si el reto es `solo_refuerzo`, a lo sumo la paga de la segunda vuelta.
         recompensa = challenges_service.recompensa_de(challenge)
+        if settings.segundo_intento_paga is not None:  # sin la variable: como hoy
+            recompensa = economia.paga_del_intento(
+                recompensa, await _numero_de_intento(db, attempt),
+                settings.segundo_intento_paga)
         entrada = await coins_service.award_coins(
             db,
             student_id=student_id,

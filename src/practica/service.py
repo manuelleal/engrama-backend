@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from src.challenge_engine.service import challenges as challenges_service
-from src.engrama_core.service import level
+from src.engrama_core.service import economia, level
 from src.practica import consultas, reglas
 from src.practica.reglas import Candidato, Escalera, Tamano
 from src.practica.schemas import PracticaOut, RetoDeTandaOut, TandaDeHoyOut, TandaOut
@@ -286,7 +286,9 @@ async def _salida(db: AsyncSession, tenant_id: UUID, profile_id: UUID, group_cod
         ganado = estados[reto_id] == GANADO or ultima.modo == reglas.MODO_REPETIR
         retos.append(RetoDeTandaOut(
             estado=estados[reto_id],
-            paga=0 if ganado else challenges_service.recompensa_de(reto),
+            paga=0 if ganado else economia.paga_del_intento(
+                challenges_service.recompensa_de(reto),
+                2 if estados[reto_id] == JUGADO else 1, settings.segundo_intento_paga),
             reto=await challenges_service.hydrate(db, reto)))
     completa = _completa(estados)
     return TandaDeHoyOut(

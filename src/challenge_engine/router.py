@@ -34,6 +34,9 @@ from src.challenge_engine.schemas import (
     AttemptStartOut,
     AttemptSubmitOut,
     AttemptSubmitRequest,
+    EstadoDeIntentoOut,
+    RespuestaDeIntentoIn,
+    RespuestaDeIntentoOut,
     ChallengeCreate,
     ChallengeGenerateRequest,
     ChallengeOut,
@@ -42,6 +45,7 @@ from src.challenge_engine.schemas import (
 from src.challenge_engine.service import attempts as attempts_service
 from src.challenge_engine.service import challenges as challenges_service
 from src.challenge_engine.service import generator as generator_service
+from src.challenge_engine.service import por_pregunta as por_pregunta_service
 from src.foco import service as foco_service
 from src.foco.schemas import FocoEstudianteOut
 from src.practica import service as practica_service
@@ -338,6 +342,64 @@ async def submit_attempt(
         tenant_id=auth.tenant_id,
         attempt_id=attempt_id,
         answers=payload.answers,
+    )
+    await db.commit()
+    return result
+
+
+@router.post(
+    "/attempts/{attempt_id}/answers",
+    response_model=RespuestaDeIntentoOut,
+    status_code=status.HTTP_200_OK,
+)
+async def answer_question(
+    attempt_id: UUID,
+    payload: RespuestaDeIntentoIn,
+    auth: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> RespuestaDeIntentoOut:
+    """UNA respuesta: dice si acertó, la correcta y la explicación. Gana la primera. No paga."""
+    result = await por_pregunta_service.responder(
+        db,
+        student_id=auth.profile_id,
+        tenant_id=auth.tenant_id,
+        attempt_id=attempt_id,
+        question_id=payload.question_id,
+        answer=payload.answer,
+    )
+    await db.commit()
+    return result
+
+
+@router.get(
+    "/attempts/{attempt_id}/answers",
+    response_model=EstadoDeIntentoOut,
+    status_code=status.HTTP_200_OK,
+)
+async def read_answers(
+    attempt_id: UUID,
+    auth: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> EstadoDeIntentoOut:
+    """Lo ya respondido de ese intento (para retomarlo). NO escribe ni revela lo no respondido."""
+    return await por_pregunta_service.retomar(
+        db, student_id=auth.profile_id, tenant_id=auth.tenant_id, attempt_id=attempt_id
+    )
+
+
+@router.post(
+    "/attempts/{attempt_id}/finish",
+    response_model=AttemptSubmitOut,
+    status_code=status.HTTP_200_OK,
+)
+async def finish_attempt(
+    attempt_id: UUID,
+    auth: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AttemptSubmitOut:
+    """Cierra el intento con las respuestas guardadas por `/answers`. Paga como `/submit`."""
+    result = await por_pregunta_service.terminar(
+        db, student_id=auth.profile_id, tenant_id=auth.tenant_id, attempt_id=attempt_id
     )
     await db.commit()
     return result

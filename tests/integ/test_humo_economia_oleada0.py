@@ -48,7 +48,7 @@ LUNES_1 = date(2026, 10, 5)  # la semana 1 del humo: martes 6 y jueves 8 de octu
 
 # La PREDICCIÓN de la espec (§3.4), copiada tal cual. No se ajusta.
 HUMO_PREDICHO: dict[str, Any] = {
-    "alembic_version": "044_solo_refuerzo", "semilla": 42, "estudiantes": 30, "semanas": 4,
+    "alembic_version": "045_correccion_por_pregunta", "semilla": 42, "estudiantes": 30, "semanas": 4,
     "dias_de_clase": 9, "sesiones": 10, "retos": 12,
     "perfiles": {
         "muy_activo": {"n": 6, "asistencia": 90, "retos": 120, "eva": 80, "total": 290},

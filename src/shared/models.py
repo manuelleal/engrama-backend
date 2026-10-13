@@ -498,6 +498,19 @@ class ChallengeQuestion(Base):
     item_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
     family_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
     form_role: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 045: lo que se le dice al estudiante DESPUÉS de responder (ESPEC_l1 §10.2):
+    # `{regla, por_opcion: {label: texto}, ejemplo, idioma, oracion_correcta}`.
+    # NUNCA sale antes de responder esa pregunta.
+    explanation: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # 045: otras respuestas escritas que también aciertan, la tolerancia de
+    # tipeo y la pista con inicial. Apagadas por defecto (falta el pedagogo).
+    accepted_answers: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    tolerance: Mapped[str] = mapped_column(
+        Text, nullable=False, default="exacta", server_default=text("'exacta'")
+    )
+    hint_initial: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("FALSE")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -506,6 +519,8 @@ class ChallengeQuestion(Base):
         Index("idx_challenge_questions_nodes", "nodes", postgresql_using="gin"),
         CheckConstraint("form_role IS NULL OR form_role IN ('original','gemela','repaso')",
                         name="challenge_questions_form_role_check"),
+        CheckConstraint("tolerance IN ('exacta','1_letra')",
+                        name="challenge_questions_tolerance_check"),
         Index("idx_challenge_questions_item_ref", "item_ref",
               postgresql_where=text("item_ref IS NOT NULL")),
     )
@@ -553,6 +568,11 @@ class ChallengeAttempt(Base):
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
     drako_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 045: las preguntas que se le sirvieron a ESTE intento cuando no son las del
+    # reto (el reintento con formas gemelas, ESPEC_l1 §10.4). NULL = las del reto.
+    served_questions: Mapped[list[Any] | None] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=True
+    )
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -571,6 +591,46 @@ class ChallengeAttempt(Base):
         Index("idx_attempts_challenge", "challenge_id"),
         Index("idx_attempts_student", "student_id"),
         Index("idx_attempts_tenant", "tenant_id"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# 045 — challenge_attempt_answers (docs/ESPEC_l1_correccion_por_pregunta.md §10.5)
+# -----------------------------------------------------------------------------
+class ChallengeAttemptAnswer(Base):
+    """UNA respuesta de un intento, guardada al responder (`/answers`).
+
+    Una fila por `(intento, pregunta)`: gana la primera. `answered_at` lo pone
+    el servidor: es el dato de "cuánto tardó en responder" (dictamen 04, riesgo 1).
+    """
+
+    __tablename__ = "challenge_attempt_answers"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    attempt_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("challenge_attempts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    question_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("challenge_questions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    is_correct: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    answered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("attempt_id", "question_id",
+                         name="challenge_attempt_answers_attempt_question_key"),
+        Index("idx_challenge_attempt_answers_owner", "tenant_id", "profile_id"),
     )
 
 

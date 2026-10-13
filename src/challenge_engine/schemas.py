@@ -48,6 +48,24 @@ _CHALLENGE_STATUSES = ("active", "inactive", "archived")
 # =============================================================================
 # CHALLENGES — entrada
 # =============================================================================
+class ExplicacionIn(BaseModel):
+    """La explicación de una pregunta, con la forma del banco (`item.explicacion`).
+
+    Sale DESPUÉS de responder (ESPEC_l1 §10.2): la regla, por qué no cada
+    opción, un ejemplo; `idioma` y `oracion_correcta` son opcionales.
+    """
+
+    model_config = _STRICT
+
+    regla: str | None = Field(default=None, min_length=1, max_length=600)
+    por_opcion: dict[Annotated[str, Field(min_length=1, max_length=16)],
+                     Annotated[str, Field(min_length=1, max_length=600)]] | None = Field(
+        default=None, max_length=10)
+    ejemplo: str | None = Field(default=None, min_length=1, max_length=400)
+    idioma: Literal["es", "en"] | None = None
+    oracion_correcta: str | None = Field(default=None, min_length=1, max_length=600)
+
+
 class ChallengeQuestionIn(BaseModel):
     """Una pregunta para crear dentro de un Challenge.
 
@@ -71,6 +89,13 @@ class ChallengeQuestionIn(BaseModel):
     item_ref: str | None = Field(default=None, min_length=1, max_length=128)
     familia: str | None = Field(default=None, min_length=1, max_length=128)
     rol: Literal["original", "gemela", "repaso"] | None = None
+    # Lo que se le dice tras responder y cómo se compara una respuesta escrita
+    # (ESPEC_l1 §1.5 y §10.2). Opcionales; NUNCA salen en `ChallengeQuestionOut`.
+    explanation: ExplicacionIn | None = None
+    accepted_answers: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        default_factory=list, max_length=10)
+    tolerancia: Literal["exacta", "1_letra"] = "exacta"
+    pista_inicial: bool = False
 
 
 class ChallengeCreate(BaseModel):
@@ -222,6 +247,53 @@ class AttemptSubmitOut(BaseModel):
     drako_feedback: str | None = None
     total_attempts_used: int
     attempts_remaining: int
+
+
+class RespuestaDeIntentoIn(BaseModel):
+    """Body de POST /attempts/{id}/answers: UNA respuesta."""
+
+    model_config = _STRICT
+
+    question_id: UUIDIn
+    answer: str = Field(max_length=2000)
+
+
+class ExplicacionOut(BaseModel):
+    """La explicación tras responder, con el formato del dictamen 04 §1.5."""
+
+    model_config = _STRICT
+
+    idioma: str  # es | en: en qué idioma están escritos los textos
+    regla: str | None = None
+    por_opcion: str | None = None  # por qué no la SUYA; solo si falló
+    ejemplo: str | None = None
+
+
+class RespuestaDeIntentoOut(BaseModel):
+    """Lo que se dice de UNA pregunta ya respondida (y de ninguna otra)."""
+
+    model_config = _STRICT
+
+    question_id: UUID
+    is_correct: bool
+    answer: str  # la que quedó guardada (gana la primera)
+    correct_answer: str
+    oracion_correcta: str  # la oración completa correcta, no solo la letra
+    explanation: ExplicacionOut | None = None
+    repetida: bool
+    respondidas: int
+    total: int
+
+
+class EstadoDeIntentoOut(BaseModel):
+    """GET /attempts/{id}/answers: lo ya respondido de ese intento, para retomar."""
+
+    model_config = _STRICT
+
+    status: str
+    total: int
+    pistas: dict[str, str]  # {pregunta: la letra que se muestra antes de responder}
+    respondidas: list[RespuestaDeIntentoOut]
 
 
 class AttemptHistoryOut(BaseModel):

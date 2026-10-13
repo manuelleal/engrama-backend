@@ -46,7 +46,9 @@ class RespuestaOut(BaseModel):
     question_id: UUID
     is_correct: bool
     correct_answer: str
-    explanation: dict[str, Any] | None = None  # llega con L1; el campo ya es del contrato
+    oracion_correcta: str | None = None  # la oración completa correcta, no solo la letra
+    # `{idioma, regla, por_opcion, ejemplo}` (ESPEC_l1 §10.2), o null si no se sembró.
+    explanation: dict[str, Any] | None = None
     estado: str
     proxima_fecha: datetime | None
     repetida: bool
