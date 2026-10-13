@@ -248,3 +248,40 @@ L1-U1 a U5 (5) + ZL1 a ZL4, ZL13 y ZL14 (6) no-integ; L1-A1 a A6 y MG45 (7) + ZL
 - **Al dueño:** ¿el segundo intento paga 5? (Pregunta 5 del dictamen; provisional: como hoy.) ¿Y un reintento con gemelas (preguntas que no ha visto) paga completo aunque la variable esté en 5? (Provisional: no; del segundo intento en adelante manda la variable.)
 - **Al pedagogo:** una gemela usada en un reintento ya no sirve a la cola de repaso ni a la segunda vuelta: ¿prioridad a cuál? (Provisional: el reintento la usa.)
 - §8.1 queda respondida de hecho: `/submit` no adopta la normalización nueva y convive hasta que engrama-web use `/answers` + `/finish`.
+
+---
+
+## 11. Medido (2026-10-13)
+
+### Cuentas
+**208 no-integ**; `ruff check .` 0. Suite completa de este bloque en un contenedor de prueba propio (1.092 s; sin los archivos del bloque 5): **756 passed + 23 skipped y 1 rojo**, L1-A6 (abajo). Corregido, **757 passed + 23 skipped**, igual a §10.9. Después se agregó un tramposo (ZL15): **758 + 23**. La suite final, con el bloque 5, está en `ESPEC_humo_reto_del_dia.md` §10.
+
+### Diagonal medida: 15 de 15 rojos por su razón
+ZL1 a ZL4, ZL13 y ZL14 (no-integ) y ZL5 a ZL12 y ZL15 (integ), en `tests/tramposos/test_tramposos_l1.py`. **Solo la diagonal.**
+
+### Los seis tests L1-A pasaron en su primera corrida, con los valores escritos antes
+Con dos salvedades, las dos del TEST y no del código:
+- **L1-A6 se puso rojo en la suite completa** (y verde suelto): comparaba las pagas de un reto en el orden del `id` del libro, que es un UUID. Ahora el ayudante las ordena por monto. Lo pagado no cambió: 10, 5 y 10.
+- **L1-U5 tenía un esperado mal escrito:** el caso "sin opciones" usaba un enunciado CON hueco y esperaba la clave sola; la regla de §10.2 rellena el hueco (`x C`). Se corrigió el esperado; el código no se tocó.
+
+### Ediciones a lo existente que §10.8 no listaba
+- `tests/tramposos/test_tramposos_422_sin_eco.py`: ZE1 y ZE2 llevan escrito cuántas rutas reciben cuerpo (21 → 22 y 19 → 20), y `/answers` es una más.
+- El esperado de L1-U4 del borrador gana `idioma` en la explicación.
+- `ChallengeQuestionOut` quedó intacto (por eso `pista` salió por `GET …/answers`).
+
+### Agregado después de cerrar (se declara)
+§10.4 afirma que una gemela servida en un reintento queda vista. No tenía test. Se agregó la aserción a L1-A6 y su tramposo **ZL15**; con el código bueno era verdad antes y después.
+
+### Decisiones tomadas al implementar
+- `/submit` suma una consulta (¿el intento tiene respuestas guardadas?). La paga del intento solo cuenta los intentos previos cuando `SEGUNDO_INTENTO_PAGA` tiene valor: sin la variable, `/submit` paga con las mismas consultas de antes.
+- `/submit` califica las preguntas DEL INTENTO (las del reto, salvo un reintento con gemelas de quien ya usó `/answers`).
+- En la tanda, `paga` de un reto `jugado` muestra lo que pagaría el segundo intento (solo cambia si la variable tiene valor).
+- El repaso califica ahora con `calificar`: también acepta el texto de la opción, no solo la letra.
+- Módulos nuevos: `calificar.py` (puro), `explicar.py`, `intento_formas.py` y `por_pregunta.py`. `attempts.py` ya pasaba de 400 líneas (444) y quedó en 517: partirlo sin mover lo que seis tramposos reemplazan es otra espec.
+
+### No medido
+- **La tolerancia de una letra, la pista y `LEXICO_ARCHIVO` por HTTP:** solo tienen tests puros; la lectura del archivo del vocabulario no tiene ninguno. Están apagadas por defecto.
+- `GET …/answers` con pistas (ningún reto de los tests lleva pista).
+- Con el banco real y con engrama-web. Las explicaciones del banco pasan de 18 palabras en `por_opcion`: el servidor no las recorta.
+- El `downgrade` por la CLI de Alembic.
+- Dos `/finish` a la vez (pasan por el mismo candado que CC2 prueba para `/submit`; no hay test propio).
