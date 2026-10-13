@@ -138,3 +138,35 @@ El hueco de contenido en el panel del profe; avisar el cambio de nivel; el nivel
 ## 9. Veredicto
 - **FUNCIONA:** las cuentas de §5, la diagonal medida, MG43 y los previos verdes.
 - **NO:** el nivel de práctica aparece en `confirmed_levels` o en el escudo; la tanda trae la clave, retos de otro grupo o de otro nivel; el tope no detiene; el feed cambia; un tramposo queda verde.
+
+---
+
+## 10. Medido (2026-10-12)
+
+### Cuentas
+**713 passed + 23 skipped** (suite completa, 1.227 s, en un contenedor de prueba propio); **193 no-integ**; `ruff check .` 0. Igual a §5. Las ediciones a lo existente fueron las de §4.
+
+### Diagonal medida: 13 de 13 rojos por su razón
+ZP1 a ZP4 (no-integ) y ZP5 a ZP13 (integ), en `tests/tramposos/test_tramposos_practica.py`. **Solo la diagonal:** la matriz completa no se corrió.
+
+### Un defecto real que los tests encontraron (primera corrida: TD4 y TD6 rojos)
+La escalera **nunca se movía**: la fila del nivel nace dentro del primer `/submit`, con `ventana_desde = ahora`, y ese primer intento (calificado un instante antes) quedaba fuera de la ventana. Arreglo: quien empieza nace con la ventana abierta (`VENTANA_ABIERTA`, año 2000); solo un cambio de nivel la vacía. Ningún criterio se movió: TD4 y TD6 pasaron con sus valores escritos de antemano.
+
+### Un ajuste a un test después de ver un tramposo (ERR-9; se declara)
+Con ZP12 (la tanda sin repaso), TD3 caía por `IndexError` al tomar `repaso[0]`, no por una aserción. Se agregó `assert len(repaso) == 3` antes de usarlo. El criterio de TD3 no cambió; con el código bueno era verde antes y después.
+
+### Una predicción corregida antes de medir
+ZP8 (sin tope diario): el rojo predicho era "crea una tercera tanda". En TD2 no queda contenido para una tercera, así que el rojo medido es `puede_pedir_otra: true` y `listo_por_hoy: false` tras la segunda.
+
+### Lo que este bloque NO trae (se declara)
+- **La segunda vuelta con gemelas** (dictamen §1.3, "cuando se acaba el nivel", paso 2) y el filtro "solo `original` y lecturas": dependen de `solo_refuerzo` (bloque 3, sin código). **Hoy la tanda sirve también los retos de rol `gemela` y `repaso` si están sembrados con nivel**, igual que el feed: el hecho 2 del dictamen (se paga tres veces lo mismo) sigue abierto.
+- "Decisión" = cambio de nivel es interpretación mía; va como pregunta al pedagogo.
+- Subir de nivel porque el actual se agotó no cuenta como decisión rápida ni exige acierto: solo que el límite lo deje y que arriba haya algo.
+
+### No medido
+- Dos `POST /challenges/tanda` **a la vez** (hay candado sobre `practice_levels`; no hay test con dos hilos).
+- Con el banco real sembrado: cuántos días tarda en agotarse un nivel, y el orden real de las unidades (se probó con `topic` sintético).
+- El reancla cuando SET confirma un nivel DESPUÉS de que el estudiante ya practicaba (el código existe; ningún test lo ejercita).
+- El costo de `POST /challenges/tanda` (unas 12 consultas más una por reto servido).
+- Humo con sintéticos y réplica: eran el bloque 5 del encargo; **no se hicieron** (ni para la racha ni para la tanda).
+- Contra el piloto y contra engrama-web.
