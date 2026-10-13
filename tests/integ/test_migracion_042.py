@@ -10,7 +10,7 @@ sin esa columna, que es justo lo que hace Alembic si se salta la 044.
 """
 from __future__ import annotations
 
-from types import SimpleNamespace
+from types import ModuleType
 
 import pytest
 
@@ -21,8 +21,9 @@ pytestmark = pytest.mark.integ
 TABLAS = ("activity_days", "streak_state")
 M042 = cargar("042_racha_semanal.py")
 M044 = cargar("044_solo_refuerzo.py")
-CADENA = SimpleNamespace(SQL_SUBIR=(*M042.SQL_SUBIR, *M044.SQL_SUBIR),
-                         SQL_BAJAR=(*M044.SQL_BAJAR, *M042.SQL_BAJAR))
+CADENA = ModuleType("cadena_042_044")
+CADENA.SQL_SUBIR = (*M042.SQL_SUBIR, *M044.SQL_SUBIR)  # type: ignore[attr-defined]
+CADENA.SQL_BAJAR = (*M044.SQL_BAJAR, *M042.SQL_BAJAR)  # type: ignore[attr-defined]
 
 
 def test_mg42_sube_baja_y_vuelve_a_subir_identica(integ) -> None:

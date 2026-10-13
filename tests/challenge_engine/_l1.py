@@ -86,7 +86,7 @@ def responder_crudo(integ: Any, quien: UUID, intento_id: str, pregunta_id: str,
 def responder(integ: Any, quien: UUID, intento_id: str, pregunta_id: str, respuesta: str,
               **headers: str) -> Any:
     """`(estado, (¿acertó?, guardada, correcta, oración, explicación, ¿repetida?, n, total))`."""
-    r = responder_crudo(integ, quien, intento_id, pregunta_id, respuesta, **headers)
+    r = responder_crudo(integ, quien, intento_id, pregunta_id, respuesta, None, **headers)
     if r.status_code != 200:
         return r.status_code, _detalle(r)
     c = r.json()

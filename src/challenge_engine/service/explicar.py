@@ -18,7 +18,7 @@ from src.shared.models import ChallengeQuestion
 
 def a_pregunta(q: ChallengeQuestion) -> Pregunta:
     """Lo que hace falta de la pregunta para calificarla (sin ORM)."""
-    opciones = q.options_json if isinstance(q.options_json, list) else ()
+    opciones: list[Any] = q.options_json if isinstance(q.options_json, list) else []
     return Pregunta(
         question_type=q.question_type, correct_answer=q.correct_answer or "",
         options=tuple(o for o in opciones if isinstance(o, dict)),

@@ -20,7 +20,8 @@ pytestmark = pytest.mark.integ
 P = "pendiente"
 
 
-def _familia(integ: Any, c: Any, nodos: list[str] | None = None) -> dict[str, Any]:
+def _familia(integ: Any, c: Any,
+             nodos: list[str] | None = None) -> dict[str, tuple[str, list[str]]]:
     """El original (feed), la gemela y el repaso (`solo_refuerzo`) de dos familias."""
     n = nodos or []
     return {

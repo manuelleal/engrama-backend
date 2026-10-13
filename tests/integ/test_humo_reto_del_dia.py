@@ -167,7 +167,7 @@ def _vivir(integ: Any, monkeypatch: pytest.MonkeyPatch, *, semilla: int, semanas
     reloj = sim.Reloj()
     sim.instalar(monkeypatch, reloj)
     cat.cargar(integ, cat.mapa_v1())
-    politicas = sim.CUATRO
+    politicas: tuple[sim.Politica, ...] = sim.CUATRO
     if con_set:
         politicas = (*politicas, *(sim.Politica(
             nombre, asiste=(), practica=(1, 3, 5), tandas=1, modo="sabe", acierta=0.75,
