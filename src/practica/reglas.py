@@ -8,8 +8,9 @@ escriba ni lea el nivel confirmado; solo se recibe, como `ancla`.
 """
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import TypeVar
 
 NIVELES: tuple[str, ...] = ("A1", "A2", "B1", "B2", "C1")
@@ -51,6 +52,7 @@ class Candidato:
     skill: str | None
     title: str
     preguntas: int
+    nivel: str | None = None  # de qué nivel salió (lo prestado no es del de práctica)
 
 
 def base(cefr: str | None) -> str | None:
@@ -83,6 +85,42 @@ def mover(nivel: str, pasos: int, ancla: str | None) -> str:
     """El nivel a `pasos` escalones, sin salirse de los límites."""
     minimo, maximo = limites(ancla)
     return NIVELES[max(minimo, min(maximo, NIVELES.index(nivel) + pasos))]
+
+
+def otros_niveles(nivel: str) -> list[str]:
+    """De dónde se PRESTA cuando el nivel no tiene nada: el más cercano primero,
+    hacia abajo antes que hacia arriba (B1 → A2, A1, B2, C1)."""
+    i = NIVELES.index(nivel)
+    return [*reversed(NIVELES[:i]), *NIVELES[i + 1:]]
+
+
+@dataclass(frozen=True)
+class FormaDeReto:
+    """Una pregunta de un reto `solo_refuerzo`, para decidir la segunda vuelta."""
+
+    clave: str  # su identidad (la misma de la cola de repaso)
+    familia: str | None
+    rol: str | None
+
+
+def elegible_segunda_vuelta(formas: Sequence[FormaDeReto], vistas: Collection[str],
+                            original_jugado: Mapping[str, datetime], ahora: datetime,
+                            dias: int) -> bool:
+    """¿Ese reto entra a la segunda vuelta de ese estudiante? (ESPEC_solo_refuerzo §1.3)
+
+    Todas sus preguntas son gemelas que NO ha visto, y el original de cada
+    familia lo jugó (la última vez) hace `dias` o más. `original_jugado` es
+    `{familia: último intento completado del original}`.
+    """
+    if not formas:
+        return False
+    for f in formas:
+        if f.rol != "gemela" or f.familia is None or f.clave in vistas:
+            return False
+        jugado = original_jugado.get(f.familia)
+        if jugado is None or ahora - jugado < timedelta(days=dias):
+            return False
+    return True
 
 
 def ventana_vigente(ancla: str | None, decisiones: int, e: Escalera) -> tuple[int, int, int]:

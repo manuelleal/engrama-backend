@@ -50,16 +50,20 @@ Un nodo que no está en el catálogo responde **422 `nodo_desconocido`** y el re
 - Las lecturas (`lo_dice`) van sin `rol` y sin `familia`; `nodos` e `item_ref` si los tienen.
 - Sin `max_winners`, como hoy.
 
-## 3. Lo que cambia cuando exista `solo_refuerzo` (PENDIENTE en el backend: bloque 3, sin código)
+## 3. `solo_refuerzo` (YA EXISTE en el backend desde la migración 044; `docs/ESPEC_solo_refuerzo.md`)
 
-Hoy el sembrador pone en el feed, pagando 10 cada uno, el original, la gemela y el repaso de la misma familia. El dictamen pide que **solo el `original` y las lecturas** entren al feed y a la tanda; los retos de rol `gemela` y `repaso` se sembrarán con un campo nuevo del reto:
+Hoy el sembrador pone en el feed, pagando 10 cada uno, el original, la gemela y el repaso de la misma familia. El dictamen pide que **solo el `original` y las lecturas** entren al feed y a la tanda; los retos de rol `gemela` y `repaso` se siembran con un campo del reto:
 
 ```json
 {"title": "b1-u01 · Job interview · Gramática 2 · gemela", "solo_refuerzo": true, "...": "lo demás igual"}
 ```
 
-- **Ese campo todavía NO existe:** hoy `POST /challenges/` responde 422 si llega (`extra = forbid`). No mandarlo hasta que el backend lo anuncie.
-- **Mientras tanto** (para el piloto del jueves): sembrar los tres roles como hoy, pero **con `nodos`, `item_ref`, `familia` y `rol`**. La cola de repaso ya funciona con eso; su límite conocido es que quien abre el reto de la gemela la "ve" y deja de servirle como repaso (`ESPEC_refuerzo.md` §12).
+- **Regla para el sembrador:** `solo_refuerzo: true` en todo reto cuyas preguntas sean de rol `gemela` o `repaso`; el `original` y las lecturas, sin el campo (o en `false`).
+- **Un reto por rol, sin mezclar:** la segunda vuelta (a 21 días del original, paga 5) solo toma retos cuyas preguntas sean **todas** `gemela`. Un reto que mezcle `gemela` y `repaso` sirve a la cola de repaso pero nunca a la segunda vuelta.
+- Cada pregunta lleva su `familia` y su `rol`: sin `familia`, la gemela no se puede emparejar con su original.
+- Qué hace el backend con un reto `solo_refuerzo`: no sale en el feed ni en la tanda de retos nuevos; un estudiante recibe 404 si intenta abrirlo; sus preguntas son las formas de la cola de repaso; muestra y paga a lo sumo 5 (`SEGUNDA_VUELTA_PAGA`).
+- **Requiere la migración 044 aplicada:** sin ella `POST /challenges/` responde 500 (falta la columna).
+- **Lo ya sembrado no cambia solo:** los retos de rol `gemela` y `repaso` que ya están en el feed siguen ahí hasta que se resiembren (o se archiven y se vuelvan a crear con el campo).
 
 ## 4. Recomendaciones (no bloquean)
 

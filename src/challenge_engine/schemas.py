@@ -92,6 +92,10 @@ class ChallengeCreate(BaseModel):
     # ESPEC_economia_oleada0 §1.5. Un número explícito se respeta tal cual.
     max_winners: int | None = Field(default=None, ge=1)
     group_id: UUIDIn | None = None  # None = visible a todo el tenant
+    # El reto NO sale en el feed ni en la tanda de retos nuevos: sus preguntas son
+    # formas para la cola de repaso y la segunda vuelta (ESPEC_solo_refuerzo §1.1).
+    # Lo marca el sembrador en los retos de rol `gemela` y `repaso`.
+    solo_refuerzo: bool = False
     questions: list[ChallengeQuestionIn] = Field(min_length=1)
 
     @field_validator("coins_reward")

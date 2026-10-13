@@ -43,6 +43,7 @@ from src.shared.models import (
     ChallengeQuestion,
     Group,
     Membership,
+    PracticeTanda,
 )
 
 
@@ -134,6 +135,7 @@ async def create_challenge(
         xp_reward=data.xp_reward,
         max_attempts=data.max_attempts,
         max_winners=max_winners,
+        solo_refuerzo=data.solo_refuerzo,
     )
     db.add(challenge)
     await db.flush()  # necesitamos challenge.id para las preguntas
@@ -185,6 +187,46 @@ def filtro_grupo_estudiante(tenant_id: UUID, group_code: str | None) -> ColumnEl
     return Challenge.group_id.is_(None)
 
 
+def fuera_de_refuerzo() -> ColumnElement[bool]:
+    """Los retos de siempre. Uno `solo_refuerzo` no es un reto del feed ni de la tanda:
+    sus preguntas son formas para el repaso y la segunda vuelta (ESPEC_solo_refuerzo §1.2).
+
+    Es la ÚNICA fuente de esta regla: la usan el feed y la tanda.
+    """
+    return Challenge.solo_refuerzo.is_(False)
+
+
+def recompensa_de(challenge: Challenge) -> int:
+    """Lo que ese reto paga Y muestra: su valor con el tope y, si es `solo_refuerzo`,
+    a lo sumo la paga de la segunda vuelta. La ÚNICA fuente: la usan la paga, el
+    esquema del reto y la tanda."""
+    recompensa = economia.recompensa_del_reto(challenge.coins_reward,
+                                              settings.reto_monedas_tope)
+    if challenge.solo_refuerzo:
+        return economia.paga_de_refuerzo(recompensa, settings.segunda_vuelta_paga)
+    return recompensa
+
+
+async def exigir_que_pueda_abrirlo(db: AsyncSession, challenge: Challenge, *,
+                                   student_id: UUID, es_personal: bool) -> None:
+    """Un estudiante solo abre un reto `solo_refuerzo` si está en una tanda SUYA de
+    segunda vuelta. Si no, el MISMO 404 de un id que no existe (no delata que existe).
+
+    El personal no cambia. Un reto que no es `solo_refuerzo` no cuesta ni una consulta.
+    """
+    if es_personal or not challenge.solo_refuerzo:
+        return
+    en_su_tanda = (await db.execute(
+        select(PracticeTanda.id).where(
+            PracticeTanda.tenant_id == challenge.tenant_id,
+            PracticeTanda.profile_id == student_id,
+            PracticeTanda.modo == "segunda_vuelta",
+            PracticeTanda.retos.any(challenge.id)).limit(1))).scalar_one_or_none()
+    if en_su_tanda is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Challenge not found")
+
+
 async def list_challenges_for_student(
     db: AsyncSession,
     *,
@@ -223,6 +265,7 @@ async def list_challenges_for_student(
             Challenge.current_winners < Challenge.max_winners,
             group_filter,
             attempts_count < Challenge.max_attempts,
+            fuera_de_refuerzo(),
         )
         .order_by(Challenge.created_at.desc())
     )
@@ -377,8 +420,7 @@ def challenge_to_schema(
         skill=challenge.skill,
         topic=challenge.topic,
         # Lo que se muestra es lo que se paga: el valor guardado, con el tope.
-        coins_reward=economia.recompensa_del_reto(challenge.coins_reward,
-                                                  settings.reto_monedas_tope),
+        coins_reward=recompensa_de(challenge),
         xp_reward=challenge.xp_reward,
         max_attempts=challenge.max_attempts,
         max_winners=challenge.max_winners,
@@ -403,6 +445,9 @@ __all__ = [
     "get_challenge_for",
     "stmt_reto_del_tenant",
     "filtro_grupo_estudiante",
+    "fuera_de_refuerzo",
+    "recompensa_de",
+    "exigir_que_pueda_abrirlo",
     "get_questions",
     "update_challenge_status",
     "question_to_schema",

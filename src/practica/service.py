@@ -24,8 +24,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from src.challenge_engine.service import challenges as challenges_service
-from src.engrama_core.service import economia, level
-from src.practica import reglas
+from src.engrama_core.service import level
+from src.practica import consultas, reglas
 from src.practica.reglas import Candidato, Escalera, Tamano
 from src.practica.schemas import PracticaOut, RetoDeTandaOut, TandaDeHoyOut, TandaOut
 from src.racha import service as racha_service
@@ -41,7 +41,7 @@ from src.shared.models import (
     ReinforcementAnswer,
 )
 
-PENDIENTE, JUGADO, GANADO = "pendiente", "jugado", "ganado"
+PENDIENTE, JUGADO, GANADO = consultas.PENDIENTE, consultas.JUGADO, consultas.GANADO
 TIPOS_FUERA = ("open",)  # no se autocalifican: no entran a la tanda
 # Quien empieza no ha cambiado de nivel: su ventana mira todo lo que ya respondió
 # (también el intento que hizo nacer la fila). Solo un CAMBIO de nivel la vacía.
@@ -74,6 +74,11 @@ def _del_dueno(modelo: type[PracticeLevel] | type[PracticeTanda], tenant_id: UUI
 def _visibles(tenant_id: UUID, group_code: str | None) -> ColumnElement[bool]:
     """Qué retos ve el estudiante: la MISMA regla del feed (BUG-15; una sola fuente)."""
     return challenges_service.filtro_grupo_estudiante(tenant_id, group_code)
+
+
+def _del_feed() -> ColumnElement[bool]:
+    """Los retos de siempre: los `solo_refuerzo` no son retos nuevos de la tanda."""
+    return challenges_service.fuera_de_refuerzo()
 
 
 def _del_nivel(nivel: str) -> ColumnElement[bool]:
@@ -131,21 +136,9 @@ async def _primeros_intentos(db: AsyncSession, tenant_id: UUID, profile_id: UUID
     Primer intento = el primer intento completado de ese estudiante en ese
     reto: el segundo ya vio la clave y no cuenta (`_es_el_primero`).
     """
-    filas = (await db.execute(
-        select(ChallengeAttempt.answers)
-        .join(Challenge, Challenge.id == ChallengeAttempt.challenge_id)
-        .where(ChallengeAttempt.tenant_id == tenant_id,
-               ChallengeAttempt.student_id == profile_id,
-               ChallengeAttempt.status == "completed",
-               ChallengeAttempt.completed_at > desde,
-               _del_nivel(nivel), _es_el_primero())
-        .order_by(ChallengeAttempt.completed_at.desc(), ChallengeAttempt.id)
-        .limit(cuantas))).scalars().all()
-    resultados: list[bool] = []
-    for respuestas in reversed(filas):  # del más viejo al más nuevo
-        resultados.extend(bool(r.get("is_correct")) for r in respuestas or []
-                          if isinstance(r, dict))
-    return resultados
+    return await consultas.aciertos(
+        db, tenant_id, profile_id, desde, cuantas,
+        donde=[_del_nivel(nivel), _es_el_primero()])
 
 
 def _es_el_primero() -> ColumnElement[bool]:
@@ -192,24 +185,53 @@ async def _candidatos(db: AsyncSession, tenant_id: UUID, profile_id: UUID,
                       group_code: str | None, nivel: str, fuera: Sequence[UUID], *,
                       ganados: bool) -> list[Candidato]:
     """Los retos del nivel que podrían entrar: no ganados (nuevos) o ya ganados (repetir)."""
-    intentos = (select(func.count()).select_from(ChallengeAttempt)
-                .where(ChallengeAttempt.challenge_id == Challenge.id,
-                       ChallengeAttempt.student_id == profile_id)
-                .correlate(Challenge).scalar_subquery())
     preguntas = (select(func.count()).select_from(ChallengeQuestion)
                  .where(ChallengeQuestion.challenge_id == Challenge.id)
                  .correlate(Challenge).scalar_subquery())
     ganado = _ganado_por(profile_id)
     stmt = select(Challenge.id, Challenge.topic, Challenge.skill, Challenge.title,
                   preguntas).where(
-        Challenge.tenant_id == tenant_id, Challenge.status == "active",
-        _visibles(tenant_id, group_code), _del_nivel(nivel),
-        Challenge.challenge_type.not_in(TIPOS_FUERA), intentos < Challenge.max_attempts,
+        Challenge.tenant_id == tenant_id, *_jugables(tenant_id, profile_id, group_code),
+        _del_nivel(nivel), _del_feed(),
         ganado if ganados else and_(~ganado, Challenge.current_winners < Challenge.max_winners))
     if fuera:
         stmt = stmt.where(Challenge.id.not_in(list(fuera)))
-    return [Candidato(str(i), topic, skill, title, int(n))
+    return [Candidato(str(i), topic, skill, title, int(n), nivel)
             for i, topic, skill, title, n in (await db.execute(stmt)).all() if n]
+
+
+def _jugables(tenant_id: UUID, profile_id: UUID,
+              group_code: str | None) -> list[ColumnElement[bool]]:
+    """Activo, visible para él, que se autocalifica y con intentos disponibles."""
+    return [Challenge.status == "active", _visibles(tenant_id, group_code),
+            Challenge.challenge_type.not_in(TIPOS_FUERA),
+            consultas.intentos_de(profile_id) < Challenge.max_attempts]
+
+
+async def _segunda_vuelta(db: AsyncSession, tenant_id: UUID, profile_id: UUID,
+                          group_code: str | None, nivel: str,
+                          fuera: Sequence[UUID]) -> list[Candidato]:
+    """Los retos `solo_refuerzo` del nivel que entran a la segunda vuelta (§1.3)."""
+    donde = [*_jugables(tenant_id, profile_id, group_code), _del_nivel(nivel),
+             ~_ganado_por(profile_id), Challenge.current_winners < Challenge.max_winners]
+    if fuera:
+        donde.append(Challenge.id.not_in(list(fuera)))
+    return await consultas.segunda_vuelta(
+        db, tenant_id, profile_id, nivel, donde=donde, del_feed=_del_feed(),
+        ahora=_instante(), dias=settings.segunda_vuelta_dias)
+
+
+async def _prestado(db: AsyncSession, tenant_id: UUID, profile_id: UUID,
+                    group_code: str | None, nivel: str, fuera: Sequence[UUID], *,
+                    ganados: bool) -> list[Candidato]:
+    """Lo del nivel más cercano que tenga algo (abajo antes que arriba): el nivel de
+    práctica no tiene NADA que servir y la falta de contenido no deja la tanda vacía."""
+    for otro in reglas.otros_niveles(nivel):
+        candidatos = await _candidatos(db, tenant_id, profile_id, group_code, otro, fuera,
+                                       ganados=ganados)
+        if candidatos:
+            return candidatos
+    return []
 
 
 async def _tandas_de_hoy(db: AsyncSession, tenant_id: UUID, profile_id: UUID,
@@ -220,31 +242,6 @@ async def _tandas_de_hoy(db: AsyncSession, tenant_id: UUID, profile_id: UUID,
                PracticeTanda.local_date == fecha)
         .order_by(PracticeTanda.numero)
         .execution_options(populate_existing=True))).scalars().all())
-
-
-async def _estados(db: AsyncSession, tenant_id: UUID, profile_id: UUID,
-                   tanda: PracticeTanda) -> dict[UUID, str]:
-    """`{reto: pendiente | jugado | ganado}` de los retos de esa tanda."""
-    estados: dict[UUID, str] = {r: PENDIENTE for r in tanda.retos}
-    if not tanda.retos:
-        return estados
-    filas = (await db.execute(
-        select(ChallengeAttempt.challenge_id, ChallengeAttempt.is_correct,
-               ChallengeAttempt.completed_at)
-        .where(ChallengeAttempt.tenant_id == tenant_id,
-               ChallengeAttempt.student_id == profile_id,
-               ChallengeAttempt.status == "completed",
-               ChallengeAttempt.challenge_id.in_(list(tanda.retos))))).all()
-    for reto, gano, cuando in filas:
-        if gano:
-            estados[reto] = GANADO
-        elif estados[reto] != GANADO and cuando is not None and cuando >= tanda.created_at:
-            estados[reto] = JUGADO
-    if tanda.modo == reglas.MODO_REPETIR:  # ya estaban ganados: cuenta volver a jugarlos
-        de_la_tanda = {reto for reto, _gano, cuando in filas
-                       if cuando is not None and cuando >= tanda.created_at}
-        estados = {r: (JUGADO if r in de_la_tanda else PENDIENTE) for r in tanda.retos}
-    return estados
 
 
 def _completa(estados: dict[UUID, str]) -> bool:
@@ -263,12 +260,7 @@ async def _repaso_de(db: AsyncSession, tenant_id: UUID, profile_id: UUID,
     """Las entradas de repaso de la tanda que siguen sin responder EN esta tanda."""
     if not tanda.repasos:
         return []
-    respondidas = set((await db.execute(
-        select(ReinforcementAnswer.queue_id)
-        .where(ReinforcementAnswer.tenant_id == tenant_id,
-               ReinforcementAnswer.profile_id == profile_id,
-               ReinforcementAnswer.queue_id.in_(list(tanda.repasos)),
-               ReinforcementAnswer.id > tanda.repaso_desde))).scalars().all())
+    respondidas = await consultas.repasos_respondidos(db, tenant_id, profile_id, tanda)
     return [p for p in await _repaso_que_toca(db, tenant_id, profile_id, group_code)
             if p.entrada_id in tanda.repasos and p.entrada_id not in respondidas]
 
@@ -278,12 +270,14 @@ async def _salida(db: AsyncSession, tenant_id: UUID, profile_id: UUID, group_cod
     nivel, ancla = await nivel_vigente(db, tenant_id, profile_id)
     tope = settings.tanda_max_al_dia
     practica = PracticaOut(nivel=nivel, con_nivel_de_set=ancla is not None)
+    protegida = await racha_service.sin_contenido_hoy(
+        db, tenant_id=tenant_id, profile_id=profile_id)
     if not tandas:
         return TandaDeHoyOut(fecha=fecha, practica=practica, tanda=None, tandas_hoy=0,
                              tope_al_dia=tope, puede_pedir_otra=tope > 0, listo_por_hoy=False,
-                             sin_contenido_nuevo=False)
+                             sin_contenido_nuevo=False, racha_protegida=protegida)
     ultima = tandas[-1]
-    estados = await _estados(db, tenant_id, profile_id, ultima)
+    estados = await consultas.estados_de(db, tenant_id, profile_id, ultima)
     retos = []
     for reto_id in ultima.retos:
         reto = await db.get(Challenge, reto_id)
@@ -292,8 +286,7 @@ async def _salida(db: AsyncSession, tenant_id: UUID, profile_id: UUID, group_cod
         ganado = estados[reto_id] == GANADO or ultima.modo == reglas.MODO_REPETIR
         retos.append(RetoDeTandaOut(
             estado=estados[reto_id],
-            paga=0 if ganado else economia.recompensa_del_reto(
-                reto.coins_reward, settings.reto_monedas_tope),
+            paga=0 if ganado else challenges_service.recompensa_de(reto),
             reto=await challenges_service.hydrate(db, reto)))
     completa = _completa(estados)
     return TandaDeHoyOut(
@@ -304,7 +297,8 @@ async def _salida(db: AsyncSession, tenant_id: UUID, profile_id: UUID, group_cod
         tandas_hoy=len(tandas), tope_al_dia=tope,
         puede_pedir_otra=completa and len(tandas) < tope,
         listo_por_hoy=completa and len(tandas) >= tope,
-        sin_contenido_nuevo=ultima.modo != reglas.MODO_NUEVO)
+        sin_contenido_nuevo=ultima.modo != reglas.MODO_NUEVO,
+        racha_protegida=protegida)
 
 
 async def ver_tanda(db: AsyncSession, *, tenant_id: UUID, profile_id: UUID,
@@ -318,12 +312,19 @@ async def ver_tanda(db: AsyncSession, *, tenant_id: UUID, profile_id: UUID,
 async def _elegir(db: AsyncSession, fila: PracticeLevel, tenant_id: UUID, profile_id: UUID,
                   group_code: str | None, fuera: Sequence[UUID],
                   ) -> tuple[str, list[Candidato], str | None]:
-    """`(modo, retos, nivel agotado)` de una tanda nueva, con lo que pasa si el nivel se agota."""
+    """`(modo, retos, nivel agotado)` de una tanda nueva: la escalera del nivel agotado.
+
+    ESPEC_solo_refuerzo §1.4: nuevo → segunda vuelta → sube → repetir lo ganado
+    → prestado de otro nivel (nuevo y después ganado) → nada.
+    """
     nuevos = await _candidatos(db, tenant_id, profile_id, group_code, fila.nivel, fuera,
                                ganados=False)
     if nuevos:
         return reglas.MODO_NUEVO, reglas.armar(nuevos, tamano()), None
     agotado = fila.nivel
+    gemelas = await _segunda_vuelta(db, tenant_id, profile_id, group_code, fila.nivel, fuera)
+    if gemelas:
+        return reglas.MODO_SEGUNDA_VUELTA, reglas.armar(gemelas, tamano()), agotado
     arriba = reglas.mover(fila.nivel, +1, fila.ancla)
     if arriba != fila.nivel:  # la escalera lo permite: ¿hay algo nuevo arriba?
         nuevos = await _candidatos(db, tenant_id, profile_id, group_code, arriba, fuera,
@@ -335,17 +336,46 @@ async def _elegir(db: AsyncSession, fila: PracticeLevel, tenant_id: UUID, profil
             return reglas.MODO_NUEVO, reglas.armar(nuevos, tamano()), agotado
     ganados = await _candidatos(db, tenant_id, profile_id, group_code, fila.nivel, fuera,
                                 ganados=True)
-    return reglas.MODO_REPETIR, reglas.armar(ganados, tamano()), agotado
+    if ganados:
+        return reglas.MODO_REPETIR, reglas.armar(ganados, tamano()), agotado
+    # El nivel no tiene NADA: se presta del más cercano, sin mover el nivel de práctica.
+    prestados = await _prestado(db, tenant_id, profile_id, group_code, fila.nivel, fuera,
+                                ganados=False)
+    if prestados:
+        return reglas.MODO_NUEVO, reglas.armar(prestados, tamano()), agotado
+    prestados = await _prestado(db, tenant_id, profile_id, group_code, fila.nivel, fuera,
+                                ganados=True)
+    return reglas.MODO_REPETIR, reglas.armar(prestados, tamano()), agotado
+
+
+async def _marcar_si_no_hay_contenido(db: AsyncSession, tenant_id: UUID, profile_id: UUID,
+                                      group_code: str | None, modo: str,
+                                      retos: Sequence[Candidato], repasos: int) -> None:
+    """Si hoy no hay con qué llegar a un día activo, el día queda marcado y la semana
+    no romperá la racha (ESPEC_solo_refuerzo §1.5). Con la tanda llena, ni una consulta."""
+    minimo = settings.racha_respuestas_dia
+    de_la_tanda = sum(c.preguntas for c in retos)
+    if de_la_tanda + repasos >= minimo:
+        return
+    servible = repasos + await consultas.servible(
+        db, tenant_id, donde=[*_jugables(tenant_id, profile_id, group_code), _del_feed()])
+    if modo == reglas.MODO_SEGUNDA_VUELTA:  # sus retos no son del feed: se suman aparte
+        servible += de_la_tanda
+    if servible < minimo:
+        await racha_service.anotar_sin_contenido(db, tenant_id=tenant_id,
+                                                 profile_id=profile_id)
 
 
 async def pedir_tanda(db: AsyncSession, *, tenant_id: UUID, profile_id: UUID,
                       group_code: str | None) -> TandaDeHoyOut:
     """"Dame la tanda de hoy": la que está sin terminar, o una nueva si el tope lo deja."""
     fecha = racha_service.hoy()
+    # Primero el candado de la racha y después el del nivel: el mismo orden de `/submit`.
+    await racha_service.reservar(db, tenant_id=tenant_id, profile_id=profile_id)
     fila = await tomar(db, tenant_id, profile_id)  # bloquea: dos toques no crean dos tandas
     tandas = await _tandas_de_hoy(db, tenant_id, profile_id, fecha)
     if tandas:
-        completa = _completa(await _estados(db, tenant_id, profile_id, tandas[-1]))
+        completa = _completa(await consultas.estados_de(db, tenant_id, profile_id, tandas[-1]))
         if not completa or len(tandas) >= settings.tanda_max_al_dia:
             return await _salida(db, tenant_id, profile_id, group_code, fecha, tandas)
     elif settings.tanda_max_al_dia <= 0:
@@ -355,12 +385,16 @@ async def pedir_tanda(db: AsyncSession, *, tenant_id: UUID, profile_id: UUID,
     repasos = reglas.primeros(
         await _repaso_que_toca(db, tenant_id, profile_id, group_code),
         settings.tanda_repasos_max)
+    if not tandas:  # la primera del día: ¿hay con qué hacer un día activo?
+        await _marcar_si_no_hay_contenido(db, tenant_id, profile_id, group_code, modo, retos,
+                                          len(repasos))
     if retos or repasos:
         desde = (await db.execute(select(func.coalesce(func.max(ReinforcementAnswer.id), 0))
                                   )).scalar_one()
         tanda = PracticeTanda(
             tenant_id=tenant_id, profile_id=profile_id, local_date=fecha,
-            numero=len(tandas) + 1, modo=modo, nivel=fila.nivel, nivel_agotado=agotado,
+            numero=len(tandas) + 1, modo=modo,
+            nivel=next((c.nivel for c in retos if c.nivel), fila.nivel), nivel_agotado=agotado,
             retos=[UUID(c.id) for c in retos], repasos=[p.entrada_id for p in repasos],
             repaso_desde=int(desde), preguntas=sum(c.preguntas for c in retos),
             created_at=_instante())

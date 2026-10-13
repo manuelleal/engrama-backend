@@ -2,8 +2,15 @@
 
 `docs/ESPEC_racha_semanal.md` §1.4 y C11. Usa las funciones de
 `test_migracion_035.py` (ERR-24). Dos tablas nuevas; nada existente cambia.
+
+Desde la 044 (`docs/ESPEC_solo_refuerzo.md` §4) `activity_days` tiene una
+columna más (`sin_contenido`), así que lo que sube, baja y vuelve a subir
+idéntico es la CADENA 042 + 044: bajar la 042 sola y subirla dejaría la tabla
+sin esa columna, que es justo lo que hace Alembic si se salta la 044.
 """
 from __future__ import annotations
+
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,11 +20,14 @@ pytestmark = pytest.mark.integ
 
 TABLAS = ("activity_days", "streak_state")
 M042 = cargar("042_racha_semanal.py")
+M044 = cargar("044_solo_refuerzo.py")
+CADENA = SimpleNamespace(SQL_SUBIR=(*M042.SQL_SUBIR, *M044.SQL_SUBIR),
+                         SQL_BAJAR=(*M044.SQL_BAJAR, *M042.SQL_BAJAR))
 
 
 def test_mg42_sube_baja_y_vuelve_a_subir_identica(integ) -> None:
     """MG42 (C11): up/down/up con el mismo esquema, y subir dos veces no falla."""
-    observado = resumen(sube_baja_sube(integ, M042, TABLAS), TABLAS)
+    observado = resumen(sube_baja_sube(integ, CADENA, TABLAS), TABLAS)
     assert observado == {
         "con_rls_y_sin_politicas": dict.fromkeys(TABLAS, (True, True, 0)),
         "restricciones": {

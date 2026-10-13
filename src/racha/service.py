@@ -88,6 +88,11 @@ def _activos_por_semana(dias: Iterable[ActivityDay]) -> Counter[date]:
     return Counter(reglas.lunes_de(d.local_date) for d in dias if d.activo)
 
 
+def _semanas_sin_contenido(dias: Iterable[ActivityDay]) -> set[date]:
+    """Los lunes de las semanas con un día en que no hubo qué servir: no rompen nada."""
+    return {reglas.lunes_de(d.local_date) for d in dias if d.sin_contenido}
+
+
 async def _semana_exenta(db: AsyncSession, tenant_id: UUID, profile_id: UUID) -> date | None:
     """El lunes de la semana en que se creó la membresía: esa no rompe nada."""
     creada = (await db.execute(
@@ -107,8 +112,11 @@ async def _cerrada(db: AsyncSession, tenant_id: UUID, profile_id: UUID, racha: R
     pasados = await _dias(db, tenant_id, profile_id,
                           racha.ultima_semana_cerrada + reglas.SEMANA,
                           lunes - timedelta(days=1))
-    exenta = await _semana_exenta(db, tenant_id, profile_id)
-    return reglas.cerrar(racha, lunes, _activos_por_semana(pasados), exenta, u)
+    exentas = _semanas_sin_contenido(pasados)
+    de_la_membresia = await _semana_exenta(db, tenant_id, profile_id)
+    if de_la_membresia is not None:
+        exentas.add(de_la_membresia)
+    return reglas.cerrar(racha, lunes, _activos_por_semana(pasados), exentas, u)
 
 
 # ----------------------------------------------------------------- escrituras
@@ -208,6 +216,37 @@ async def anotar_respuestas(db: AsyncSession, *, tenant_id: UUID, profile_id: UU
 async def anotar_asistencia(db: AsyncSession, *, tenant_id: UUID, profile_id: UUID) -> None:
     """Gancho del check-in: hoy asistió. Un día ya activo no cambia (L4-c)."""
     await _aplicar(db, tenant_id, profile_id, [], asistencia=True)
+
+
+async def reservar(db: AsyncSession, *, tenant_id: UUID, profile_id: UUID) -> None:
+    """Toma el candado de la racha SIN cambiar nada (la fila nace si falta).
+
+    Lo pide la tanda antes de su propio candado: así todos los caminos toman
+    los candados en el mismo orden (racha y después nivel de práctica) y la
+    tanda y un `/submit` del mismo estudiante no se bloquean entre sí.
+    """
+    await _tomar_estado(db, tenant_id, profile_id, reglas.lunes_de(hoy()), umbrales())
+
+
+async def anotar_sin_contenido(db: AsyncSession, *, tenant_id: UUID, profile_id: UUID) -> None:
+    """Hoy pidió practicar y no había qué servirle: la semana no romperá su racha.
+
+    Solo marca el día (ESPEC_solo_refuerzo §1.5): no lo vuelve activo ni mueve
+    la racha. Quien llama ya tiene el candado (`reservar`).
+    """
+    fila = await _tomar_dia(db, tenant_id, profile_id, hoy())
+    if not fila.sin_contenido:
+        fila.sin_contenido = True
+        fila.updated_at = _ahora()
+        await db.flush()
+
+
+async def sin_contenido_hoy(db: AsyncSession, *, tenant_id: UUID, profile_id: UUID) -> bool:
+    """¿Hoy quedó marcado sin contenido? No escribe."""
+    return bool((await db.execute(
+        select(ActivityDay.sin_contenido).where(
+            _del_dueno(ActivityDay, tenant_id, profile_id),
+            ActivityDay.local_date == hoy()))).scalar_one_or_none())
 
 
 # -------------------------------------------------------------------- la llama

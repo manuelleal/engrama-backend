@@ -6,7 +6,7 @@ hay ninguno escrito.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from uuid import UUID
@@ -100,19 +100,31 @@ def inicial(lunes_actual: date, u: Umbrales) -> Racha:
     return Racha(0, 0, 0, min(u.protector_inicial, u.protector_tope), lunes_actual - SEMANA)
 
 
+def exentas_de(semana_exenta: date | Collection[date] | None) -> frozenset[date]:
+    """Los lunes de las semanas que no rompen nada al cerrar: la de la membresía y
+    las que tuvieron un día sin contenido (ESPEC_solo_refuerzo §1.5)."""
+    if semana_exenta is None:
+        return frozenset()
+    if isinstance(semana_exenta, date):
+        return frozenset({semana_exenta})
+    return frozenset(semana_exenta)
+
+
 def cerrar(racha: Racha, lunes_actual: date, activos_por_semana: Mapping[date, int],
-           semana_exenta: date | None, u: Umbrales) -> Racha:
+           semana_exenta: date | Collection[date] | None, u: Umbrales) -> Racha:
     """Cierra, en orden, las semanas TERMINADAS que faltan (el cierre perezoso).
 
-    Por cada semana no cumplida: la de la membresía no cuenta; con protector se
-    gasta uno y la racha queda; sin protector la racha vuelve a 0. `mejor_racha`
-    y `semanas_cumplidas` no se tocan: nunca bajan. Cerrar dos veces da lo mismo.
+    Por cada semana no cumplida: las exentas (la de la membresía y las que
+    tuvieron un día sin contenido) no cuentan; con protector se gasta uno y la
+    racha queda; sin protector la racha vuelve a 0. `mejor_racha` y
+    `semanas_cumplidas` no se tocan: nunca bajan. Cerrar dos veces da lo mismo.
     """
     actual, protectores = racha.racha_semanas, racha.protectores
+    exentas = exentas_de(semana_exenta)
     semana = racha.ultima_semana_cerrada + SEMANA
     while semana < lunes_actual:
         cumplida = activos_por_semana.get(semana, 0) >= u.dias_por_semana
-        if not cumplida and semana != semana_exenta:
+        if not cumplida and semana not in exentas:
             if protectores > 0:
                 protectores -= 1
             else:

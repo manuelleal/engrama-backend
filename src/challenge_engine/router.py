@@ -363,6 +363,10 @@ async def get_challenge(
         group_code=auth.group_code,
         es_personal=auth.is_teacher or auth.is_admin,
     )
+    await challenges_service.exigir_que_pueda_abrirlo(
+        db, challenge, student_id=auth.profile_id,
+        es_personal=auth.is_teacher or auth.is_admin,
+    )
     return await challenges_service.hydrate(db, challenge)
 
 

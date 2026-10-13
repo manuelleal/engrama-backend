@@ -97,6 +97,16 @@ def recompensa_del_reto(coins_reward: int, tope: int) -> int:
     return min(coins_reward, tope)
 
 
+def paga_de_refuerzo(recompensa: int, paga_segunda_vuelta: int) -> int:
+    """Lo que paga (y muestra) un reto `solo_refuerzo`: nunca más que la segunda vuelta.
+
+    Son las gemelas de algo que el estudiante ya jugó: responderlas vale la
+    mitad de un reto nuevo, no otra paga completa por lo mismo (dictamen 04,
+    hecho 2). `recompensa` ya viene con el tope del reto aplicado.
+    """
+    return min(recompensa, max(paga_segunda_vuelta, 0))
+
+
 def cupo_por_defecto(estudiantes_activos: int, piso: int) -> int:
     """`max_winners` de un reto creado SIN indicarlo: el tamaño del grupo, con piso.
 

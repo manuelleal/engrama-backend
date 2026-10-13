@@ -133,6 +133,12 @@ class Settings(BaseSettings):
     tanda_preguntas_min: int = Field(default=6, ge=1, le=60)
     tanda_retos_max: int = Field(default=4, ge=1, le=20)
     tanda_max_al_dia: int = Field(default=2, ge=0, le=20)
+    # La segunda vuelta (ESPEC_solo_refuerzo §1.3; dictamen 04 §1.3, "cuando se
+    # acaba el nivel"): un reto `solo_refuerzo` de gemelas no vistas entra a la
+    # tanda cuando el original de su familia se jugó hace `segunda_vuelta_dias`
+    # o más, y paga a lo sumo `segunda_vuelta_paga`. Juicio del pedagogo.
+    segunda_vuelta_dias: int = Field(default=21, ge=1, le=365)
+    segunda_vuelta_paga: int = Field(default=5, ge=0, le=50)
 
     # La asistencia (ESPEC_economia_oleada0 §1.1 y §5). TODOS ESTOS NÚMEROS SON
     # PROVISIONALES del arquitecto y Christiam puede vetarlos: por eso viven aquí

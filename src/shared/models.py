@@ -436,6 +436,11 @@ class Challenge(Base):
         Integer, nullable=False, server_default=text("0")
     )
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+    # 044: el reto NO sale en el feed ni en la tanda de retos nuevos; sus preguntas
+    # son formas para la cola de repaso y la segunda vuelta (ESPEC_solo_refuerzo).
+    solo_refuerzo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("FALSE")
+    )
     question_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -1723,6 +1728,11 @@ class ActivityDay(Base):
         Integer, nullable=False, server_default=text("0")
     )
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
+    # 044: ese día pidió practicar y la institución no tenía qué servirle: la
+    # semana que lo contiene no rompe la racha al cerrar (ESPEC_solo_refuerzo §1.5).
+    sin_contenido: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("FALSE")
+    )
     preguntas: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )

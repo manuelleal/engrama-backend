@@ -32,6 +32,49 @@ def reto(integ: Any, profe: UUID, titulo: str, n: int, *, grupo: UUID | None,
                       skill=skill, **campos)
 
 
+def de_formas(integ: Any, profe: UUID, titulo: str, formas: list[dict[str, Any]], *,
+              grupo: UUID | None, nivel: str | None = "A2", topic: str = "a2-u01",
+              solo_refuerzo: bool = False, **campos: Any) -> tuple[str, list[str]]:
+    """Un reto con ESAS preguntas (las de `tests/refuerzo/_ayuda.forma`: familia y rol).
+
+    Como lo manda el sembrador; `solo_refuerzo` para los de rol gemela y repaso.
+    """
+    cuerpo = {"title": titulo, "description": "sintético", "skill": "grammar",
+              "group_id": str(grupo) if grupo else None, "max_attempts": 50,
+              "max_winners": 100, "cefr_level": nivel, "topic": topic,
+              "solo_refuerzo": solo_refuerzo, **campos,
+              "questions": [{**f, "order_index": i} for i, f in enumerate(formas, start=1)]}
+    r = client.post("/challenges/", headers=integ.headers(profe), json=cuerpo)
+    assert r.status_code == 201, r.text
+    preguntas = sorted(r.json()["questions"], key=lambda q: q["order_index"])
+    return r.json()["id"], [q["id"] for q in preguntas]
+
+
+def feed(integ: Any, quien: UUID) -> Any:
+    """Los títulos del feed, ordenados; o el estado si no es 200."""
+    r = client.get("/challenges/", headers=integ.headers(quien))
+    return sorted(c["title"] for c in r.json()) if r.status_code == 200 else r.status_code
+
+
+def ver(integ: Any, quien: UUID, reto: str) -> int:
+    return client.get(f"/challenges/{reto}", headers=integ.headers(quien)).status_code
+
+
+def abrir(integ: Any, quien: UUID, reto: str) -> int:
+    return client.post(f"/challenges/{reto}/attempt", headers=integ.headers(quien)).status_code
+
+
+def envejecer(integ: Any, retos: list[str], dias: int) -> None:
+    """Los intentos de esos retos pasan a haberse jugado hace `dias` días."""
+    for reto in retos:
+        sql(integ, "update challenge_attempts set completed_at = completed_at - "
+                   "make_interval(days => :d) where challenge_id = :r", d=dias, r=reto)
+
+
+def protegida(c: Any) -> Any:
+    return c.get("racha_protegida") if isinstance(c, dict) else c
+
+
 def tanda(integ: Any, quien: UUID, metodo: str = "POST", **headers: str) -> Any:
     """El cuerpo de `/challenges/tanda`, o `(estado, detalle)` si no es 200."""
     r = client.request(metodo, "/challenges/tanda", headers={**integ.headers(quien), **headers})

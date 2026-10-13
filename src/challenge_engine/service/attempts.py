@@ -49,13 +49,11 @@ from src.challenge_engine.schemas import (
 )
 from src.challenge_engine.service import challenges as challenges_service
 from src.engrama_core.service import coins as coins_service
-from src.engrama_core.service import economia
 from src.practica import service as practica_service
 from src.racha import reglas as racha_reglas
 from src.racha import service as racha_service
 from src.refuerzo import cola as refuerzo_cola
 from src.refuerzo.reglas import clave_de_forma
-from src.shared.config import settings
 from src.shared.models import (
     Challenge,
     ChallengeAttempt,
@@ -174,6 +172,11 @@ async def start_attempt(
     challenge = await challenges_service.get_challenge_for(
         db, challenge_id, tenant_id=tenant_id, group_code=group_code,
         es_personal=es_personal,
+    )
+    # Un reto `solo_refuerzo` solo se abre desde una tanda de segunda vuelta
+    # (ESPEC_solo_refuerzo §1.2); si no, el mismo 404.
+    await challenges_service.exigir_que_pueda_abrirlo(
+        db, challenge, student_id=student_id, es_personal=es_personal
     )
     if challenge.status != "active":
         raise HTTPException(
@@ -320,9 +323,9 @@ async def submit_attempt(
     coins_earned = 0
     xp_earned = 0
     if is_correct and challenge.current_winners < challenge.max_winners:
-        # Se paga lo mismo que se muestra: el valor guardado, con el tope (§1.4).
-        recompensa = economia.recompensa_del_reto(challenge.coins_reward,
-                                                  settings.reto_monedas_tope)
+        # Se paga lo mismo que se muestra: el valor guardado, con el tope (§1.4)
+        # y, si el reto es `solo_refuerzo`, a lo sumo la paga de la segunda vuelta.
+        recompensa = challenges_service.recompensa_de(challenge)
         entrada = await coins_service.award_coins(
             db,
             student_id=student_id,

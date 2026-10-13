@@ -52,3 +52,5 @@ class TandaDeHoyOut(BaseModel):
     puede_pedir_otra: bool
     listo_por_hoy: bool
     sin_contenido_nuevo: bool
+    # Hoy no había con qué llegar a un día activo: esta semana no romperá su racha.
+    racha_protegida: bool = False
