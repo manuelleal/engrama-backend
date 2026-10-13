@@ -50,6 +50,7 @@ from src.challenge_engine.schemas import (
 from src.challenge_engine.service import challenges as challenges_service
 from src.engrama_core.service import coins as coins_service
 from src.engrama_core.service import economia
+from src.practica import service as practica_service
 from src.racha import reglas as racha_reglas
 from src.racha import service as racha_service
 from src.refuerzo import cola as refuerzo_cola
@@ -374,6 +375,11 @@ async def submit_attempt(
         )
     )
     await db.flush()  # asegura que el UPDATE de este attempt cuente
+    # 6b. La escalera del nivel de PRÁCTICA mira este intento ya guardado
+    # (ESPEC_practica_y_tanda §1.1). Un reto sin nivel no cuesta ni una consulta.
+    await practica_service.tras_intento(
+        db, tenant_id=tenant_id, student_id=student_id, challenge=challenge
+    )
     total_used = int((await db.execute(used_stmt)).scalar_one())
     remaining = max(challenge.max_attempts - total_used, 0)
 

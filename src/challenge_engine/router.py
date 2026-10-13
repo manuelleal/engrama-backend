@@ -44,6 +44,8 @@ from src.challenge_engine.service import challenges as challenges_service
 from src.challenge_engine.service import generator as generator_service
 from src.foco import service as foco_service
 from src.foco.schemas import FocoEstudianteOut
+from src.practica import service as practica_service
+from src.practica.schemas import TandaDeHoyOut
 from src.refuerzo import service as refuerzo_service
 from src.refuerzo.schemas import RefuerzoOut, RespuestaIn, RespuestaOut
 from src.shared.config import settings
@@ -255,6 +257,45 @@ async def answer_reinforcement(
         entrada_id=entrada_id,
         question_id=payload.question_id,
         answer=payload.answer,
+    )
+    await db.commit()
+    return result
+
+
+@router.get(
+    "/tanda",
+    response_model=TandaDeHoyOut,
+    status_code=status.HTTP_200_OK,
+)
+async def read_todays_batch(
+    auth: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TandaDeHoyOut:
+    """La tanda de hoy y el nivel de práctica. NO escribe (`tanda: null` si no se ha pedido).
+
+    NOTA: debe declararse antes de `/{challenge_id}`, igual que `/attempts/history`.
+    """
+    return await practica_service.ver_tanda(
+        db, tenant_id=auth.tenant_id, profile_id=auth.profile_id, group_code=auth.group_code
+    )
+
+
+@router.post(
+    "/tanda",
+    response_model=TandaDeHoyOut,
+    status_code=status.HTTP_200_OK,
+)
+async def request_todays_batch(
+    auth: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TandaDeHoyOut:
+    """Dame la tanda de hoy: la que está sin terminar, o la siguiente si el tope lo deja.
+
+    Repaso que toca (0 monedas) y después retos nuevos del nivel de práctica, en
+    orden fijo. Con el tope del día alcanzado responde 200 con `listo_por_hoy`.
+    """
+    result = await practica_service.pedir_tanda(
+        db, tenant_id=auth.tenant_id, profile_id=auth.profile_id, group_code=auth.group_code
     )
     await db.commit()
     return result

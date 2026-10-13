@@ -169,9 +169,15 @@ _RACHA: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/core/racha", frozenset({"GET"})): "user",
 }
 
+# docs/ESPEC_practica_y_tanda.md: la tanda de hoy del estudiante.
+_TANDA: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/challenges/tanda", frozenset({"GET"})): "user",
+    ("/challenges/tanda", frozenset({"POST"})): "user",
+}
+
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS, **_EVENTOS,
-    **_CATALOGO, **_GRADER, **_FOCO, **_REFUERZO, **_RACHA}
+    **_CATALOGO, **_GRADER, **_FOCO, **_REFUERZO, **_RACHA, **_TANDA}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:

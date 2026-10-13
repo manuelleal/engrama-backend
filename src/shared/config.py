@@ -17,6 +17,7 @@ Diseño:
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -111,6 +112,27 @@ class Settings(BaseSettings):
     racha_protector_inicial: int = Field(default=1, ge=0, le=10)
     racha_protector_tope: int = Field(default=2, ge=0, le=10)
     racha_bono_semana: int = Field(default=5, ge=0, le=50)
+    # El nivel de PRÁCTICA y la tanda de hoy (ESPEC_practica_y_tanda; dictamen 04
+    # §1.3). No es el nivel del estudiante. Sin nivel de SET se arranca en
+    # `practica_nivel_inicial`. La escalera mira las últimas `practica_ventana`
+    # preguntas de primer intento: con `practica_sube` o más correctas sube, con
+    # `practica_baja` o menos baja. Sin SET, las primeras
+    # `practica_decisiones_rapidas` decisiones usan la ventana rápida.
+    practica_nivel_inicial: Literal["A1", "A2", "B1", "B2", "C1"] = Field(default="A2")
+    practica_ventana: int = Field(default=12, ge=1, le=60)
+    practica_sube: int = Field(default=10, ge=-1, le=100)
+    practica_baja: int = Field(default=5, ge=-1, le=100)
+    practica_ventana_rapida: int = Field(default=6, ge=1, le=60)
+    practica_sube_rapida: int = Field(default=5, ge=-1, le=100)
+    practica_baja_rapida: int = Field(default=2, ge=-1, le=100)
+    practica_decisiones_rapidas: int = Field(default=3, ge=0, le=20)
+    # La tanda: hasta `tanda_repasos_max` repasos que tocan y retos nuevos hasta
+    # sumar `tanda_preguntas_min` preguntas (máximo `tanda_retos_max` retos);
+    # `tanda_max_al_dia` tandas por día.
+    tanda_repasos_max: int = Field(default=3, ge=0, le=20)
+    tanda_preguntas_min: int = Field(default=6, ge=1, le=60)
+    tanda_retos_max: int = Field(default=4, ge=1, le=20)
+    tanda_max_al_dia: int = Field(default=2, ge=0, le=20)
 
     # La asistencia (ESPEC_economia_oleada0 §1.1 y §5). TODOS ESTOS NÚMEROS SON
     # PROVISIONALES del arquitecto y Christiam puede vetarlos: por eso viven aquí

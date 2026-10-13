@@ -1783,3 +1783,90 @@ class StreakState(Base):
             "AND semanas_cumplidas >= 0 AND protectores BETWEEN 0 AND 10",
             name="streak_state_counts_check"),
     )
+
+
+# -----------------------------------------------------------------------------
+# 043 — el nivel de práctica y las tandas (docs/ESPEC_practica_y_tanda.md §1.3)
+# -----------------------------------------------------------------------------
+class PracticeLevel(Base):
+    """El nivel de PRÁCTICA de un estudiante en una institución.
+
+    NO es su nivel: elige qué retos le tocan. El nivel real vive en
+    `confirmed_levels` y este modelo nunca se copia allá. `ancla` es el nivel
+    de SET con el que se fijó: la práctica solo se mueve a ±1 de él.
+    """
+
+    __tablename__ = "practice_levels"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    nivel: Mapped[str] = mapped_column(Text, nullable=False)
+    ancla: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decisiones: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    ventana_desde: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "profile_id", name="practice_levels_owner_key"),
+        CheckConstraint("nivel IN ('A1','A2','B1','B2','C1')",
+                        name="practice_levels_nivel_check"),
+        CheckConstraint("ancla IS NULL OR ancla IN ('A1','A2','B1','B2','C1')",
+                        name="practice_levels_ancla_check"),
+        CheckConstraint("decisiones >= 0", name="practice_levels_decisiones_check"),
+    )
+
+
+class PracticeTanda(Base):
+    """Una tanda servida a un estudiante en un día local.
+
+    `retos` y `repasos` quedan fijos al crearla. `nivel_agotado` es el hueco
+    de contenido (el nivel que se quedó sin retos nuevos).
+    """
+
+    __tablename__ = "practice_tandas"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    local_date: Mapped[date] = mapped_column(Date, nullable=False)
+    numero: Mapped[int] = mapped_column(Integer, nullable=False)
+    modo: Mapped[str] = mapped_column(Text, nullable=False)
+    nivel: Mapped[str] = mapped_column(Text, nullable=False)
+    nivel_agotado: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retos: Mapped[list[Any]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, default=list, server_default=text("'{}'")
+    )
+    repasos: Mapped[list[int]] = mapped_column(
+        ARRAY(BigInteger), nullable=False, default=list, server_default=text("'{}'")
+    )
+    repaso_desde: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("0")
+    )
+    preguntas: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "profile_id", "local_date", "numero",
+                         name="practice_tandas_owner_date_numero_key"),
+        CheckConstraint("modo IN ('nuevo','segunda_vuelta','repetir')",
+                        name="practice_tandas_modo_check"),
+        CheckConstraint("numero >= 1 AND preguntas >= 0", name="practice_tandas_numero_check"),
+    )
