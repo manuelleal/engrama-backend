@@ -142,3 +142,31 @@ Semanas de receso por institución; "recuperar la racha" (dictamen §4.2); "día
 ## 9. Veredicto
 - **FUNCIONA:** las cuentas de §5, la diagonal medida, MG42 verde y los previos verdes con solo las ediciones de §4.
 - **NO:** un día se activa por abrir o por hacer clic; la racha de una institución se ve en otra; el bono paga dos veces; la bolsa agotada da 402; `mejor_racha` baja; el check-in responde distinto; un tramposo queda verde.
+
+---
+
+## 10. Medido (2026-10-12)
+
+### Cuentas
+**690 passed + 23 skipped** (suite completa, 1.186 s, en un contenedor de prueba propio); **186 no-integ**; `ruff check .` 0. Igual a §5. Las ediciones a lo existente fueron las de §4.
+
+### Diagonal medida: 13 de 13 rojos por su razón
+ZW1 a ZW5 (no-integ) y ZW6 a ZW13 (integ), cada uno con el mensaje de su mecanismo (`tests/tramposos/test_tramposos_racha.py`). **Solo se midió la diagonal:** la matriz completa (13 × 11) no se corrió.
+
+### Dos erratas del preregistro (escritas ANTES de medir; ERR-23)
+- **ZW7 no es "el bono se paga sin llave".** Al escribir el código quedó claro que ese tramposo sería verde por diseño: el bono solo se intenta en el instante en que la semana LLEGA a 3 días, que ocurre una vez; la llave es una segunda barrera que ningún test secuencial alcanza. ZW7 quedó como **"del 3.er día en adelante, cada día activo vuelve a cumplir la semana"** (RW3 lo ve: racha 2 el jueves). **La llave del bono no tiene tramposo propio:** se declara.
+- **ZW12 no es "EVA cuenta los duplicados".** Un evento duplicado ni siquiera llega al efecto (lo corta el UNIQUE de `learning_events`). ZW12 quedó como **"EVA cuenta por evento y no por ítem"** (RW6: el mismo ítem con otro `event_id` sumaría otra vez).
+
+### Decisiones tomadas al implementar (se declaran)
+- **El gancho va ANTES de la paga** en `/submit` y en el check-in (no después, como decía §3): así los candados se toman siempre en el mismo orden (racha, después billeteras) y dos pedidos del mismo estudiante no se bloquean entre sí. No cambia el resultado ni la paga.
+- **El reloj de la racha es propio** (`racha.service._ahora`), no el de la asistencia: en producción son el mismo instante; en los tests, los humos viejos que simulan semanas con el reloj de la asistencia no generan bonos y quedan idénticos.
+- Un `answer.submitted` sin `item_ref` no cuenta (sin identidad no hay "una vez al día").
+- `por_origen` distingue `reto` de `reto_repetido` (un reto que el estudiante ya había ganado): es el dato del riesgo 8.
+
+### No medido
+- Dos respuestas **a la vez** del mismo estudiante (hay un candado sobre `streak_state`; no hay test con dos hilos).
+- El cambio de día a medianoche de Bogotá con el reloj real, ni el cambio de semana ISO en fin de año (la llave usa `isocalendar`).
+- Cambiar los umbrales con semanas en curso.
+- El costo: cada `/submit` suma 4 sentencias (5 el día que se activa); la lectura, 3.
+- El `downgrade` por la CLI de Alembic.
+- Contra el piloto y contra engrama-web.
