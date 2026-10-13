@@ -131,3 +131,30 @@ El hueco de contenido (y los días `sin_contenido`) en el panel del profe; que e
 ## 9. Veredicto
 - **FUNCIONA:** las cuentas de §5, la diagonal medida, MG44 y los previos verdes.
 - **NO:** un reto `solo_refuerzo` sale en el feed o en la tanda de retos nuevos; un estudiante lo abre fuera de su segunda vuelta; paga 10; la segunda vuelta sirve una pregunta vista o antes de los 21 días; una institución con contenido deja la tanda vacía; una semana sin contenido rompe una racha; el feed de los datos de hoy cambia; un tramposo queda verde.
+
+---
+
+## 10. Medido (2026-10-13)
+
+### Cuentas
+**197 no-integ**; `ruff check .` 0. Suite completa en un contenedor de prueba propio (1.035 s): **730 passed + 23 skipped y 1 rojo**, MG42 (abajo). Corregido el test y vuelto a correr él con sus vecinos (MG41 a MG44): verde. **731 passed + 23 skipped**, igual a §5; la suite completa no se volvió a correr entera tras ese arreglo (se corre al cerrar el bloque 4).
+
+### Una predicción refutada: MG42 se puso rojo (y §4 no lo tenía)
+La 044 le agrega una columna a `activity_days`, que nació en la 042. MG42 baja la 042, la vuelve a subir y exige el mismo esquema: sin la 044 falta `sin_contenido`. **Se editó un test existente** (`tests/integ/test_migracion_042.py`): ahora sube y baja la CADENA 042 + 044. El criterio de MG42 no cambió (subir, bajar y subir deja el mismo esquema); cambió qué SQL hace falta para eso. Lo mismo le pasará a cualquier migración futura que le agregue una columna a una tabla de otra.
+
+### Lo que §4 no listaba
+- Un módulo nuevo, `src/practica/consultas.py`: lo que la tanda solo LEE (la segunda vuelta, lo servible, los estados de los retos, la ventana de la escalera y los repasos respondidos). Salió de `practica/service.py` para no pasar de 400 líneas (REGLAS §4); `service.py` quedó en 407. Ninguna función que un tramposo existente reemplaza cambió de módulo ni de firma.
+- `racha.reglas.cerrar` no ganó un parámetro: su cuarto argumento acepta ahora una fecha (como antes) o varias. ZW2 y ZW3, que la reemplazan con cinco argumentos, siguen valiendo.
+
+### Diagonal medida: 10 de 10 rojos por su razón
+ZS1 y ZS2 (no-integ) y ZS3 a ZS10 (integ), en `tests/tramposos/test_tramposos_solo_refuerzo.py`. Los tramposos de la práctica y de la racha (ZP1 a ZP13 y ZW1 a ZW13) siguieron rojos por su razón. **Solo la diagonal:** la matriz completa no se corrió.
+
+### Los cinco tests SR pasaron en su primera corrida
+Con los valores escritos antes de correr. No se ajustó ningún esperado.
+
+### No medido
+- Con el banco real resembrado con `solo_refuerzo`: hoy los retos de rol `gemela` y `repaso` ya sembrados siguen en el feed.
+- La segunda vuelta con 21 días de reloj real (el test envejece los intentos en la base; el humo del bloque 5 usa un reloj simulado).
+- El costo de `POST /challenges/tanda`: dos sentencias más (el candado de la racha) y una lectura (`racha_protegida`); con el nivel agotado, hasta 8 consultas más.
+- Que un `repetir` de preguntas ya respondidas hoy no suma al día activo (§7): no se marca `sin_contenido` en ese caso.
+- El `downgrade` por la CLI de Alembic.
