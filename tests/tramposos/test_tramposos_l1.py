@@ -1,4 +1,4 @@
-"""Tramposos ZL1-ZL14 de la respuesta por pregunta (L1).
+"""Tramposos ZL1-ZL15 de la respuesta por pregunta (L1).
 
 `docs/ESPEC_l1_correccion_por_pregunta.md` §10.7. Una versión ROTA a propósito,
 inyectada con monkeypatch en el módulo donde se USA; se corre el cuerpo del
@@ -14,7 +14,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import any_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +25,9 @@ from src.challenge_engine.service import intento_formas as formas_mod
 from src.challenge_engine.service import por_pregunta as pp_mod
 from src.engrama_core.service import economia as economia_mod
 from src.refuerzo import cola as cola_mod
-from src.shared.models import ChallengeAttempt, ChallengeAttemptAnswer
+from src.refuerzo import formas as vistas_mod
+from src.refuerzo.reglas import clave_de_forma
+from src.shared.models import ChallengeAttempt, ChallengeAttemptAnswer, ChallengeQuestion
 from tests.challenge_engine import test_l1_calificar_unit as tu
 from tests.challenge_engine import test_l1_por_pregunta as tp
 
@@ -33,6 +35,7 @@ Aplicar = Callable[[pytest.MonkeyPatch], None]
 
 _QUESTION_TO_SCHEMA = challenges_mod.question_to_schema
 _EXPLICACION_PARA = cal_mod.explicacion_para
+_VISTAS = vistas_mod.vistas
 
 
 def _parche(modulo: Any, nombre: str, valor: Any) -> Aplicar:
@@ -126,6 +129,20 @@ def _paga_siempre_completo(recompensa: int, numero_intento: int,
     return recompensa
 
 
+async def _lo_servido_no_cuenta(db: AsyncSession, tenant_id: UUID,
+                                profile_ids: Collection[UUID]) -> dict[UUID, set[str]]:
+    """ZL15: lo que se sirvió en un reintento no queda como visto."""
+    visto = await _VISTAS(db, tenant_id, profile_ids)
+    servidas = (await db.execute(
+        select(ChallengeAttempt.student_id, ChallengeQuestion.id, ChallengeQuestion.item_ref)
+        .join(ChallengeQuestion,
+              ChallengeQuestion.id == any_(ChallengeAttempt.served_questions))
+        .where(ChallengeAttempt.served_questions.is_not(None)))).all()
+    for estudiante, question_id, item_ref in servidas:
+        visto[estudiante].discard(clave_de_forma(item_ref, question_id))
+    return visto
+
+
 TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     "ZL1": (_parche(cal_mod, "_COMILLAS", str.maketrans({})), tu.test_l1u1_la_normalizacion,
             r"'apostrofo_curvo': False"),
@@ -158,6 +175,9 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     "ZL12": (_parche(formas_mod, "tiene_respuestas", _sin_respuestas),
              tp.test_l1a5_terminar_cierra_como_submit,
              r"'submit_con_respuestas_guardadas': \(200, \(True, 10\)\)"),
+    "ZL15": (_parche(vistas_mod, "vistas", _lo_servido_no_cuenta),
+             tp.test_l1a6_el_segundo_intento,
+             r"'la_gemela_servida_queda_vista': \(False, False\)"),
     "ZL13": (_parche(economia_mod, "paga_del_intento", _paga_siempre_completo),
              tu.test_l1u4_opciones_explicacion_y_segundo_intento, r"'segundo con 5': 10"),
     "ZL14": (_parche(cal_mod, "idioma_de", lambda nivel: cal_mod.INGLES),

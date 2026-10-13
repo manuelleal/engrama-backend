@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from src.challenge_engine.schemas import AttemptSubmitOut, ChallengeQuestionOut
+from src.refuerzo import formas as refuerzo_formas
 from src.shared.config import settings
 from tests.challenge_engine import _l1 as l1
 from tests.curriculo import _ayuda as cat
@@ -259,6 +260,15 @@ def test_l1a5_terminar_cierra_como_submit(integ, monkeypatch) -> None:
     }, f"L1-A5: {visto}"
 
 
+def _vio(integ: Any, tenant: Any, quien: Any, item: str) -> bool:
+    """¿Ese ítem cuenta como VISTO para la cola de repaso y la segunda vuelta?"""
+    async def _q() -> bool:
+        async with integ.Session() as db:
+            return item in (await refuerzo_formas.vistas(db, tenant, [quien]))[quien]
+
+    return bool(integ.run(_q()))
+
+
 def test_l1a6_el_segundo_intento(integ, monkeypatch) -> None:
     """L1-A6 (C11): el reintento usa la gemela si existe; si no, paga según la variable."""
     c = gr.colegio(integ, "9A", n=6)
@@ -304,6 +314,9 @@ def test_l1a6_el_segundo_intento(integ, monkeypatch) -> None:
     visto["dora_recibe_las_de_siempre"] = l1.intento(integ, dora, fam)[1] == qf
     visto["dora_gana_como_hoy"] = l1.enviar(
         integ, dora, l1.intento(integ, dora, fam)[0], dict.fromkeys(qf, "A"))
+    # La gemela que se le sirvió a Carla ya no le sirve de repaso; a Dora nadie se la sirvió.
+    visto["la_gemela_servida_queda_vista"] = (_vio(integ, c.tenant, carla, "fa-2"),
+                                              _vio(integ, c.tenant, dora, "fa-2"))
     visto["pagas"] = {"solo": l1.pagas(integ, solo), "fam": l1.pagas(integ, fam)}
     assert visto == {
         "ana_falla": (200, (False, 0)), "ana_copia_la_clave": (200, (True, 10)),
@@ -322,5 +335,6 @@ def test_l1a6_el_segundo_intento(integ, monkeypatch) -> None:
         "dora_falla_por_submit": (200, (False, 0)),
         "dora_recibe_las_de_siempre": True,
         "dora_gana_como_hoy": (200, (True, 10)),
+        "la_gemela_servida_queda_vista": (True, False),
         "pagas": {"solo": [5, 10, 10], "fam": [10, 10]},
     }, f"L1-A6: {visto}"
