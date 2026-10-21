@@ -75,11 +75,11 @@ Registro = dict[str, tuple[Callable[[pytest.MonkeyPatch], None],
 TRAMPOSOS: Registro = {
     "ZE1": (_manejador(request_validation_exception_handler), [
         (se.test_se2_ninguna_ruta_con_cuerpo_devuelve_lo_enviado,
-         r"SE2: \d+ problemas en 22 rutas .*devolvió el centinela 'CENTINELA-9f3a7c'"),
+         r"SE2: \d+ problemas en 24 rutas .*devolvió el centinela 'CENTINELA-9f3a7c'"),
     ]),
     "ZE2": (_manejador(_solo_las_dos_rutas), [
         (se.test_se2_ninguna_ruta_con_cuerpo_devuelve_lo_enviado,
-         r"SE2: \d+ problemas en 20 rutas .*'POST /auth/consentimiento'.*un error trae `input`"),
+         r"SE2: \d+ problemas en 22 rutas .*'POST /auth/consentimiento'.*un error trae `input`"),
     ]),
     "ZE3": (_funcion(_solo_input), [
         (se.test_se1_sin_valores_enviados_quita_input_y_lo_derivado_del_valor,
