@@ -25,7 +25,7 @@ from src.bolsillo.schemas import (
 )
 from src.engrama_core.service import libro
 from src.shared.config import settings
-from src.shared.models import CoinLedger, CoinWallet, Membership, Tenant
+from src.shared.models import CoinLedger, CoinWallet, Membership, Profile, Tenant
 
 
 async def _objetivo(db: AsyncSession, auth: AuthContext, teacher_id: UUID) -> Membership:
@@ -114,15 +114,26 @@ async def devolver(db: AsyncSession, auth: AuthContext, teacher_id: UUID,
     return await _salida(db, asiento, m, bolsa, bolsillo), nuevo
 
 
+async def _nombre(db: AsyncSession, m: Membership) -> str:
+    """El nombre visible: el de la membresía; si no lo tiene (personal anterior a la 032),
+    el del perfil (como `nombre_visible` de auth)."""
+    if m.full_name:
+        return m.full_name
+    return (await db.execute(select(Profile.full_name).where(
+        Profile.id == m.profile_id))).scalar_one_or_none() or ""
+
+
 async def _fila(db: AsyncSession, m: Membership) -> BolsilloAdminOut:
+    nombre = await _nombre(db, m)
     bolsillo = await libro.billetera(db, "membership", m.id, m.tenant_id, crear=False)
     if bolsillo is None:  # nunca recargado: saldo 0 y nada en la semana
-        return BolsilloAdminOut(teacher_id=m.profile_id, rol=m.role, saldo=0,
-                                recargado_semana=0, entregado_semana=0)
+        return BolsilloAdminOut(teacher_id=m.profile_id, nombre=nombre, rol=m.role,
+                                saldo=0, recargado_semana=0, entregado_semana=0)
     dado = await consultas.suma(db, tenant_id=m.tenant_id, accion=consultas.ENTREGA,
                                 desde_fecha=consultas.lunes_actual(), desde_wallet=bolsillo.id)
     return BolsilloAdminOut(
-        teacher_id=m.profile_id, rol=m.role, saldo=int(bolsillo.balance),
+        teacher_id=m.profile_id, nombre=nombre, rol=m.role,
+        saldo=int(bolsillo.balance),
         recargado_semana=await _recargado_semana(db, m.tenant_id, bolsillo.id),
         entregado_semana=dado)
 

@@ -162,3 +162,16 @@ def test_oe15a_aislamiento_del_bolsillo(integ) -> None:
     assert observado == {"recarga_ajena": 404, "dar_ajeno": 404, "corregir_ajeno": 404,
                          "saldos_grupo_ajeno": 404, "panel_solo_t2": True,
                          "t1_intacto": (10, 90)}, f"OE15a: {observado}"
+
+
+def test_oe16_el_panel_de_presupuestos_trae_el_nombre_del_profe(integ) -> None:
+    """`profes[].nombre`: el visible del profe en esa institución (el de su membresía o,
+    si no la tiene, el del perfil), nunca vacío ni el de otro."""
+    from uuid import UUID
+    t = ay.escuela(integ, n=1)
+    ay.recargar(integ, t.admin, t.p1, 100)
+    panel = ay.leer(integ, t.admin, "/admin/presupuestos").json()
+    esperado = {str(x): integ.valor("select full_name from profiles where id = :i", i=UUID(str(x)))
+                for x in (t.admin, t.p1, t.p2)}
+    observado = {p["teacher_id"]: p["nombre"] for p in panel["profes"]}
+    assert observado == esperado and all(observado.values()), f"OE16: {observado}"

@@ -115,6 +115,8 @@ class BolsilloAdminOut(BaseModel):
     model_config = _SALIDA
 
     teacher_id: UUID
+    # El nombre visible del profe en ESTA institución ("" si la membresía no lo tiene).
+    nombre: str = ""
     rol: str
     saldo: int
     recargado_semana: int
