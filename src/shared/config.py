@@ -184,6 +184,22 @@ class Settings(BaseSettings):
     # exige que los dos defectos coincidan).
     bolsa_umbral_alerta_pct: int = Field(default=10, ge=0, le=100)
 
+    # La economía de la ola 1 (docs/ESPEC_ola1_economia.md §6). TODOS PROVISIONALES
+    # (plan 14, decisión 2 de Christiam sin responder). Dar es una válvula del profe
+    # con techo, no una fuente: una entrega no pesa más que el reto más caro (20),
+    # a un estudiante no le llega de los profes más de 40 por semana (menos que una
+    # semana típica de juego, 52) y el profe no da más de lo que le recargan (100
+    # por semana, ≈ 6 % de lo que emite un grupo de 30).
+    profe_entrega_tope: int = Field(default=20, ge=1, le=1000)
+    profe_semana_por_estudiante_tope: int = Field(default=40, ge=1, le=10000)
+    profe_presupuesto_semanal: int = Field(default=100, ge=1, le=100000)
+    # Corregir deshace una entrega propia hasta estos días después.
+    corregir_plazo_dias: int = Field(default=14, ge=1, le=365)
+    # Si el profe no entrega lo comprado en estos días, se devuelve solo.
+    tienda_entrega_plazo_dias: int = Field(default=14, ge=1, le=365)
+    # Los únicos precios de la tienda (1; 2,5; 6 y 12 semanas de un típico).
+    tienda_escalones: list[int] = Field(default=[40, 120, 300, 600])
+
     # --- Database ---
     database_url: str = Field(
         ..., description="DSN Postgres; se normaliza a postgresql+asyncpg:// internamente"
