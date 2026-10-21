@@ -28,6 +28,7 @@ tests/_salida/humo_foco_grupo.json
 tests/_salida/humo_refuerzo.json
 tests/_salida/humo_economia_oleada0.json
 tests/_salida/humo_reto_del_dia.json
+tests/_salida/humo_ola1_economia.json
 tests/_salida/replica_reto_del_dia.json
 
 # Salidas sueltas de herramientas
