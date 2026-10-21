@@ -72,7 +72,9 @@ async def billetera(
     if dueno != "profile":
         stmt = stmt.where(CoinWallet.tenant_id == tenant_id)
     if bloquear:
-        stmt = stmt.with_for_update()
+        # populate_existing: si la billetera ya estaba en la sesión, se relee el saldo
+        # bloqueado (no el viejo), para que transferir nunca calcule con un valor rancio.
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     encontrada = (await db.execute(stmt)).scalar_one_or_none()
     if encontrada is not None or not crear:
         return encontrada
@@ -89,7 +91,7 @@ async def billetera_por_id(
     """La billetera de un asiento ya hecho (Corregir vuelve por el mismo camino)."""
     stmt = select(CoinWallet).where(CoinWallet.id == wallet_id)
     if bloquear:
-        stmt = stmt.with_for_update()
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     return (await db.execute(stmt)).scalar_one()
 
 
