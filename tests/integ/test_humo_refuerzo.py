@@ -39,7 +39,7 @@ NODOS = (ay.UNO, ay.DOS, ay.TRES, ay.CUATRO)
 # Contenido exacto (ESPEC §3). Los cuatro ceros son CRITERIO; los demás números
 # salieron de la primera medición con el código bueno y no se mueven.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "045_correccion_por_pregunta", "semilla": 41, "hojas": 10, "entradas": 22,
+    "alembic_version": "047_economia_ola1", "semilla": 41, "hojas": 10, "entradas": 22,
     "servidas_ya_vistas": 0, "tras_el_refuerzo": {"en_refuerzo": 6, "por_repasar": 16},
     "tras_el_repaso": {"en_refuerzo": 8, "por_repasar": 3, "superado": 11},
     "en_espera_de_contenido": 0, "huecos": 0,

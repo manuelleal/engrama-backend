@@ -260,8 +260,11 @@ class CoinWallet(Base):
     )
 
     __table_args__ = (
+        # 047 (ESPEC_ola1_economia §1.2): `membership` = el bolsillo del profe en
+        # UNA institución (owner_id = memberships.id), no en todas; `auction` = lo
+        # retenido del líder de una subasta (owner_id = auctions.id, ADENDA 1).
         CheckConstraint(
-            "owner_type IN ('system','tenant','profile')",
+            "owner_type IN ('system','tenant','profile','membership','auction')",
             name="coin_wallets_owner_type_check",
         ),
         CheckConstraint("balance >= 0", name="coin_wallets_balance_nonneg_check"),
@@ -314,6 +317,11 @@ class CoinLedger(Base):
         Index("idx_ledger_from_wallet", "from_wallet_id"),
         Index("idx_ledger_to_wallet", "to_wallet_id"),
         Index("idx_ledger_created_at", "created_at"),
+        # 047: los topes de la ola 1 suman por institución, acción, quién y cuándo.
+        Index(
+            "idx_ledger_tenant_action_actor",
+            "tenant_id", "action", "created_by_profile_id", "created_at",
+        ),
     )
 
 
@@ -836,6 +844,11 @@ class ShopItem(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # 047: quién lo publicó (decide quién lo edita y quién lo entrega). NULL en
+    # lo que existía antes de la ola 1.
+    created_by: Mapped[Any | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id"), nullable=True
+    )
 
     __table_args__ = (
         CheckConstraint("price_coins >= 0", name="shop_items_price_nonneg_check"),
@@ -877,6 +890,12 @@ class Inventory(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # 047: lo que costó de verdad y el asiento de la compra. La devolución de los
+    # 14 días devuelve `price_paid`, no el precio de hoy del objeto.
+    price_paid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    purchase_ledger_id: Mapped[Any | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("coin_ledger.id"), nullable=True
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -885,6 +904,13 @@ class Inventory(Base):
         CheckConstraint(
             "status IN ('available','pending_delivery','delivered','expired','archived')",
             name="inventory_status_check",
+        ),
+        CheckConstraint(
+            "price_paid IS NULL OR price_paid > 0", name="inventory_price_paid_check"
+        ),
+        Index(
+            "idx_inventory_pendientes", "tenant_id", "purchased_at",
+            postgresql_where=text("status = 'pending_delivery'"),
         ),
     )
 
@@ -933,11 +959,23 @@ class Auction(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # 047 (ESPEC_ola1_economia, ADENDA 1): cuándo cierra (con las extensiones de
+    # 10 s ya sumadas), cuántas extensiones lleva, el objeto de la tienda y quién la creó.
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    extensions: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    item_id: Mapped[Any | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("shop_items.id"), nullable=True
+    )
+    created_by: Mapped[Any | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id"), nullable=True
+    )
 
     __table_args__ = (
         CheckConstraint(
             "status IN ('active','ended','cancelled')", name="auctions_status_check"
         ),
+        Index("uq_auctions_grupo_activa", "group_id", unique=True,
+              postgresql_where=text("status = 'active'")),
     )
 
 
