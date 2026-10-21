@@ -42,7 +42,7 @@ Manda `investigacion/pedagogia/06-camino-de-nivel-y-temas.md` §2.1, §2.3, §2.
 
 ### 1.4 Bloqueo suave y recomendada (decisión de Christiam)
 - `acceso` de la unidad *i*: `abierta` si es la primera, si ya empezó (lo empezado nunca se bloquea), o si la anterior está Completada o Dominada. `abierta_con_apoyo` si la anterior no está bloqueada, está `en_curso` y empezó hace **7 días o más** (`CAMINO_DIAS_ATASCO`, **decidido por Christiam**). Si no, `bloqueada`, con `se_abre_el` = el `empezada_en` de la anterior + 7 días cuando la anterior está abierta y en curso (si no, `null`).
-- **Atascada** = `en_curso` hace 7 días o más **y** la siguiente quedó `abierta_con_apoyo`.
+- **Atascada** = `en_curso` hace 7 días o más **y** con una unidad después. *(Corrección antes del código, 2026-10-21: decía "y la siguiente quedó `abierta_con_apoyo`"; con esa regla, si la tanda ya había empezado la siguiente, la atascada seguía recomendada para siempre. El acceso `abierta_con_apoyo` de la siguiente sale de que la anterior esté atascada.)*
 - `recomendada`: la primera unidad, en orden, que no está bloqueada, no está Completada ni Dominada y no está atascada. Si no hay, la primera abierta sin completar. Si todas están completas: `null`.
 - **Bloqueo suave = el backend no prohíbe nada:** el feed, la tanda y `POST /{id}/attempt` siguen igual. La web solo no enlaza lo bloqueado.
 - Por unidad, `siguiente_reto` = la primera estación (en orden) con `puede_jugar`; `null` si no hay.
@@ -67,7 +67,7 @@ Puros (`tests/camino/test_unit.py`, sin base):
 - **CU1** estados: sin intentos → `sin_empezar`; una estación jugada de dos → `en_curso`; todas jugadas con 7 de 10 → `completada` y con 6 de 10 → `en_curso`; el mejor intento manda (1 de 3 y luego 3 de 3 = 3).
 - **CU2** dominada: completada + 3 demoradas a 7 días con 3 de 3 → `dominada`; a 6 días y 23 h → `completada`; 2 demoradas → `completada`; con escritas en la unidad y ninguna escrita acertada → `completada`; 4 de 5 (80 %) → `dominada`.
 - **CU3** bloqueo suave: la primera abierta; la 2 bloqueada mientras la 1 va en curso, con `se_abre_el` = empezada + 7 días; a 6 d 23 h sigue bloqueada; a 7 días `abierta_con_apoyo` y la recomendada pasa a la 2; la 1 completada abre la 2; una unidad empezada nunca está bloqueada.
-- **CU4** recomendada: la primera abierta sin completar; todo completo → `null`; si la única que queda está atascada y no tiene siguiente, es ella.
+- **CU4** recomendada: la primera abierta sin completar; todo completo → `null`; una atascada cede la recomendación a la siguiente aunque esa ya esté empezada; la última unidad nunca está atascada (no hay a dónde seguir).
 - **CU5** título y número: `"a1-u03-daily · Daily Routine · Gramática 1 · original"` → `(3, "Daily Routine")`; con `[BORRADOR] ` delante, igual; un título que no empieza por el topic → `null`; un topic sin `-uNN` → su posición.
 
 Por HTTP contra Postgres (`tests/camino/test_camino.py`, `integ`), lo observado en un dict que se compara ENTERO:
