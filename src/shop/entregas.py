@@ -69,7 +69,8 @@ async def _devolver_una(db: AsyncSession, fila: Inventory) -> bool:
                            llave=_llave_devolucion(fila))
     _marcar_devuelta(fila, consultas.ahora())
     objeto = (await db.execute(select(ShopItem).where(ShopItem.id == fila.item_id)
-                               .with_for_update())).scalar_one()
+                               .with_for_update()
+                               .execution_options(populate_existing=True))).scalar_one()
     if objeto.stock is not None:
         objeto.stock = objeto.stock + 1
     await db.flush()

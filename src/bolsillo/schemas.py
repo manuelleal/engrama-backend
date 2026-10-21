@@ -44,7 +44,7 @@ class MovimientoIn(BaseModel):
 
     model_config = _ENTRADA
 
-    monto: int = Field(strict=True, ge=1)
+    monto: int = Field(strict=True, ge=1, le=1_000_000)
     nota: str | None = Field(default=None, max_length=80)
     llave: str | None = Field(default=None, pattern=LLAVE_PATRON)
 
