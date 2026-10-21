@@ -59,5 +59,22 @@ Los números saltan a AR30, C50 y ZR50 a propósito: la rama paralela `seg/limit
 - La compensación del paso de GoTrue, si la base falla al borrar el perfil, sigue respondiendo 500 (la cuenta ya se borró: no hay huérfana, solo el código de estado). `_confirmar_o_deshacer` sí la convierte en 502.
 - `LEEME_piloto.md` §12.1 punto 9 y §14.12 punto 3: corregir "S-7 abierto".
 
-## 6. Medido
-(Se llena al terminar.)
+## 6. Medido (2026-10-20/21, código en `cd0f362`)
+Todo con la base propia `engrama-test-pg-s7` (127.0.0.1:55437): un plugin local, fuera del repo, cambia el nombre y el puerto de `tests/integ_db.py` para no borrar `engrama-test-pg`, que usaba la rama paralela. Nunca contra el piloto.
+
+| Qué | Predicho | Medido |
+|---|---|---|
+| Suite completa antes (`f7f7aeb` + espec) | 768 + 24 | **768 passed + 24 skipped** (56 min) |
+| AR30 con el código de antes | rojo, `(500, None)` y la cuenta viva | **rojo**: `(500, None)`, cuenta viva, `creando`, usos 1; reintento 201 y lista del profe **0**. Con `borrar` fallando, también 500 |
+| AR30 con el código nuevo | verde | **verde** |
+| ZR50 (tramposo) | AR30 rojo con su mensaje | **rojo por su razón** (el test del tramposo pasa) |
+| AR12, ZR24, ZR14, AR8 | sin cambio | verdes / rojos como siempre |
+| Réplica (`KeyError`, `AttributeError`; otra institución, persona 7, correo en mayúsculas, nombre con tildes) | 502, 0 cuentas, usos 0, reintento 201 | **2/2**: exactamente eso, y la lista del profe con 1 |
+| Humo HA1 | escribe su archivo con el contenido de siempre | escrito, **idéntico** a `HUMO_ESPERADO` |
+| No-integ | 208 | **208** |
+| ruff | 0 | **0** |
+| Suite completa después | 770 + 24 | **769 passed + 1 failed + 24 skipped** (48 min). El que falló: **AR18** (medición de tiempo del piso) |
+
+**AR18 no lo rompió este cambio**, es la carga de la máquina: durante la corrida había al menos cuatro worktrees del backend con agentes en paralelo (`limites-registro`, `lote`, `opcion`, `pase`). Las medianas sin piso salieron de 322 a 759 ms para `creado` (lo normal es unos 70). **El código de antes (`78cc159`, en un worktree temporal) falló AR18 igual en ese momento** (dispersión con piso: 352,7 ms). Con menos carga, `test_piso.py` entero pasa con el código nuevo (**3 passed**). Cuenta real: 770 de 770 con la máquina tranquila; no se repitió la suite entera en ese estado.
+
+Candidatos a ERR, para el coordinador: (1) `LEEME_piloto.md` da S-7 por abierto 12 días después de cerrarlo; (2) `tests/integ_db.py` fija el nombre y el puerto del contenedor: dos agentes que corran integración a la vez se borran la base el uno al otro (aquí se esquivó con el plugin local); (3) AR18 es un test de tiempo que se pone rojo con la máquina cargada.
