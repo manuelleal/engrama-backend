@@ -121,3 +121,28 @@ def test_sb5_aislamiento_de_la_subasta(integ) -> None:
     assert observado == {"otro_grupo_puja": 404, "otro_grupo_mira": 404,
                          "otra_institucion_puja": 404, "profe_ajeno_crea": 404,
                          "profe_ajeno_cierra": 404, "saldos": [100, 100]}, f"SB5: {observado}"
+
+
+def test_sb6_activa_acepta_el_codigo_del_grupo(integ) -> None:
+    """El estudiante solo conoce su `group_code`: `?grupo=10A` resuelve a su subasta; el
+    código de un grupo ajeno (o de otro tenant, o inexistente) no abre nada."""
+    e = ay.escuela(integ, n=1, saldo=100)
+    otra = ay.escuela(integ, n=1, saldo=100)  # también tiene un grupo "10A"
+    s = ay.crear_subasta(integ, e.p1, e.g1).json()["id"]
+    otra_s = ay.crear_subasta(integ, otra.p1, otra.g1).json()["id"]
+    mia = ay.leer(integ, e.a1[0], "/subastas/activa?grupo=10A")
+    observado = {
+        "mia_por_codigo": (mia.status_code, mia.json()["id"] if mia.status_code == 200 else None),
+        "mia_por_uuid": ay.leer(integ, e.a1[0], f"/subastas/activa?grupo={e.g1}").json()["id"],
+        "codigo_ajeno": ay.leer(integ, e.a2[0], "/subastas/activa?grupo=10A").status_code,
+        "codigo_inexistente": ay.leer(integ, e.a1[0], "/subastas/activa?grupo=ZZ9").status_code,
+        "profe_por_codigo": ay.leer(integ, e.p1, "/subastas/activa?grupo=10A").json()["id"],
+        "profe_codigo_ajeno": ay.leer(integ, e.p1, "/subastas/activa?grupo=10B").status_code,
+        "admin_por_codigo": ay.leer(integ, e.admin, "/subastas/activa?grupo=10A").json()["id"],
+        # el código "10A" del otro tenant se resuelve en SU tenant, nunca en el mío
+        "otro_tenant": ay.leer(integ, otra.a1[0], "/subastas/activa?grupo=10A").json()["id"],
+    }
+    assert observado == {
+        "mia_por_codigo": (200, s), "mia_por_uuid": s, "codigo_ajeno": 404,
+        "codigo_inexistente": 404, "profe_por_codigo": s, "profe_codigo_ajeno": 404,
+        "admin_por_codigo": s, "otro_tenant": otra_s}, f"SB6: {observado}"

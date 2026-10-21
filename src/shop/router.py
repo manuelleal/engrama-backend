@@ -109,7 +109,9 @@ async def entregar(inventory_id: UUID, auth: AuthContext = Depends(require_teach
 
 # ------------------------------------------------------------------ la subasta
 @subasta.get("/activa", response_model=SubastaOut | None)
-async def activa(grupo: UUID = Query(...), auth: AuthContext = Depends(get_current_user),
+async def activa(grupo: str = Query(..., min_length=1, max_length=64,
+                                    description="UUID del grupo o su group_code"),
+                 auth: AuthContext = Depends(get_current_user),
                  db: AsyncSession = Depends(get_db)) -> SubastaOut | None:
     salida = await subastas.activa(db, auth, grupo)
     await db.commit()  # el cierre perezoso, si hubo

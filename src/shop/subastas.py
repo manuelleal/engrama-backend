@@ -259,8 +259,26 @@ async def cerrar_por_profe(db: AsyncSession, auth: AuthContext, aid: UUID) -> Su
     return subasta_out(a)
 
 
-async def activa(db: AsyncSession, auth: AuthContext, gid: UUID) -> SubastaOut | None:
-    """La activa del grupo (cerrándola si ya venció) o la última cerrada hace < 2 min."""
+async def _resolver_grupo(db: AsyncSession, auth: AuthContext, grupo: str) -> UUID:
+    """El UUID del grupo: el valor mismo si ya lo es; si no, se busca por `group_code`
+    dentro del tenant activo (el estudiante solo conoce su código). Sin coincidencia, 404.
+    No abre nada: el permiso lo sigue decidiendo `_grupo_visible`."""
+    try:
+        return UUID(grupo)
+    except ValueError:
+        pass
+    gid = (await db.execute(select(Group.id).where(
+        Group.tenant_id == auth.tenant_id, Group.group_code == grupo))).scalar_one_or_none()
+    if gid is None:
+        raise rechazo(status.HTTP_404_NOT_FOUND, "grupo_no_encontrado")
+    return gid
+
+
+async def activa(db: AsyncSession, auth: AuthContext, grupo_ref: UUID | str) -> SubastaOut | None:
+    """La activa del grupo (cerrándola si ya venció) o la última cerrada hace < 2 min.
+
+    `grupo_ref` es el UUID del grupo o su `group_code`."""
+    gid = grupo_ref if isinstance(grupo_ref, UUID) else await _resolver_grupo(db, auth, grupo_ref)
     grupo = await _grupo_visible(db, auth, gid)
     a = await _activa_de(db, auth.tenant_id, grupo.id)
     if a is not None:
