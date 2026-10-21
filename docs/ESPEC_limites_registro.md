@@ -119,5 +119,53 @@ Cada tramposo se corre con su test y debe dar `AssertionError` con ese mensaje; 
 ## 8. Riesgo para producción
 Ninguno hoy: no se despliega. Al desplegar: la migración 046 es aditiva (`CREATE ... IF NOT EXISTS`); el backend nuevo con la base vieja falla al registrar (500: la tabla no existe), así que **la migración va antes que el backend**, como siempre en `migrar.py`. El backend viejo con la base nueva no la usa.
 
-## 9. Medido
-(Se llena al cerrar, sin mover nada de lo de arriba.)
+## 9. Medido (2026-10-21, sobre `1a7a421`; en un contenedor de prueba propio, `engrama-test-pg`, nunca la base del piloto)
+**Veredicto: HAY ALGO MODESTO.** El límite ya no depende del número de procesos (DP1 verde, ZR41 rojo: 10 contra 20), y todo lo nuevo pasa con sus tramposos en rojo. Pero el límite agrega trabajo de base a cada registro y AR18 (el test de tiempo del piso, S-5) sale rojo en esta máquina; también salió rojo en `f7f7aeb` con la misma carga (abajo).
+
+| Qué | Resultado |
+|---|---|
+| Suite completa (sobre `5a2977b`) | **780 passed, 3 failed, 24 skipped** (2.877 s). Total 807 = 783 + 24, como predijo §5. Fallaron AR18, D12 y el tramposo de D12 |
+| D12 y su tramposo | Fallaban por un conteo fijo de tablas (47) que la espec no listó (§9.1). Corregido en `1a7a421`: `test_sin_acceso.py` + tramposo D12, **3 passed** solos. La suite completa no se volvió a correr después de esa corrección |
+| AR18 | **Rojo**: `creado_sin_piso_bajo_el_piso: False` y `con_piso_pegados: False`. Medianas sin piso: creado 598,5 ms, correo_en_uso 600,9, ocupado 361,7, 403 272,6. §9.2 |
+| no-integ | **210** (predicho 210) |
+| `ruff check .` | 0 |
+| `mypy .` | 5 errores, los mismos 5 que ya tenía la rama (4 en `test_422_sin_eco.py`, 1 en `test_tramposos_practica.py`); los 9 archivos nuevos o tocados, 0 |
+| Humo HLC1 y réplica RLC1 | Verdes; escribieron `tests/_salida/humo_limite_compartido.json` y `replica_limite_compartido.json`. Humo: `por_ip` 2 llaves y 3 filas, `malos_por_ip` 2/2, `por_codigo` 1/1, `global` 1/1; ninguna llave contiene una IP. Réplica: `por_ip` 2/4, `malos_por_ip` 2/2, `por_codigo` 1/2, `global` 1/2; la IPv4 envuelta (`::ffff:198.51.100.77`) cae en la llave de `198.51.100.77` |
+| DP1 (bueno) | `admitidos` 10 (7 y 3 en una corrida; 10 y 0 en otra), `se_solaparon` True, 10 filas `por_ip`, 6 filas `global`, el global lleno visto desde un tercer proceso |
+
+**Los tramposos, rojos por su razón** (mensaje tal cual, primera línea):
+| # | Rojo |
+|---|---|
+| ZR37 | UL4: `'hex_de_64': [False, False], 'sin_la_ip_adentro': [False, False, False, False]` |
+| ZR38 | LC1: `'el_61': (403, 'codigo_no_valido', False)`, `'llaves_por_ip': 62`, `'filas_malos_del_64': 0` |
+| ZR39 | LC2: `'basura': [403, 403, 403, 403, 403, 429, …]` (35 en 429), `'grupo_b': [429, 429]`, `'grupo_c': [429, 429]` |
+| ZR40 | LC3: `'con_candado_tomado': (500, None, None)` |
+| ZR41 | DP1 (memoria): `'admitidos': 20`, `'filas_por_ip': 0`, `'filas_global': 0`, `'global_lleno_visto_desde_aqui': False` |
+| ZR42 | DP1 (sin candado): `'admitidos': 14` en la primera corrida; 30 y 60 después de abrir las conexiones antes de arrancar (§9.1) |
+| ZR43 | MG46: `'tras_bajar': {'la_tabla': {'existe': True, …` |
+
+Los existentes que tocan el límite siguen rojos por su razón: ZR3 y ZR25 (con la firma ajustada, §4), ZR4, ZR22 y ZR28. ZR33 (el piso apagado contra AR18) pasó en una corrida y en otra no (§9.2).
+
+### 9.1 Lo que cambió en el camino (declarado, sin mover criterios)
+- **Ediciones que §4 no listó (ERR-25):** (a) la cabeza `046_limite_compartido` en los 12 humos que la fijan (`tests/integ/test_humo_*.py`), como hizo cada migración anterior; (b) el control de D12 (`tests/seguridad/test_sin_acceso.py`): 47 → 48 tablas. Las dos son conteos de plomería; ninguna afirmación del producto cambió.
+- **MG46** comparaba `relpersistence` como texto y asyncpg lo devuelve como bytes (`b'u'`): se agregó `::text` a la consulta. El criterio (`'u'`) no cambió.
+- **La conexión del límite.** Primero se usó una conexión propia por operación (`motor.begin()`), luego una conexión aparte durante toda la petición. La segunda se descartó antes del commit por un riesgo de producción: cada registro tendría dos conexiones del pool a la vez, y 15 registros simultáneos en un proceso (pool de 5 + 10) se quedarían esperando la segunda hasta `pool_timeout`. Quedó la misma sesión de la ruta, en transacciones cortas propias (`_limpia` deshace lo que quedara abierto antes de escribir).
+- **DP1:** se le agregó `se_solaparon` (que los dos procesos corrieran a la vez); es más estricto, no menos. El proceso hijo abre sus 30 conexiones antes de arrancar: con conexiones abiertas sobre la marcha (~100 ms cada una aquí), las llamadas quedaban escalonadas y ZR42 sacaba solo 14 (seguía rojo, con poco margen). ZR41 y ZR42 no exigen el solape.
+
+### 9.2 AR18 y el costo del límite en las pruebas (candidato a ERR)
+El límite agrega dos transacciones a cada registro (`tomar` y la anotación de después). En producción el pool reusa conexiones; en las pruebas la fixture usa `NullPool` (cada `commit` de la sesión cierra la conexión y la siguiente abre otra, ~80-460 ms cada una en Docker Desktop con esta carga; una ida y vuelta, 4-8 ms). Medido A/B con AR18, alternando `f7f7aeb` (copia en un directorio temporal) y esta rama, dos veces cada una:
+
+| Corrida | creado | correo_en_uso | ocupado | 403 (medianas sin piso, ms) |
+|---|---|---|---|---|
+| `f7f7aeb` 1 | 637,0 | 767,6 | 224,7 | 192,7 |
+| rama 1 | 1.130,0 | 961,6 | 590,3 | 575,2 |
+| `f7f7aeb` 2 | 906,1 | 748,8 | 300,7 | 197,6 |
+| rama 2 | 998,7 | 876,7 | 591,8 | 603,7 |
+
+En `f7f7aeb`, AR18 **pasó** en la primera corrida del día (la de regresión, antes de tocar nada: 69 passed) y salió **rojo** en las tres siguientes (la máquina estaba cada vez más cargada: el piloto, coins-mvp y el anillo de SET en marcha). En esta rama los caminos rápidos suben ~+300 a +400 ms. Con esa carga ni el 403 baja de 400 ms sin piso, y por eso ZR33 a veces no se pone rojo. **AR18 no puede confirmar ni refutar S-5 en este entorno.** Propuesta (no aplicada; el criterio no se mueve aquí): que el piso se mida en el servidor con `medir_autorregistro.mjs tiempos --piso` y `sonda`, y que AR18 se marque como sensible a la carga y a la fixture. Ojo: §13.2 de ESPEC_autorregistro midió el camino real más lento en 376 ms con un piso de 400; el límite le suma unas idas y vueltas a la base (en producción, del orden de milisegundos: **no medido**).
+
+### 9.3 No medido
+- Nada contra el piloto ni contra un servidor: ni dos procesos de uvicorn de verdad detrás de Caddy, ni IPv6 real, ni el costo en milisegundos con el pool de producción.
+- La purga con más de una ventana de filas reales; el tamaño de la tabla bajo avalancha.
+- Que `pg_dump` incluya la tabla UNLOGGED (por defecto sí: sus llaves son huellas).
+- El login (GoTrue) no se tocó: su llave sigue siendo la dirección completa (§7).
