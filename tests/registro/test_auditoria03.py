@@ -99,9 +99,9 @@ def test_ar13_los_codigos_inventados_no_agotan_el_registro(integ) -> None:
         settings.proxies_de_confianza = 1
         basura = [_desde(f"198.51.100.{i}", ay.cuerpo(f"ZZZZ{i:04d}", 1)).status_code
                   for i in range(5)]
-        llaves_tras_la_basura = limite_mod.POR_CODIGO.llaves()
+        llaves_tras_la_basura = ay.llaves(integ, limite_mod.POR_CODIGO)
         validos = [_desde(f"203.0.113.{n}", ay.cuerpo(a.codigo, n)) for n in range(1, 5)]
-        llaves_al_final = limite_mod.POR_CODIGO.llaves()
+        llaves_al_final = ay.llaves(integ, limite_mod.POR_CODIGO)
     finally:
         limite_mod.GLOBAL.tope, settings.proxies_de_confianza = tope, saltos
         limite_mod.reiniciar()
