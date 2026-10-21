@@ -182,9 +182,30 @@ _L1: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/challenges/attempts/{attempt_id}/finish", frozenset({"POST"})): "user",
 }
 
+# docs/ESPEC_ola1_economia.md (contrato de la ADENDA 1): el bolsillo del profe, la
+# tienda con mochila y entregas, y la subasta. La tienda, comprar, la mochila,
+# ver la subasta y pujar son de cualquier usuario con sesión: el servicio exige la
+# membresía de estudiante donde toca (403) y el grupo (404).
+_OLA1: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/economia/presupuesto", frozenset({"GET"})): "teacher",
+    ("/economia/grupo/{gid}/saldos", frozenset({"GET"})): "teacher",
+    ("/economia/dar", frozenset({"POST"})): "teacher",
+    ("/economia/corregir", frozenset({"POST"})): "teacher",
+    ("/economia/tienda", frozenset({"GET"})): "user",
+    ("/economia/tienda", frozenset({"POST"})): "teacher",
+    ("/economia/tienda/{item_id}", frozenset({"PATCH"})): "teacher",
+    ("/economia/tienda/{item_id}/comprar", frozenset({"POST"})): "user",
+    ("/economia/mochila", frozenset({"GET"})): "user",
+    ("/economia/grupo/{gid}/mochila", frozenset({"GET"})): "teacher",
+    ("/economia/mochila/{inventory_id}/entregar", frozenset({"POST"})): "teacher",
+    ("/admin/presupuestos", frozenset({"GET"})): "admin",
+    ("/admin/presupuestos/{teacher_id}/recargar", frozenset({"POST"})): "admin",
+    ("/admin/presupuestos/{teacher_id}/devolver", frozenset({"POST"})): "admin",
+}
+
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS, **_EVENTOS,
-    **_CATALOGO, **_GRADER, **_FOCO, **_REFUERZO, **_RACHA, **_TANDA, **_L1}
+    **_CATALOGO, **_GRADER, **_FOCO, **_REFUERZO, **_RACHA, **_TANDA, **_L1, **_OLA1}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:

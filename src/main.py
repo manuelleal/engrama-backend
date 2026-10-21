@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 
 from src.auth.router import router as auth_router
+from src.bolsillo.router import admin as bolsillo_admin_router
+from src.bolsillo.router import economia as bolsillo_economia_router
 from src.challenge_engine.router import router as challenges_router
 from src.curriculo.router import router as curriculo_router
 from src.datos.router import admin as datos_admin_router
@@ -12,6 +14,7 @@ from src.refuerzo.router import router as refuerzo_router
 from src.registro.router import docente as registro_docente_router
 from src.registro.router import publico as registro_publico_router
 from src.shared import validacion
+from src.shop.router import economia as tienda_economia_router
 from src.teachers.admin_router import router as admin_router
 from src.teachers.router import router as teachers_router
 from src.webhooks.router import router as events_router
@@ -53,6 +56,12 @@ app.include_router(foco_router, prefix="/teachers", tags=["foco"])
 # La cola de refuerzo: lo que ve el profe (docs/ESPEC_refuerzo.md). Las rutas
 # del estudiante viven en el router de retos.
 app.include_router(refuerzo_router, prefix="/teachers", tags=["refuerzo"])
+# La economía de la ola 1 (docs/ESPEC_ola1_economia.md, contrato de la ADENDA 1):
+# el bolsillo del profe (Dar, Corregir y el presupuesto que recarga el admin), la
+# tienda con mochila y entregas.
+app.include_router(bolsillo_economia_router, prefix="/economia", tags=["economia"])
+app.include_router(tienda_economia_router, prefix="/economia", tags=["economia"])
+app.include_router(bolsillo_admin_router, prefix="/admin", tags=["economia"])
 
 
 @app.get("/health")
