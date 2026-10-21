@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -51,9 +52,28 @@ if TYPE_CHECKING:
 # =============================================================================
 RAIZ_BACKEND = Path(__file__).resolve().parent.parent
 IMAGEN = "public.ecr.aws/supabase/postgres:17.6.1.167"
-CONTENEDOR = "engrama-test-pg"
 HOST = "127.0.0.1"
-PUERTO = 55432
+
+
+def _contenedor_y_puerto() -> tuple[str, int]:
+    """El contenedor y el puerto de ESTA corrida: los de siempre, o los de la variable de entorno.
+
+    Varias ramas corren su integración a la vez en la misma máquina (cada una con
+    su base desechable): `ENGRAMA_TEST_PG_NOMBRE` y `ENGRAMA_TEST_PG_PUERTO`. Solo
+    se aceptan nombres `engrama-test-pg` o `engrama-test-pg-<algo>` y puertos de
+    55432 a 55499: la fixture hace `docker rm -f` de ese nombre y nunca debe poder
+    tocar el piloto ni coins-mvp.
+    """
+    nombre = os.environ.get("ENGRAMA_TEST_PG_NOMBRE", "engrama-test-pg")
+    crudo = os.environ.get("ENGRAMA_TEST_PG_PUERTO", "55432")
+    if not re.fullmatch(r"engrama-test-pg(-[a-z0-9]+)*", nombre):
+        raise RuntimeError(f"ENGRAMA_TEST_PG_NOMBRE no es un contenedor de pruebas: {nombre!r}")
+    if not crudo.isdigit() or not 55432 <= int(crudo) <= 55499:
+        raise RuntimeError(f"ENGRAMA_TEST_PG_PUERTO fuera de 55432-55499: {crudo!r}")
+    return nombre, int(crudo)
+
+
+CONTENEDOR, PUERTO = _contenedor_y_puerto()
 CLAVE_SINTETICA = "solo_pruebas_locales_engrama"  # sintética, contenedor desechable
 BASE_PRINCIPAL = "postgres"
 ESPERA_MAXIMA_S = 90
