@@ -173,6 +173,7 @@ _RACHA: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
 _TANDA: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/challenges/tanda", frozenset({"GET"})): "user",
     ("/challenges/tanda", frozenset({"POST"})): "user",
+    ("/challenges/camino", frozenset({"GET"})): "user",  # el camino de nivel (ESPEC_camino_progreso), solo lectura
 }
 
 # docs/ESPEC_l1_correccion_por_pregunta.md §10.3: responder pregunta por pregunta.
