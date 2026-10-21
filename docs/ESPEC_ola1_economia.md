@@ -6,6 +6,89 @@ Origen: `INGLES/investigacion/producto/14-plan-recuperar-el-juego.md` (ola 1, pu
 
 **Migración: `047_economia_ola1`, con `down_revision = "045_correccion_por_pregunta"`.** Las ramas `seg/limites-registro` (`046_limite_compartido`) y `seg/pase-acotado` (`046_anillo_pases`) ya usan el 046 y no están integradas: **al integrar, esta migración se renumera y cambia su `down_revision`** (ERR-45). Mientras tanto, en esta rama la cabeza salta de 045 a 047.
 
+## ADENDA 1 · Decisión 017 de Christiam (2026-10-21, tarde): contrato final, subasta y modo rápido
+
+**Esto manda sobre §1-§4 y §10 donde choquen.** Se despliega hoy. Cambia tres cosas, ANTES de tener resultados de la ola (no se mueve un criterio después de verlo):
+1. **Las rutas** pasan a este contrato (lo consume la web en paralelo). Los nombres de §1 (`/teachers/...`, `/core/shop`...) quedan reemplazados. Las reglas de negocio de §1 (topes, plazos, permisos, idempotencia, aislamiento) no cambian.
+2. **Se agrega la subasta (puja)** con `auctions` y `auction_bids` (§A.5).
+3. **Modo rápido de pruebas:** una prueba por regla de plata (topes, saldo nunca negativo, aislamiento por institución, retención de la puja) y tramposos solo para esas; el humo HE1 se mantiene. Los OE y OT de §2-§3 que no son "de plata" quedan para después.
+
+**Migración: sigue siendo la 047** (`down_revision = 045_correccion_por_pregunta`; se renumera al integrar, ERR-45). Suma a §7: el CHECK de `coin_wallets.owner_type` admite también `'auction'` (la retención de una subasta es una billetera de la subasta); `auctions` gana `ends_at`, `extensions` (0), `item_id` (→ `shop_items`) y `created_by`; índice único parcial "una subasta activa por grupo".
+
+### A.1 Convenciones
+- Todo con `Authorization: Bearer <jwt>` (y `X-Tenant-ID` opcional, como el resto). JSON plano, campos en español.
+- **Errores:** `{"detail": "<mensaje en español>"}` con el código HTTP: 401/403 sin permiso o rol, **404 lo ajeno o inexistente** (no delata si existe en otra institución o grupo), 409 regla del juego (tope, plazo, agotado, subasta cerrada…), 402 sin saldo o sin presupuesto, 422 dato inválido. Los 422 de validación del esquema siguen el formato de la casa (sin eco).
+- **Idempotencia:** toda ruta que mueve monedas acepta `"llave"` opcional (8-64 caracteres `[A-Za-z0-9_-]`, una por toque de botón). Con llave, repetir devuelve **200** con lo mismo y no mueve nada (la primera vez, 201). Sin llave, cada llamada es nueva. La web DEBE mandarla en dar, corregir, comprar, recargar y pujar.
+- Fechas en ISO 8601 UTC. Montos enteros.
+- Estados de la mochila: `por_entregar`, `entregado`, `devuelto` (no entregado en 14 días: se le devolvió lo pagado).
+
+### A.2 Tienda y mochila
+| Ruta | Quién | Cuerpo | Respuesta |
+|---|---|---|---|
+| `GET /economia/tienda` | todos | — | `[Objeto]`. El estudiante ve solo los activos; profe y admin ven todo el catálogo de su institución |
+| `POST /economia/tienda` | profe, admin | `{nombre (3-60), descripcion? (≤200), tipo: "privilegio"\|"fisico", precio: 40\|120\|300\|600, existencias (0-1000), activo? (true)}` | 201 `Objeto`. 422 si el precio no es escalón, el tipo no es de la lista o el texto nombra nota/examen/puntos/nivel/XP… |
+| `PATCH /economia/tienda/{id}` | admin (todo) o el profe que lo creó | los mismos campos, opcionales | 200 `Objeto` (extra del contrato: pausar o reponer) |
+| `POST /economia/tienda/{id}/comprar` | estudiante | `{llave?}` | 201 `ItemMochila`. 402 sin saldo, 409 agotado o inactivo, 404 de otra institución, 403 si no es estudiante |
+| `GET /economia/mochila` | estudiante | — | `[ItemMochila]` (antes devuelve lo vencido) |
+| `GET /economia/grupo/{gid}/mochila` | profe del grupo, admin | — | `[ItemMochila]` de los estudiantes del grupo, todos los estados (antes devuelve lo vencido) |
+| `POST /economia/mochila/{id}/entregar` | admin, quien creó el objeto o profe de un grupo del estudiante | — | 200 `ItemMochila` (`entregado`; repetir = 200). **409** si ya venció: se devolvió y el `detail` lo dice |
+
+`Objeto = {id, nombre, descripcion, tipo, precio, existencias, activo, creado_por}` (`existencias` null = ilimitado, solo en objetos de antes).
+`ItemMochila = {id, objeto_id, nombre, tipo, origen: "tienda"|"subasta", precio_pagado, estado, comprado_en, entregar_antes_de, resuelto_en, estudiante_id, estudiante_nombre}`.
+
+### A.3 Dar, Corregir y presupuesto
+| Ruta | Quién | Cuerpo | Respuesta |
+|---|---|---|---|
+| `GET /economia/grupo/{gid}/saldos` | profe del grupo, admin | — | `[{estudiante_id, nombre, saldo, recibido_semana, cupo_semana}]` (ruta aparte del roster, que sigue sin saldo) |
+| `POST /economia/dar` | profe, admin | `{student_id, monto (1-20), motivo: "participacion"\|"ayuda_companero"\|"tarea"\|"esfuerzo"\|"otro", nota? (≤80; obligatoria con "otro"), llave?}` | 201 `{entrega_id, estudiante_id, monto, motivo, nota, creada_en, presupuesto_restante, recibido_semana, cupo_semana}`. 404 si el estudiante no es de un grupo suyo (el admin: de su institución); 409 tope semanal del estudiante (40); 402 presupuesto insuficiente; 422 monto o motivo |
+| `POST /economia/corregir` | el profe que dio | `{entrega_id, monto? (por defecto todo lo que queda), nota?, llave?}` | 201 `{correccion_id, entrega_id, monto, corregible_restante, presupuesto_restante}`. 404 si la entrega no es suya; 409 pasados 14 días, si excede lo que queda o si el estudiante ya gastó esas monedas (nunca queda en negativo) |
+| `GET /economia/presupuesto` | profe, admin | — | `{saldo, recargado_semana, entregado_semana, tope_recarga_semanal, tope_por_entrega, tope_semanal_por_estudiante, entregas_recientes: [{entrega_id, estudiante_id, monto, motivo, creada_en, corregible, corregible_hasta}]}` (las de los últimos 14 días) |
+| `GET /admin/presupuestos` | admin | — | `{bolsa_saldo, bolsa_emitida, profes: [{teacher_id, rol, saldo, recargado_semana, entregado_semana}]}` |
+| `POST /admin/presupuestos/{teacher_id}/recargar` | admin | `{monto, nota?, llave?}` | 201 `Movimiento`. 409 si pasa 100 en la semana para ese bolsillo; 402 si la bolsa no alcanza; 404 profe de otra institución |
+| `POST /admin/presupuestos/{teacher_id}/devolver` | admin | `{monto, nota?, llave?}` | 201 `Movimiento` (extra: del bolsillo a la bolsa; 409 si pasa el saldo del bolsillo) |
+
+`Movimiento = {movimiento_id, teacher_id, monto, saldo_bolsillo, saldo_bolsa, recargado_semana}`.
+
+### A.4 Subasta
+| Ruta | Quién | Cuerpo | Respuesta |
+|---|---|---|---|
+| `GET /subastas/activa?grupo={gid}` | estudiante del grupo, profe del grupo, admin | — | 200 `Subasta` o `null`. Devuelve la activa; si no hay, la última cerrada hace menos de 120 s (para mostrar el ganador). Si ya pasó la hora, la cierra antes de responder |
+| `POST /subastas` | profe del grupo, admin | `{grupo_id, objeto_id? \| titulo?, descripcion?, duracion_segundos? (30-600, 90), puja_minima (1-600)}` | 201 `Subasta`. 409 si el grupo ya tiene una activa o el objeto está agotado |
+| `POST /subastas/{id}/pujar` | estudiante del grupo | `{monto, llave?}` (el TOTAL de su puja) | 200 `Subasta`. Primera puja ≥ `puja_minima`; después, `monto − puja_actual` ∈ {5, 10, 25}. 402 sin saldo; 409 cerrada o incremento inválido (otro pujó antes: vuelve a leer) |
+| `POST /subastas/{id}/cerrar` | profe del grupo, admin | — | 200 `Subasta` cerrada (repetir = 200) |
+
+`Subasta = {id, grupo_id, objeto_id, titulo, descripcion, puja_minima, puja_actual, lider_id, lider_nombre, termina_en, segundos_restantes, extensiones, estado: "activa"|"cerrada"|"cancelada", ganador_id, incrementos: [5, 10, 25], creada_en}`.
+
+### A.5 Reglas de la subasta
+- **Retención:** al pujar, el monto sale del saldo del estudiante y queda **retenido** en la billetera de la subasta (`owner_type='auction'`); al líder anterior se le devuelve **al instante** todo lo suyo. Si el líder sube su propia puja, solo se le retiene la diferencia. Nadie puja con monedas que no tiene ni con las mismas monedas en dos subastas.
+- **Extensión:** una puja en los últimos 10 s extiende el cierre 10 s, máximo 3 veces.
+- **Cierre** (lo pide el profe o pasa la hora; perezoso al leer o pujar): lo retenido del ganador **vuelve a la bolsa** de la institución y el objeto entra a su mochila (`por_entregar`, origen `subasta`, `precio_pagado` = su puja; aplica la entrega del profe y la devolución de 14 días). Sin pujas: no se mueve nada y el objeto vuelve a la tienda.
+- **Objeto:** de la tienda (su existencia se reserva al crear la subasta y se repone si nadie puja) o texto libre (se crea un objeto oculto, inactivo, para la mochila). Siempre del mismo catálogo: nada académico.
+- **Una activa por grupo** (índice único). Todo filtrado por institución; lo ajeno, 404.
+- Acciones del libro: `auction_hold` (estudiante → retención), `auction_refund` (retención → estudiante), `auction_settle` (retención → bolsa). La conservación del dinero de §1.1 incluye la retención.
+
+### A.6 Pruebas en modo rápido
+| Id | Regla de plata | Tramposo |
+|---|---|---|
+| OE1 | Dar: 21 → 422; 20 → 201 | OT1 sin tope por entrega |
+| OE2 | Tope semanal del estudiante entre dos profes (20 + 20, el 1 más → 409) | OT2 tope por profe |
+| OE3 | Presupuesto: dar más que el bolsillo → 402 y nada se mueve | OT3 traslado sin mirar saldo |
+| OE4 | Profe sin el grupo del estudiante → 404 | OT4 sin exigir asignación |
+| OE5 | Corregir lo ya gastado → 409, nunca negativo | (OT3) |
+| OE6 | Corregir a los 15 días → 409 | OT6 sin plazo |
+| OE10 | Recarga semanal > 100 → 409 | OT10 sin tope de recarga |
+| OE11/12 | Comprar sin saldo → 402; sin existencias → 409 | (OT3), OT12 sin stock |
+| OE13 | La compra vuelve a la bolsa | OT13 la compra destruye |
+| OE14 | Devolución a los 14 días, una sola vez | OT14 no marca la devolución |
+| OE15 | Aislamiento: admin, profe y estudiante de T2 no tocan nada de T1 (404) | OT15 compra sin filtro de institución |
+| SB1 | Retención: pujar retiene, superar devuelve al instante, conservación | OT20 no devuelve al superado |
+| SB2 | Incrementos y puja mínima; sin saldo → 402 | — |
+| SB3 | Extensión de 10 s, máximo 3 | OT21 extiende sin límite |
+| SB4 | Cierre: a la bolsa y a la mochila; sin pujas, nada se mueve | — |
+| SB5 | Aislamiento: un estudiante de otro grupo no puja (404) | — |
+| HE1 | El humo de §4, más una subasta | — |
+
+
 ## 0. Medido y leído hoy (sobre `f7f7aeb`)
 
 | # | Hecho | Dónde |
