@@ -97,7 +97,7 @@ class SubastaIn(BaseModel):
 class PujaIn(BaseModel):
     model_config = _ENTRADA
 
-    monto: int = Field(strict=True, ge=1)
+    monto: int = Field(strict=True, ge=1, le=1_000_000)
     llave: str | None = Field(default=None, pattern=LLAVE_PATRON)
 
 
