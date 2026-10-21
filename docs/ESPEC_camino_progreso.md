@@ -120,3 +120,20 @@ La tanda (`practica/`), el feed, `/submit`, `/answers`, `/finish`, el refuerzo, 
 
 ## 8b. Veredicto
 FUNCIONA si CU1..CU5 y CM1..CM7 pasan, los 10 tramposos salen rojos por su razón, las suites existentes siguen idénticas y el humo escribe `tests/_salida/humo_camino.json`. HAY ALGO MODESTO si falta un tramposo o un criterio integ. NO si el GET escribe o paga.
+
+## 10. Medido (2026-10-21)
+| Qué | Cifra |
+|---|---|
+| Partida (`f7f7aeb` + la variable del contenedor, base propia `engrama-test-pg-camino` en 55452) | 768 passed + 24 skipped; 208 no-integ; ruff 0 |
+| Final (`22b13ef`) | **792 passed + 24 skipped** (+24: CU1-CU6, CM1-CM7, el humo y los 10 tramposos); **220 no-integ**; ruff 0 |
+| Diagonal | ZC1-ZC10: 10 de 10 rojos por su razón (a la primera) |
+| Humo | `tests/_salida/humo_camino.json` (recomendada a2-u01, en curso y sin empezar) |
+
+- **Una corrección antes del código** (`0495146`): la regla de "atascada" (§1.4).
+- **Un tropiezo propio:** la primera versión usaba `round(` y la guardia del redondeo (UE2, `tests/engrama_core/test_economia_unit.py`) lo rechazó en
+  todo `src/`; se cambió por división entera. Esa corrida de partida se repitió sin el archivo.
+- **Edición no prevista en §4:** `tests/teachers/test_access.py` (U4) lista cada ruta con su guarda; `/challenges/camino` entra como `user` (igual que
+  `/tanda`).
+- Contrato exportado para la web: `engrama-web/contratos/openapi_camino_22b13ef.json`.
+- **No medido:** contra el piloto o el servidor; con datos sembrados reales (las 44 unidades); el rendimiento con muchos intentos (tres consultas por
+  lectura, sin índice nuevo).
