@@ -302,3 +302,10 @@ Antes del primer commit de código: suite completa de `f7f7aeb` en mi contenedor
 - **[CHRISTIAM]** Los números (20, 40, 100, 14, escalones). ¿Quién paga los premios físicos?
 - **[CHRISTIAM]** ¿El admin puede recargarse a sí mismo para dar? Hoy sí, con el mismo tope semanal (un admin que también enseña no tiene otra membresía).
 - **[PEDAGOGO]** La lista de motivos; el saldo visible al profe en la ruta de economía; Corregir como asiento inverso; la lista de palabras prohibidas en la tienda.
+
+## ADENDA 2 · Lo medido y lo que salió distinto (2026-10-21, cierre)
+- **Base** `f7f7aeb` en `engrama-test-pg-ola1` (127.0.0.1:55451): 768 passed + 24 skipped. **Con la ola:** 808 passed + 24 skipped, 0 fallos (+40: 6 unitarias OEU, 15 de bolsillo y tienda, 5 de subasta, MG47, HE1 y 12 tramposos). No-integ: 208 → 214. ruff 0; mypy 0 en lo nuevo.
+- **Predicción refutada (§0, "el único cambio en tests existentes es `alembic_version`"):** también hubo que tocar dos números fijados por otros tests al agregar rutas, igual que hizo L1: el mapa de guardas `tests/teachers/test_access.py` (bloque `_OLA1`, 18 rutas nuevas; las previas no cambian) y el conteo de rutas con cuerpo de los tramposos ZE1/ZE2 de `test_tramposos_422_sin_eco.py` (22 → 31 y 20 → 29: 9 rutas nuevas con cuerpo). Candidato a ERR (repite ERR-25: la espec no enumeró todos los números fijados).
+- **Predicción refutada (tramposo OT20):** se esperaba que sin devolver al superado la retención quedara en 15; queda en 25 (acumula las dos pujas). El test SB1 se puso rojo igual; se corrigió el patrón del tramposo, no el criterio.
+- Los OT3, OT5 y OT11 comparten mecanismo (traslado sin mirar saldo): el saldo nunca negativo lo garantizan `libro.transferir` y el CHECK `balance >= 0`.
+- Cambios de §1 por el contrato: Dar recibe `student_id` (sin grupo en la ruta: se busca un grupo visible del profe donde el estudiante esté); Corregir con `nota` opcional; las consultas "mis entregas" van dentro de `GET /economia/presupuesto`.
