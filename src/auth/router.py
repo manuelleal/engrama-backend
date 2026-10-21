@@ -13,8 +13,10 @@ directamente con la DB salvo para logout (audit_logs).
 """
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.cuentas import CambioDeClave, CambioFallido, ClaveRechazada, get_cambio_de_clave
@@ -26,6 +28,7 @@ from src.auth.schemas import (
     CambioDeClaveIn,
     ConsentimientoIn,
     ConsentimientoOut,
+    MembershipOut,
     ProfileOut,
 )
 from src.auth.service import (
@@ -40,6 +43,7 @@ from src.auth.service import (
 from src.engrama_core.service import level
 from src.shared.db import get_db
 from src.shared.deps import _extract_bearer_token, get_current_user
+from src.shared.models import Group
 
 router = APIRouter()
 
@@ -53,11 +57,27 @@ async def _build_profile_payload(
     """
     profile = exigir_perfil(await get_profile(db, auth.profile_id))
     rows = await get_memberships(db, auth.profile_id)
-    payload = profile_to_schema(profile, Membresias(memberships_to_schema(rows), auth.tenant_id))
+    membresias = memberships_to_schema(rows)
+    grupos = await _ids_de_grupo(db, membresias)
+    membresias = [m.model_copy(update={"group_id": grupos.get((m.tenant_id, m.group_code))})
+                  for m in membresias]
+    payload = profile_to_schema(profile, Membresias(membresias, auth.tenant_id))
     # El consentimiento es de la persona: no depende del colegio activo.
     return payload.model_copy(update={
         "consent_version": await ultima_version(db, auth.profile_id),
         "confirmed_level": await _nivel_confirmado(auth, db)})
+
+
+async def _ids_de_grupo(db: AsyncSession, membresias: list[MembershipOut]
+                        ) -> dict[tuple[UUID, str | None], UUID]:
+    """(tenant, group_code) -> id del grupo, en UNA consulta, solo de las membresías propias."""
+    pares = {(m.tenant_id, m.group_code) for m in membresias if m.group_code is not None}
+    if not pares:
+        return {}
+    filas = (await db.execute(select(Group.tenant_id, Group.group_code, Group.id).where(
+        Group.tenant_id.in_({t for t, _ in pares}),
+        Group.group_code.in_({c for _, c in pares})))).all()
+    return {(t, c): gid for t, c, gid in filas if (t, c) in pares}
 
 
 async def _nivel_confirmado(auth: AuthContext, db: AsyncSession) -> ConfirmedLevelOut | None:

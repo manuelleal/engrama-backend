@@ -33,6 +33,9 @@ class MembershipOut(BaseModel):
     tenant_slug: str
     role: str = Field(description="'student' | 'teacher' | 'admin' | 'super_admin'")
     group_code: str | None = None
+    # El id del grupo de esa membresía (se resuelve por `group_code` dentro de ESE
+    # tenant). Lo necesita el estudiante, que solo conoce su código. None si no hay.
+    group_id: UUID | None = None
     is_active: bool
     # El nombre que escribió ESTA institución (BUG-11, 032). NULL en docentes
     # y admins creados antes de la espec del login piloto.

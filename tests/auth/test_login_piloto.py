@@ -294,7 +294,7 @@ def test_ap8_nombre_de_la_membresia(integ) -> None:
 # `consent_version` la agrega docs/ESPEC_consentimiento.md.
 CLAVES_NUEVAS_RAIZ = ("active_tenant_id", "must_change_password", "consent_version",
                       "confirmed_level")  # docs/ESPEC_eventos_anillo.md §1.7
-CLAVES_NUEVAS_MEMBRESIA = ("full_name",)
+CLAVES_NUEVAS_MEMBRESIA = ("full_name", "group_id")
 
 
 def _canonico(datos: Any) -> str:
