@@ -223,13 +223,15 @@ async def cerrar(db: AsyncSession, a: Auction) -> None:
     retenida = await libro.billetera(db, "auction", a.id, a.tenant_id, bloquear=True)
     if bolsa is None or retenida is None:
         raise RuntimeError("billetera sin crear")
-    objeto = (await db.execute(select(ShopItem).where(ShopItem.id == a.item_id)
-                               .with_for_update())).scalar_one()
+    objeto = None if a.item_id is None else (await db.execute(
+        select(ShopItem).where(ShopItem.id == a.item_id).with_for_update())).scalar_one_or_none()
     if a.highest_bidder_id is None:
-        if objeto.price_coins > 0 and objeto.stock is not None:
+        if objeto is not None and objeto.price_coins > 0 and objeto.stock is not None:
             objeto.stock = objeto.stock + 1  # nadie pujó: el objeto vuelve a la tienda
         await db.flush()
         return
+    if objeto is None:  # hay puja ganadora pero no hay qué entregar: no se liquida a ciegas
+        raise RuntimeError(f"subasta {a.id} con puja y sin objeto")
     asiento, _ = await libro.transferir(
         db, tenant_id=a.tenant_id, desde=retenida, hacia=bolsa, monto=int(a.current_bid),
         accion=LIQUIDACION, creado_por=None, metadata={"auction_id": str(a.id)},
