@@ -1,4 +1,4 @@
-"""Rutas de la tienda y la mochila — ESPEC_ola1_economia, ADENDA 1 §A.2 y §A.4.
+"""Rutas de la tienda, la mochila y la subasta — ESPEC_ola1_economia, ADENDA 1 §A.2 y §A.4.
 
 Dos routers:
   - `economia` (montado en /economia): la tienda, comprar, la mochila y entregar.
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,16 +22,20 @@ from src.bolsillo.reglas import MENSAJES
 from src.shared.config import settings
 from src.shared.db import get_db
 from src.shared.deps import get_current_user, require_teacher
-from src.shop import catalogo, compras, entregas
+from src.shop import catalogo, compras, entregas, subastas
 from src.shop.schemas import (
     CompraIn,
     ItemMochilaOut,
     ObjetoIn,
     ObjetoOut,
     ObjetoPatch,
+    PujaIn,
+    SubastaIn,
+    SubastaOut,
 )
 
 economia = APIRouter()
+subasta = APIRouter()
 
 
 def _conflicto(code: str, **extra: object) -> JSONResponse:
@@ -100,4 +104,39 @@ async def entregar(inventory_id: UUID, auth: AuthContext = Depends(require_teach
     await db.commit()
     if resultado == "vencida":
         return _conflicto("plazo_vencido_devuelto", dias=settings.tienda_entrega_plazo_dias)
+    return salida
+
+
+# ------------------------------------------------------------------ la subasta
+@subasta.get("/activa", response_model=SubastaOut | None)
+async def activa(grupo: UUID = Query(...), auth: AuthContext = Depends(get_current_user),
+                 db: AsyncSession = Depends(get_db)) -> SubastaOut | None:
+    salida = await subastas.activa(db, auth, grupo)
+    await db.commit()  # el cierre perezoso, si hubo
+    return salida
+
+
+@subasta.post("", response_model=SubastaOut, status_code=status.HTTP_201_CREATED)
+async def crear_subasta(payload: SubastaIn, auth: AuthContext = Depends(require_teacher),
+                        db: AsyncSession = Depends(get_db)) -> SubastaOut:
+    salida = await subastas.crear(db, auth, payload)
+    await db.commit()
+    return salida
+
+
+@subasta.post("/{aid}/pujar", response_model=SubastaOut)
+async def pujar(aid: UUID, payload: PujaIn, auth: AuthContext = Depends(get_current_user),
+                db: AsyncSession = Depends(get_db)) -> SubastaOut | JSONResponse:
+    resultado, salida = await subastas.pujar(db, auth, aid, payload)
+    await db.commit()
+    if resultado == "cerrada":
+        return _conflicto("subasta_cerrada")
+    return salida
+
+
+@subasta.post("/{aid}/cerrar", response_model=SubastaOut)
+async def cerrar_subasta(aid: UUID, auth: AuthContext = Depends(require_teacher),
+                         db: AsyncSession = Depends(get_db)) -> SubastaOut:
+    salida = await subastas.cerrar_por_profe(db, auth, aid)
+    await db.commit()
     return salida

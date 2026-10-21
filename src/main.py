@@ -15,6 +15,7 @@ from src.registro.router import docente as registro_docente_router
 from src.registro.router import publico as registro_publico_router
 from src.shared import validacion
 from src.shop.router import economia as tienda_economia_router
+from src.shop.router import subasta as subasta_router
 from src.teachers.admin_router import router as admin_router
 from src.teachers.router import router as teachers_router
 from src.webhooks.router import router as events_router
@@ -58,10 +59,11 @@ app.include_router(foco_router, prefix="/teachers", tags=["foco"])
 app.include_router(refuerzo_router, prefix="/teachers", tags=["refuerzo"])
 # La economía de la ola 1 (docs/ESPEC_ola1_economia.md, contrato de la ADENDA 1):
 # el bolsillo del profe (Dar, Corregir y el presupuesto que recarga el admin), la
-# tienda con mochila y entregas.
+# tienda con mochila y entregas, y la subasta en vivo con retención.
 app.include_router(bolsillo_economia_router, prefix="/economia", tags=["economia"])
 app.include_router(tienda_economia_router, prefix="/economia", tags=["economia"])
 app.include_router(bolsillo_admin_router, prefix="/admin", tags=["economia"])
+app.include_router(subasta_router, prefix="/subastas", tags=["subastas"])
 
 
 @app.get("/health")

@@ -201,6 +201,10 @@ _OLA1: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/admin/presupuestos", frozenset({"GET"})): "admin",
     ("/admin/presupuestos/{teacher_id}/recargar", frozenset({"POST"})): "admin",
     ("/admin/presupuestos/{teacher_id}/devolver", frozenset({"POST"})): "admin",
+    ("/subastas/activa", frozenset({"GET"})): "user",
+    ("/subastas", frozenset({"POST"})): "teacher",
+    ("/subastas/{aid}/pujar", frozenset({"POST"})): "user",
+    ("/subastas/{aid}/cerrar", frozenset({"POST"})): "teacher",
 }
 
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
