@@ -139,6 +139,19 @@ class Settings(BaseSettings):
     # o más, y paga a lo sumo `segunda_vuelta_paga`. Juicio del pedagogo.
     segunda_vuelta_dias: int = Field(default=21, ge=1, le=365)
     segunda_vuelta_paga: int = Field(default=5, ge=0, le=50)
+    # El camino de nivel (docs/ESPEC_camino_progreso.md §1.3 y §1.4; pedagogía 06
+    # §2.3). Una unidad queda COMPLETADA con todas sus estaciones jugadas y
+    # `camino_umbral_completada` % de acierto (el mejor intento de cada una);
+    # DOMINADA con `camino_minimo_demoradas` respuestas a formas no vistas, dadas
+    # `camino_dias_dominio` días o más después de completarla, con
+    # `camino_umbral_dominada` % de acierto. BLOQUEO SUAVE: la siguiente se abre
+    # sola a los `camino_dias_atasco` días de la anterior en curso (los 7 días los
+    # decidió Christiam el 21-oct; lo demás es PROVISIONAL del pedagogo, ERR-16).
+    camino_umbral_completada: int = Field(default=70, ge=1, le=100)
+    camino_umbral_dominada: int = Field(default=80, ge=1, le=100)
+    camino_dias_atasco: int = Field(default=7, ge=1, le=60)
+    camino_dias_dominio: int = Field(default=7, ge=1, le=60)
+    camino_minimo_demoradas: int = Field(default=3, ge=1, le=20)
     # Lo que paga un reto del SEGUNDO intento en adelante (ESPEC_l1 §10.4; dictamen
     # 04, hecho 3 y pregunta 5). SIN VALOR = como hoy: paga lo mismo que el primero.
     # Con un número, `min(valor del reto, ese número)`. El primer intento nunca

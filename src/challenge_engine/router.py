@@ -14,6 +14,7 @@ Montado en main.py con prefijo `/challenges`. Endpoints finales:
   POST   /challenges/{challenge_id}/attempt
   POST   /challenges/attempts/{attempt_id}/submit
   GET    /challenges/attempts/history
+  GET    /challenges/camino           (el camino de nivel, solo lectura)
 
 NOTA: el spec declara los endpoints de attempts bajo `/attempts/...`,
 pero al montar el router con `prefix="/challenges"` quedarían fuera
@@ -29,6 +30,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.schemas import AuthContext
+from src.camino import service as camino_service
+from src.camino.schemas import CaminoOut
 from src.challenge_engine.schemas import (
     AttemptHistoryOut,
     AttemptStartOut,
@@ -303,6 +306,25 @@ async def request_todays_batch(
     )
     await db.commit()
     return result
+
+
+@router.get(
+    "/camino",
+    response_model=CaminoOut,
+    status_code=status.HTTP_200_OK,
+)
+async def read_path(
+    auth: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CaminoOut:
+    """El camino de nivel: en qué va cada unidad de su nivel de práctica (docs/ESPEC_camino_progreso.md).
+
+    NO escribe y no paga: el bloqueo es suave (no prohíbe ninguna ruta) y
+    completar una unidad no da monedas extra. Antes de `/{challenge_id}`, como `/tanda`.
+    """
+    return await camino_service.leer(
+        db, tenant_id=auth.tenant_id, profile_id=auth.profile_id, group_code=auth.group_code
+    )
 
 
 @router.get(
