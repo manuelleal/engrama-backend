@@ -22,7 +22,7 @@ pytestmark = pytest.mark.integ
 RUTA_HUMO = RAIZ_BACKEND / "tests" / "_salida" / "humo_ola1_economia.json"
 
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "047_economia_ola1",
+    "alembic_version": "050_invitaciones_docente",
     "recargas": 200, "entregas": [8, 130], "correcciones": [1, 5],
     "compras_201": 7, "agotado_409": 1, "sin_saldo_402": 1,
     "entregadas": 5, "devueltas": 2, "pendientes_de_tienda": 0,
