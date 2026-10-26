@@ -22,6 +22,7 @@ tests/_salida/humo_autorregistro.json
 tests/_salida/humo_autorregistro_gotrue.json
 tests/_salida/humo_solicitudes_datos.json
 tests/_salida/humo_eventos_anillo.json
+tests/_salida/humo_lote_una_transaccion.json
 tests/_salida/humo_catalogo_nodos.json
 tests/_salida/humo_grader.json
 tests/_salida/humo_foco_grupo.json
@@ -30,8 +31,13 @@ tests/_salida/humo_economia_oleada0.json
 tests/_salida/humo_reto_del_dia.json
 tests/_salida/humo_ola1_economia.json
 tests/_salida/replica_reto_del_dia.json
+tests/_salida/humo_limite_compartido.json
+tests/_salida/replica_limite_compartido.json
+tests/_salida/humo_opcion_valida.json
 
 # Salidas sueltas de herramientas
 *_output.txt
 tests/_salida/humo_422_sin_eco.json
 tests/_salida/humo_camino.json
+tests/_salida/humo_pase_acotado.json
+tests/_salida/humo_pase_acotado_replica.json

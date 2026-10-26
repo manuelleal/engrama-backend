@@ -56,11 +56,29 @@ def preparar(integ: Any) -> CuentasFalsas:
     """
     falsas = CuentasFalsas(sesiones=integ.Session)
     app.dependency_overrides[get_cuentas_de_registro] = lambda: falsas
-    limite.reiniciar()
+    vaciar_limite(integ)
     if not _AVISOS_DE_ANTES:
         _AVISOS_DE_ANTES.append(settings.aviso_versiones_validas)
     settings.aviso_versiones_validas = AVISO
     return falsas
+
+
+def vaciar_limite(integ: Any) -> None:
+    """Vacía la tabla del límite (`limite_intentos`) y lo que el proceso recuerda.
+
+    Desde ESPEC_limites_registro el límite vive en la base: `limite.reiniciar()`
+    ya no borra los eventos (solo el calendario de la purga del proceso).
+    """
+    integ.run(limite.vaciar(integ.engine))
+
+
+def llaves(integ: Any, contador: limite.Contador) -> int:
+    """Cuántas llaves vigentes tiene ese contador en la tabla compartida."""
+    async def _q() -> int:
+        async with integ.engine.connect() as conn:
+            return await contador.llaves(conn)
+
+    return int(integ.run(_q()))
 
 
 def soltar() -> None:

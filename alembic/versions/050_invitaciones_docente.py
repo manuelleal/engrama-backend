@@ -1,14 +1,13 @@
 """invitaciones de profes por correo
 
 Revision ID: 050_invitaciones_docente
-Revises: 047_economia_ola1
+Revises: 049_anillo_pases
 Create Date: 2026-10-26
 
 Espec: docs/ESPEC_invitar_profe.md §3.6.
 
-Número 050 reservado por el coordinador: la 048 y la 049 son de otro agente
-(ERR-45). En esta rama sube sobre la 047; al integrar, la que llegue después
-cambia su `down_revision`.
+Número 050 reservado por el coordinador (ERR-45): sube sobre la 049
+(`049_anillo_pases`), que es la base que corre hoy en el servidor (`fase0/backend`).
 
 Qué hace (`SQL_SUBIR`, idempotente):
   1. `invitaciones_docente`: a quién invitó el admin de UNA institución, a qué
@@ -39,7 +38,7 @@ from typing import Sequence, Union
 from alembic import op
 
 revision: str = "050_invitaciones_docente"
-down_revision: Union[str, None] = "047_economia_ola1"
+down_revision: Union[str, None] = "049_anillo_pases"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

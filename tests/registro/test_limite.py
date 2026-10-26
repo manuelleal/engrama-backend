@@ -26,7 +26,7 @@ def _malos(desde: int, cuantos: int, **headers: str) -> list[int]:
             for i in range(desde, desde + cuantos)]
 
 
-def _con_reloj(desfase: list[float]) -> dict[limite.Limitador, Any]:
+def _con_reloj(desfase: list[float]) -> dict[limite.Contador, Any]:
     """Pone a los cuatro contadores un reloj que el test adelanta. Devuelve los originales."""
     originales = {lim: lim.reloj for lim in limite._TODOS}
     for lim, reloj in originales.items():
@@ -57,12 +57,12 @@ def test_ar10_limite_de_intentos(integ) -> None:
         desfase[0] = limite.VENTANA_S + 1
         por_ip["pasada_la_ventana"] = _malos(62, 1)
 
-        limite.reiniciar()
+        ay.vaciar_limite(integ)
         settings.proxies_de_confianza = 1
         tras_proxy = [ay.registrar(ay.cuerpo(MALO.format(i), 1),
                                    **{"X-Forwarded-For": f"198.51.100.{i}, 203.0.113.9"}
                                    ).status_code for i in range(61)]
-        limite.reiniciar()
+        ay.vaciar_limite(integ)
         limite.POR_CODIGO.tope = 3
         no_cabe = ay.cuerpo(a.codigo, 1, codigo_estudiantil="9" * 24)
         por_codigo = [ay.registrar(no_cabe, **{"X-Forwarded-For": f"203.0.113.{i}"}).status_code

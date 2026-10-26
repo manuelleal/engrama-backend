@@ -83,8 +83,8 @@ RUTA_HUMO = RAIZ_BACKEND / "tests" / "_salida" / "humo_integ.json"
 # Valores exactos que el humo debe encontrar (espec §5). Si uno difiere se
 # reporta; NO se ajusta este diccionario para que pase.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "050_invitaciones_docente",  # invitar profes (sobre la 047; 048 y 049 de otra rama, ERR-45)
-    "tablas_con_rls": 47,  # 46 + 1 (050), con RLS y sin políticas
+    "alembic_version": "050_invitaciones_docente",  # 047 ola 1 -> 048 límite compartido -> 049 pase acotado -> 050 invitar profes (ERR-45)
+    "tablas_con_rls": 49,  # 46 + limite_intentos (048) + anillo_pases (049) + invitaciones_docente (050), con RLS y sin políticas
     # 19 x 2 + 13 especiales (029); la 030 reemplaza 2, no suma; la 031 no toca políticas
     "politicas_public": 51,
     "auth_uid_existe": True,

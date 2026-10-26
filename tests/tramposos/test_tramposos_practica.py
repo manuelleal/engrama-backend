@@ -9,7 +9,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import pytest
@@ -36,7 +36,9 @@ def _parche(modulo: Any, nombre: str, valor: Any) -> Aplicar:
 class _ArrancaEnB2(Settings):
     """ZP1: sin SET, la práctica arranca en B2."""
 
-    practica_nivel_inicial: str = "B2"
+    # El mismo Literal que declara Settings (B2 es un nivel válido): el tramposo
+    # cambia el VALOR por defecto, no el tipo; con `str` mypy rechaza la subclase.
+    practica_nivel_inicial: Literal["A1", "A2", "B1", "B2", "C1"] = "B2"
 
 
 def _sin_limites(ancla: str | None) -> tuple[int, int]:

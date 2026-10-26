@@ -1,7 +1,9 @@
 """Procesar un lote de eventos, uno por uno — `docs/ESPEC_eventos_anillo.md` §1.4.
 
-El lote NO es todo o nada: cada evento aceptado y su efecto van en su propia
-transacción, para que uno malo no tapone la cola del satélite.
+El lote NO es todo o nada: un evento rechazado no tapona la cola del satélite
+ni deshace a sus vecinos. Todo el lote va en UNA transacción con un solo commit
+(`docs/ESPEC_lote_una_transaccion.md`): un commit por evento costaba ~150 ms
+en el disco mecánico del servidor.
 
 La idempotencia la garantiza la base (UNIQUE `(tenant_id, event_id)`), no este
 código: el INSERT lleva `ON CONFLICT DO NOTHING`, y un evento que no insertó
@@ -161,7 +163,14 @@ async def _aceptar(db: AsyncSession, origen: str, lote: LoteIn, evento: EventoIn
 
 
 async def procesar_evento(db: AsyncSession, origen: str, lote: LoteIn, crudo: Any) -> Resultado:
-    """UN evento, en SU transacción (commit si se aceptó; rollback si no o si algo falla)."""
+    """UN evento, dentro de la transacción del LOTE. No hace commit ni rollback.
+
+    `docs/ESPEC_lote_una_transaccion.md`: antes cada evento hacía su commit, y en
+    un disco mecánico cada commit espera el disco (~150 ms): 68 eventos, 11 s.
+    Un rechazado no escribió nada (sus motivos salen de lecturas), así que no
+    hay nada que deshacer y sus vecinos quedan. Una excepción sube: `get_db`
+    deshace el lote entero y el satélite reintenta (es idempotente).
+    """
     evento = _leer(crudo)
     if evento is None:
         return Resultado(RECHAZADO, _id_crudo(crudo), INVALIDO)
@@ -171,18 +180,14 @@ async def procesar_evento(db: AsyncSession, origen: str, lote: LoteIn, crudo: An
         payload = _payload(evento)
         motivo = INVALIDO if payload is None else await _motivo_de_base(db, origen, evento)
     if motivo is not None or payload is None:
-        await db.rollback()
         return Resultado(RECHAZADO, evento.event_id, motivo)
     try:
         resultado = await _aceptar(db, origen, lote, evento, payload,
                                    events.huella_del_evento(crudo))
-        await db.commit()
-    except Exception:
-        await db.rollback()
-        raise
+        await db.flush()  # lo del evento queda en la base (sin commit) antes de expirar
     finally:
-        # La sesión sigue viva para el evento siguiente: lo que quedó cargado
-        # (billeteras) se relee de la base, no de la memoria.
+        # El evento siguiente relee de la base lo que quedó cargado (billeteras),
+        # no de la memoria: dentro de la transacción ve lo que este escribió.
         db.expire_all()
     return resultado
 
@@ -202,8 +207,9 @@ def resumir(resultados: list[Resultado]) -> ResumenOut:
 
 
 async def procesar_lote(db: AsyncSession, origen: str, lote: LoteIn) -> ResumenOut:
-    """Cada evento por separado; la respuesta dice qué pasó con cada uno."""
+    """Cada evento por separado y UN commit al final; la respuesta dice qué pasó con cada uno."""
     resultados = [await procesar_evento(db, origen, lote, crudo) for crudo in lote.events]
+    await db.commit()  # una sola espera del disco por lote, no una por evento
     resumen = resumir(resultados)
     logger.info("eventos: origen=%s lote=%s aceptados=%d duplicados=%d rechazados=%d",
                 origen, lote.batch_id, resumen.accepted, resumen.duplicates,

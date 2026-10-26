@@ -279,6 +279,21 @@ def test_se1_sin_valores_enviados_quita_input_y_lo_derivado_del_valor() -> None:
 Envio = Callable[[str], dict[str, Any]]
 
 
+def _sin(otros: list[str]) -> Envio:
+    """Cuerpo con todos los campos menos uno, cada uno con el centinela.
+
+    Fábrica y no `lambda c, otros=otros`: cada envío queda atado a SU lista (el
+    cierre de la fábrica), y mypy puede inferir el tipo (`Envio`), cosa que con
+    el parámetro por defecto no hacía ("Cannot infer type of lambda").
+    """
+    return lambda c: {"json": {g: c for g in otros}}
+
+
+def _campo(campo: str, envolver: Callable[[str], Any]) -> Envio:
+    """Cuerpo con un solo campo cuyo valor es el centinela envuelto (lista, objeto o texto)."""
+    return lambda c: {"json": {campo: envolver(c)}}
+
+
 def _casos_de_cuerpo(campos: list[str]) -> list[tuple[str, Envio, bool]]:
     """(nombre, cómo se envía con un centinela, si DEBE dar 422 en toda ruta)."""
     casos: list[tuple[str, Envio, bool]] = [
@@ -290,10 +305,10 @@ def _casos_de_cuerpo(campos: list[str]) -> list[tuple[str, Envio, bool]]:
     for campo in campos:
         otros = [g for g in campos if g != campo]
         casos += [
-            (f"falta {campo}", lambda c, otros=otros: {"json": {g: c for g in otros}}, False),
-            (f"{campo} en lista", lambda c, campo=campo: {"json": {campo: [c]}}, False),
-            (f"{campo} en objeto", lambda c, campo=campo: {"json": {campo: {"k": c}}}, False),
-            (f"{campo} en texto", lambda c, campo=campo: {"json": {campo: c}}, False),
+            (f"falta {campo}", _sin(otros), False),
+            (f"{campo} en lista", _campo(campo, lambda c: [c]), False),
+            (f"{campo} en objeto", _campo(campo, lambda c: {"k": c}), False),
+            (f"{campo} en texto", _campo(campo, lambda c: c), False),
         ]
     return casos
 

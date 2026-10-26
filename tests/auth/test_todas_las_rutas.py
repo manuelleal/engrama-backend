@@ -33,7 +33,9 @@ client = TestClient(app, raise_server_exceptions=False)
 
 # Las únicas rutas sin usuario. Agregar una aquí es una decisión, no un descuido.
 # `/events/batch` no lleva usuario: la autentica la firma HMAC (ESPEC_eventos_anillo).
-PUBLICAS = {("/health", "GET"), ("/auth/registro", "POST"), ("/events/batch", "POST")}
+# `/anillo/canje` tampoco: lo autentica el propio pase (ESPEC_pase_acotado §1.3).
+PUBLICAS = {("/health", "GET"), ("/auth/registro", "POST"), ("/events/batch", "POST"),
+            ("/anillo/canje", "POST")}
 BLOQUEO = (403, "must_change_password")
 _RELLENO = "11111111-1111-4111-8111-111111111111"
 

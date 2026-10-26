@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from src.anillo.router import router as anillo_router
 from src.auth.router import router as auth_router
 from src.bolsillo.router import admin as bolsillo_admin_router
 from src.bolsillo.router import economia as bolsillo_economia_router
@@ -33,6 +34,9 @@ validacion.instalar(app)
 
 # Módulos de dominio — orden alfabético para evitar drift.
 app.include_router(admin_router, prefix="/admin", tags=["admin"])
+# El pase acotado hacia EVA y SET (docs/ESPEC_pase_acotado.md): la web lo pide con
+# su sesión y EVA o SET lo canjean una sola vez, por la red interna.
+app.include_router(anillo_router, prefix="/anillo", tags=["anillo"])
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(challenges_router, prefix="/challenges", tags=["challenges"])
 app.include_router(core_router, prefix="/core", tags=["engrama-core"])

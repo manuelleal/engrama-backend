@@ -197,8 +197,15 @@ async def _confirma_sin_proteger(db: AsyncSession, cuentas: Any, reserva: Any,
 _ANOTAR_CODIGO_BUENO = limite_mod.anotar_codigo
 
 
-def _anota_sin_saber_si_sirve(huella_del_codigo: str, *, valido: bool) -> None:
-    _ANOTAR_CODIGO_BUENO(huella_del_codigo, valido=True)
+async def _anota_sin_saber_si_sirve(conn: Any, huella_del_codigo: str, *,
+                                    valido: bool) -> None:
+    # Firma de ESPEC_limites_registro (async, con la conexión); el mecanismo no cambia.
+    await _ANOTAR_CODIGO_BUENO(conn, huella_del_codigo, valido=True)
+
+
+# --- ZR3: el límite no revisa nada (firma de ESPEC_limites_registro: async, con la conexión) ---
+async def _no_revisa(conn: Any, ip: str, huella: str) -> int:
+    return 0
 
 
 # --- ZR27 (auditoría 03): "ocupado" compara el texto crudo, como antes -------
@@ -246,7 +253,7 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
             r"'apagado': \(201, \{'estado': 'pendiente'\}\)"),
     "ZR2": (_parche(service_mod, "_rechazo", _sin_mirar_cupo),
             tc.test_ar4_el_cupo_no_se_pasa, r"AR4: \{'seguidos': \[201, 201, 500\]"),
-    "ZR3": (_parche(limite_mod, "revisar", lambda ip, huella: 0),
+    "ZR3": (_parche(limite_mod, "revisar", _no_revisa),
             tl.test_ar10_limite_de_intentos, r"'el_61': \(403, 'codigo_no_valido', False\)"),
     "ZR4": (_parche(limite_mod, "ip_del_visitante", _ip_del_primer_valor),
             tl.test_ar10_limite_de_intentos, r"'con_encabezados_falsos': \[403\]"),

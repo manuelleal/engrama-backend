@@ -34,6 +34,7 @@ from src.shared.models import ChallengeAttempt, ChallengeAttemptAnswer, Challeng
 NO_ENCONTRADO = "Attempt not found"
 YA_CERRADO = "Attempt already completed or abandoned"
 PREGUNTA_AJENA = "Question not found in this attempt"
+NO_ES_OPCION = "Answer is not one of the question's options"
 
 
 def _ahora() -> datetime:
@@ -104,6 +105,12 @@ async def responder(db: AsyncSession, *, student_id: UUID, tenant_id: UUID, atte
     pregunta = next((q for q in preguntas if q.id == question_id), None)
     if pregunta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PREGUNTA_AJENA)
+    # ESPEC_opcion_valida: en una pregunta de opciones, lo que no es ninguna de
+    # ellas no se califica ni se guarda (no ocupa la "primera respuesta", no cuenta
+    # como fallada). El texto es fijo: no repite lo enviado.
+    if not calificar.es_opcion_valida(explicar.a_pregunta(pregunta), answer):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=NO_ES_OPCION)
     fila, repetida = await _guardar_primera(
         db, attempt, pregunta, answer, explicar.acerto(pregunta, answer))
     respondidas = len(await _guardadas(db, attempt.id))
