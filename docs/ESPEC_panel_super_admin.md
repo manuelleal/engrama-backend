@@ -143,3 +143,14 @@ Las encontró el Creador al escribir la web; no cambian ningún criterio de §2 
 3. **La base de prueba se llama `engrama-test-pg-super` (puerto 55445), no `engrama_test_super`:** la guarda de `tests/integ_db.py` solo acepta
    `engrama-test-pg(-…)` y puertos 55432-55499, para que su `docker rm -f` nunca toque otro contenedor. Para desarrollar se usó además
    `engrama-test-pg-superdev` (55446), para no borrar la corrida de la línea base que iba en paralelo.
+
+## Adenda 2 (2026-10-26, tras la primera suite completa de la rama) · el mapa de guardas conoce `super`
+La suite completa dio 3 rojos que el cambio no declaraba: U4 (`tests/teachers/test_access.py`: toda ruta debe estar en el mapa de guardas, con la
+suya) y AH19 (`tests/auth/test_todas_las_rutas.py`: con la clave temporal, toda ruta no pública da 403). `guardia()` clasificaba las rutas por
+`get_current_user`/`require_teacher`/`require_admin`, y `require_super_admin` no pasa por `get_current_user` (a propósito: no exige membresía), así
+que salía "public". Es el arnés de seguridad del repo haciendo su trabajo; candidato a ERR ("una dependencia de acceso nueva sin declararla en el
+mapa de guardas"). Corrección, sin tocar el código del panel:
+- `guardia()` reconoce una clase más, `super` (si `require_super_admin` está en el árbol de dependencias), y el mapa gana `_PANEL`:
+  las dos rutas `/super/*` con `super` y `/admin/metricas` con `admin`. Con eso AH19 deja de verlas como públicas y comprueba que con la
+  clave temporal dan 403 (lo dan: `require_super_admin` llama a `exigir_clave_definitiva`).
+- Si alguien quitara `require_super_admin` de una ruta `/super/*`, U4 la vería como `public` y se pondría rojo.
