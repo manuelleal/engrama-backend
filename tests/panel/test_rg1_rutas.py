@@ -98,8 +98,12 @@ CONGELADAS: frozenset[tuple[str, str]] = frozenset({
     ("PUT", "/teachers/groups/{gid}/foco"),
 })
 
-# Lo que la espec declara (§1.4). Vacío hasta que entra el cambio.
-NUEVAS: frozenset[tuple[str, str]] = frozenset()
+# Lo que la espec declara (§1.4): las tres rutas GET del panel.
+NUEVAS: frozenset[tuple[str, str]] = frozenset({
+    ("GET", "/super/clientes"),
+    ("GET", "/super/clientes/{tenant_id}"),
+    ("GET", "/admin/metricas"),
+})
 
 
 def _rutas() -> set[tuple[str, str]]:
