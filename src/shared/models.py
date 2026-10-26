@@ -1978,3 +1978,67 @@ class PracticeTanda(Base):
                         name="practice_tandas_modo_check"),
         CheckConstraint("numero >= 1 AND preguntas >= 0", name="practice_tandas_numero_check"),
     )
+
+
+class LimiteIntento(Base):
+    """Un evento del límite de intentos del registro (`src/registro/limite.py`).
+
+    Migración 048 (`docs/ESPEC_limites_registro.md` §1.2; era la 046). Antes estos eventos
+    vivían en la memoria de cada proceso; aquí los ven todos. `llave` es una
+    huella HMAC (nunca la IP ni el código de grupo) y `momento` los segundos
+    del reloj del backend. La tabla es UNLOGGED: es estado de diez minutos.
+    Sin `tenant_id`: el límite protege una ruta pública, antes de saber de
+    qué institución es nadie.
+    """
+
+    __tablename__ = "limite_intentos"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    contador: Mapped[str] = mapped_column(Text, nullable=False)
+    llave: Mapped[str] = mapped_column(Text, nullable=False)
+    momento: Mapped[float] = mapped_column(Float, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("contador IN ('por_ip','malos_por_ip','por_codigo','global')",
+                        name="limite_intentos_contador_check"),
+        Index("idx_limite_intentos_llave", "contador", "llave", "momento"),
+        Index("idx_limite_intentos_purga", "contador", "momento"),
+        {"prefixes": ["UNLOGGED"]},
+    )
+
+
+# -----------------------------------------------------------------------------
+# 049 — anillo_pases (docs/ESPEC_pase_acotado.md §1.5; era la 046, ERR-45)
+# -----------------------------------------------------------------------------
+class AnilloPase(Base):
+    """Un pase acotado hacia EVA o SET: su huella (nunca el pase), de quién es,
+    de qué institución, para qué audiencia, cuándo vence y cuándo se gastó.
+
+    `usado_en` nulo = vivo. Lo escriben solo `src/anillo/service.py` (emitir y
+    gastar); la hora la pone siempre la base.
+    """
+
+    __tablename__ = "anillo_pases"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    hash: Mapped[str] = mapped_column(Text, nullable=False)
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    audiencia: Mapped[str] = mapped_column(Text, nullable=False)
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expira_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    usado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("hash", name="anillo_pases_hash_key"),
+        CheckConstraint("audiencia IN ('eva','set')", name="anillo_pases_audiencia_check"),
+        CheckConstraint("hash ~ '^[0-9a-f]{64}$'", name="anillo_pases_hash_check"),
+        Index("idx_anillo_pases_perfil", "profile_id"),
+        Index("idx_anillo_pases_expira", "expira_en"),
+    )

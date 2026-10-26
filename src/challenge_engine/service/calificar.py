@@ -96,6 +96,23 @@ def label_de(p: Pregunta, respuesta: str) -> str:
     return respuesta.strip()
 
 
+def es_opcion_valida(p: Pregunta, respuesta: str) -> bool:
+    """¿La respuesta es una de las opciones de la pregunta? (ESPEC_opcion_valida §1)
+
+    Una pregunta con opciones (al menos una con `label`: opción múltiple, V/F/ND
+    o cualquier otra que las traiga) solo admite su `label` o su `value`, con la
+    misma normalización de la calificación ("V", " v ", "True"). Lo demás ("A"
+    en una V/F/ND) no es un error del estudiante sino una petición mal hecha: la
+    ruta la rechaza sin guardarla. Sin opciones (la escrita), todo texto vale.
+    """
+    if not any(str(o.get("label") or "").strip() for o in p.options):
+        return True
+    dada = normalizar(respuesta)
+    validas = {normalizar(str(v)) for o in p.options for campo in ("label", "value")
+               if (v := o.get(campo)) is not None}
+    return bool(dada) and dada in validas
+
+
 def calificar(p: Pregunta, respuesta: str, vocabulario: Collection[str] = ()) -> bool:
     """¿Acertó? Opción múltiple por label; escrita con normalización, tolerancia y pista."""
     if p.question_type in TIPOS_DE_OPCION:

@@ -215,6 +215,13 @@ _OLA1: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/subastas/{aid}/cerrar", frozenset({"POST"})): "teacher",
 }
 
+# docs/ESPEC_pase_acotado.md: la web pide el pase con su sesión; EVA y SET lo
+# canjean sin JWT (lo autentica el propio pase; Caddy cierra el canje desde afuera).
+_PASE_ACOTADO: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/anillo/pases", frozenset({"POST"})): "user",
+    ("/anillo/canje", frozenset({"POST"})): "public",
+}
+
 # El panel del super admin y el tablero del admin (docs/ESPEC_panel_super_admin.md §1.4).
 _PANEL: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/super/clientes", frozenset({"GET"})): "super",
@@ -223,8 +230,9 @@ _PANEL: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
 }
 
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
-    **_PANEL, **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS, **_EVENTOS,
-    **_CATALOGO, **_GRADER, **_FOCO, **_REFUERZO, **_RACHA, **_TANDA, **_L1, **_OLA1}
+    **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS, **_EVENTOS,
+    **_CATALOGO, **_GRADER, **_FOCO, **_REFUERZO, **_RACHA, **_TANDA, **_L1, **_OLA1,
+    **_PASE_ACOTADO, **_PANEL}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:

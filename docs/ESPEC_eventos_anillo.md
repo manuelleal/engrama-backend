@@ -70,7 +70,7 @@ Con 401, 413 o 422, **0 filas**.
  "not_credited": [{"event_id": "…", "reason": "pool_exhausted"}]}
 ```
 - **`accepted + duplicates + len(rejected) == len(events)`**, siempre.
-- El lote **no es todo o nada**: uno malo no tapona la cola del satélite. Cada evento aceptado y su efecto van en **su propia transacción**.
+- El lote **no es todo o nada**: uno malo no tapona la cola del satélite. ~~Cada evento aceptado y su efecto van en su propia transacción.~~ Desde `ESPEC_lote_una_transaccion.md`, el lote va en **una sola transacción** con un solo commit: un rechazado no escribe nada, así que no deshace a sus vecinos; una excepción inesperada deshace el lote entero (500, y el satélite reintenta).
 - **Idempotencia por `(tenant_id, event_id)`** (UNIQUE en la base):
   - mismo `event_id` y **mismo contenido** → `duplicates`; la fila no cambia y **ningún efecto se repite**;
   - mismo `event_id` y **otro contenido** → `rejected` con `conflict`; **gana la primera**, nunca se sobrescribe;

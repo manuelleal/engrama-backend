@@ -106,6 +106,14 @@ NUEVAS: frozenset[tuple[str, str]] = frozenset({
 })
 
 
+# Lo que trae la base nueva fase0/backend @ 71e26a1 (lo que corre el servidor), unida a esta rama:
+# el pase acotado hacia EVA y SET (docs/ESPEC_pase_acotado.md). No es del panel; se declara aquí.
+DE_FASE0: frozenset[tuple[str, str]] = frozenset({
+    ("POST", "/anillo/pases"),
+    ("POST", "/anillo/canje"),
+})
+
+
 def _rutas() -> set[tuple[str, str]]:
     return {(m, r.path) for r in app.routes if isinstance(r, APIRoute) for m in r.methods}
 
@@ -113,6 +121,6 @@ def _rutas() -> set[tuple[str, str]]:
 def test_rg1_inventario_de_rutas_es_el_congelado_mas_las_nuevas() -> None:
     actuales = _rutas()
     faltan = CONGELADAS - actuales
-    sobran = actuales - CONGELADAS - NUEVAS
+    sobran = actuales - CONGELADAS - NUEVAS - DE_FASE0
     assert not faltan and not sobran, f"RG1: faltan {sorted(faltan)}, sobran {sorted(sobran)}"
     assert len(CONGELADAS) == 84

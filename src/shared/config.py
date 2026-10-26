@@ -82,6 +82,12 @@ class Settings(BaseSettings):
     # (`exigir_secretos_de_eventos`, más abajo).
     events_secret_live: str = Field(default="")
     events_secret_set: str = Field(default="")
+    # El pase acotado hacia EVA y SET (docs/ESPEC_pase_acotado.md §1.6): cuánto
+    # vive, en segundos (PROVISIONAL: 300 deja corregir en EVA un código de sala
+    # mal escrito), y cuántos pases vivos (sin usar y sin vencer) puede tener una
+    # persona a la vez. No es un secreto.
+    anillo_pase_ttl_s: int = Field(default=300, ge=30, le=900)
+    anillo_pases_vivos_max: int = Field(default=10, ge=1, le=100)
     # El generador viejo de retos con IA (`POST /challenges/generate`) nace
     # APAGADO (ESPEC_generador_apagado; decisión 012, D6): no revisa créditos
     # ni calidad. Apagado responde 503 `generador_apagado` sin llamar a la IA.

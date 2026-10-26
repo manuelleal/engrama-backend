@@ -1,4 +1,5 @@
-"""Tramposos ZE1-ZE19 de los eventos del anillo — `docs/ESPEC_eventos_anillo.md` §3 y §4.
+"""Tramposos ZE1-ZE22 de los eventos del anillo — `docs/ESPEC_eventos_anillo.md` §3 y §4
+y `docs/ESPEC_lote_una_transaccion.md` §3 (ZE21 y ZE22).
 
 Una versión ROTA a propósito, inyectada con monkeypatch en el módulo donde se
 USA; se corre el cuerpo del test real y se exige `AssertionError` con el
@@ -32,6 +33,7 @@ from src.webhooks.schemas import ResumenOut
 from tests.webhooks import _ayuda as ay
 from tests.webhooks import test_efectos as te
 from tests.webhooks import test_lote as tl
+from tests.webhooks import test_lote_una_transaccion as tlt
 from tests.webhooks import test_unit as tu
 
 Aplicar = Callable[[pytest.MonkeyPatch], None]
@@ -41,6 +43,8 @@ _GUARDAR = service_mod._guardar
 _APLICAR = efectos_mod.aplicar
 _VERIFICAR = events_mod.verificar
 _REGISTRAR_NIVEL = level_mod.record_confirmed_level
+_ACEPTAR = service_mod._aceptar
+_MOTIVO_DE_BASE = service_mod._motivo_de_base
 
 
 @pytest.fixture(autouse=True)
@@ -197,6 +201,21 @@ def _set_tambien_acredita(mp: pytest.MonkeyPatch) -> None:
     mp.setattr(events_mod, "PERMITIDOS", permitidos)
 
 
+# --- ZE21: un commit por evento (el código anterior a ESPEC_lote_una_transaccion) ---
+async def _aceptar_y_commit(db: AsyncSession, *args: Any) -> Any:
+    resultado = await _ACEPTAR(db, *args)
+    await db.commit()
+    return resultado
+
+
+# --- ZE22: el rechazo deshace la transacción (y con ella, a los vecinos del lote) ---
+async def _rechazo_con_rollback(db: AsyncSession, origen: str, evento: Any) -> str | None:
+    motivo = await _MOTIVO_DE_BASE(db, origen, evento)
+    if motivo is not None:
+        await db.rollback()
+    return motivo
+
+
 TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     "ZE1": (_parche(router_mod, "_firma_valida", lambda *_: True),
             tl.test_ev3_la_firma_y_la_ventana,
@@ -256,6 +275,12 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     "ZE20": (_parche(config_mod, "problemas_de_secretos", lambda live, set_, jwt: []),
              tu.test_ue3_los_secretos_de_eventos_se_validan_al_arrancar,
              r"'live_de_31': \[\], 'iguales': \[\], 'set_igual_al_jwt': \[\], 'todo_mal': 0"),
+    # ESPEC_lote_una_transaccion §3: el lote vuelve a pagar un commit por evento.
+    "ZE21": (_parche(service_mod, "_aceptar", _aceptar_y_commit),
+             tlt.test_lt1_un_lote_hace_un_solo_commit, r"'commits': 38, 'instantes': 38"),
+    "ZE22": (_parche(service_mod, "_motivo_de_base", _rechazo_con_rollback),
+             tlt.test_lt2_un_rechazado_en_medio_no_deshace_a_los_vecinos,
+             r"'filas': 2, 'saldos': \[0, 3\]"),
 }
 SIN_BASE = ("ZE18", "ZE19", "ZE20")
 

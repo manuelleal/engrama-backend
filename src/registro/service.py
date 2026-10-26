@@ -268,6 +268,32 @@ async def _deshacer(db: AsyncSession, cuentas: CuentasDeRegistro, reserva: Reser
     await db.commit()
 
 
+async def _crear_cuenta_o_deshacer(db: AsyncSession, cuentas: CuentasDeRegistro,
+                                   reserva: Reserva, datos: RegistroIn) -> str:
+    """El paso de GoTrue, protegido (S-7 hasta el final; ESPEC_confirmar_protegido).
+
+    Gemela de `_confirmar_o_deshacer`. Si `crear` falla, la cuenta PUDO nacer:
+    GoTrue pudo crearla y fallar después la respuesta (un 2xx con un cuerpo que
+    no se puede leer, un defecto del adaptador). Por eso se compensa ante
+    CUALQUIER excepción, no solo ante `ErrorCuenta`: borrar es idempotente (un
+    404 cuenta como borrada), así que intentarlo nunca hace daño. Sin esto, la
+    excepción subía como 500 y dejaba la cuenta viva con la solicitud en
+    `creando`: el estudiante "espera a su profe" y el profe nunca lo ve.
+
+    El log: el mensaje de `ErrorCuenta` es nuestro y no lleva datos personales;
+    de cualquier otra excepción va SOLO el tipo (su texto puede traer el correo).
+    """
+    try:
+        return await _crear_cuenta(cuentas, reserva.profile_id,
+                                   datos.correo_normalizado(), datos.contrasena)
+    except Exception as exc:
+        detalle = exc if isinstance(exc, ErrorCuenta) else type(exc).__name__
+        logger.error("registro: GoTrue falló al crear la cuenta de la solicitud %s: %s",
+                     reserva.solicitud_id, detalle)
+        await _deshacer(db, cuentas, reserva, puede_haber_cuenta=True)
+        raise RegistroNoDisponible() from exc
+
+
 # =============================================================================
 # T2 — la confirmación
 # =============================================================================
@@ -338,14 +364,7 @@ async def registrar(db: AsyncSession, cuentas: CuentasDeRegistro, datos: Registr
     reserva = await _reservar(db, cuentas, datos)
     if reserva is None:
         return OCUPADO
-    try:
-        resultado = await _crear_cuenta(cuentas, reserva.profile_id,
-                                        datos.correo_normalizado(), datos.contrasena)
-    except ErrorCuenta as exc:
-        logger.error("registro: GoTrue falló al crear la cuenta de la solicitud %s: %s",
-                     reserva.solicitud_id, exc)
-        await _deshacer(db, cuentas, reserva, puede_haber_cuenta=True)
-        raise RegistroNoDisponible() from exc
+    resultado = await _crear_cuenta_o_deshacer(db, cuentas, reserva, datos)
     if resultado != CREADA:
         await _deshacer(db, cuentas, reserva, puede_haber_cuenta=False)
         return CORREO_EN_USO

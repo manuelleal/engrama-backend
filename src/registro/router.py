@@ -74,16 +74,21 @@ def _no_disponible() -> HTTPException:
     return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=NO_DISPONIBLE)
 
 
-def _revisar_limite(request: Request, huella: str) -> str:
-    """429 si algún tope ya se alcanzó; si no, anota el intento y devuelve la IP."""
+async def _revisar_limite(request: Request, huella: str, db: AsyncSession) -> str:
+    """429 si algún tope ya se alcanzó; si no, anota el intento y devuelve la IP.
+
+    Revisar y anotar van juntos, con el candado de la IP, en una transacción
+    corta de la sesión que se confirma enseguida, para que los otros procesos
+    la vean (`limite.tomar`, ESPEC_limites_registro §1.3). Va antes de tocar
+    el registro, con la sesión todavía sin nada pendiente.
+    """
     ip = limite.ip_del_visitante(request.client.host if request.client else None,
                                  request.headers.get("x-forwarded-for"),
                                  settings.proxies_de_confianza)
-    espera = limite.revisar(ip, huella)
+    espera = await limite.tomar(db, ip, huella)
     if espera > 0:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=DEMASIADOS,
                             headers={"Retry-After": str(espera)})
-    limite.anotar(ip)
     return ip
 
 
@@ -108,7 +113,9 @@ async def registrarse(
     listas = _exigir_cuentas(cuentas)
     _exigir_aviso_configurado()
     huella = codigos.huella(payload.codigo)
-    ip = _revisar_limite(request, huella)
+    # El límite usa la misma sesión, en transacciones propias y cortas que
+    # confirma enseguida (ESPEC_limites_registro §1.3): nunca dos conexiones.
+    ip = await _revisar_limite(request, huella, db)
     # Los contadores por código y global solo cuentan si el código de GRUPO
     # servía (auditoría 03, S-3): eso se sabe después de consultar la base.
     codigo_valido = True
@@ -116,14 +123,14 @@ async def registrarse(
         resultado = await service.registrar(db, listas, payload)
     except service.CodigoNoValido as exc:
         codigo_valido = exc.codigo_de_grupo_valido
-        limite.anotar_malo(ip)
+        await limite.anotar_malo(db, ip)
         service.logger.info("registro: código no válido (%s)", exc.motivo)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail=service.detalle_de_rechazo(exc.motivo)) from exc
     except service.RegistroNoDisponible as exc:
         raise _no_disponible() from exc
     finally:
-        limite.anotar_codigo(huella, valido=codigo_valido)
+        await limite.anotar_codigo(db, huella, valido=codigo_valido)
     return JSONResponse(status_code=status.HTTP_201_CREATED,
                         content=_respuesta_uniforme(resultado, payload))
 
