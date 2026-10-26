@@ -184,6 +184,19 @@ def test_am4_la_respuesta_del_admin_no_trae_nombre(integ, monkeypatch) -> None:
                                       "monedas_por_semana"}, f"AM4: {sorted(claves)}"
 
 
+def test_h4_las_tres_rutas_no_se_guardan_en_cache(integ, monkeypatch) -> None:
+    """H-4: `Cache-Control: no-store` en las tres respuestas del panel."""
+    s, a, _b = sb.sembrar(integ, monkeypatch)
+    sup = integ.headers(sb.super_admin(s))
+    vistos = {
+        "lista": client.get("/super/clientes", headers=sup).headers.get("cache-control"),
+        "detalle": client.get(f"/super/clientes/{a.id}", headers=sup).headers.get("cache-control"),
+        "admin": client.get("/admin/metricas",
+                            headers=integ.headers(a.personas["admin"])).headers.get("cache-control"),
+    }
+    assert vistos == {"lista": "no-store", "detalle": "no-store", "admin": "no-store"}, f"H4: {vistos}"
+
+
 _FOTO = """
 select (select count(*) from tenants) t, (select count(*) from memberships) m,
        (select count(*) from profiles) p, (select count(*) from coin_ledger) l,

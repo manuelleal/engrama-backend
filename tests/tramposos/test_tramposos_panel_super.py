@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import service as auth_service
 from src.main import app
-from src.panel import acceso, metricas, servicio, ventanas
+from src.panel import acceso, metricas, router, servicio, ventanas
 from src.panel.schemas import PanelAdmin
 from src.shared.models import Attendance, ChallengeAttempt, CoinLedger, LearningEvent, Membership
 from tests.panel import test_panel_super as tp
@@ -137,6 +137,9 @@ TRAMPOSOS: dict[str, tuple[Aplicar, list[tuple[Callable[..., None], str]]]] = {
     "TP7": (_ruta_del_admin_con_nombre, [
         (tp.test_am4_la_respuesta_del_admin_no_trae_nombre,
          r"AM4: \{'status': 200, 'claves_prohibidas': \['etiqueta', 'id'\], 'nombre_a': True"),
+    ]),
+    "TP8": (_parche(router, "_no_guardar", lambda _r: None), [
+        (tp.test_h4_las_tres_rutas_no_se_guardan_en_cache, r"H4: \{'lista': None"),
     ]),
 }
 
