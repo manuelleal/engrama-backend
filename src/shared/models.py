@@ -2005,3 +2005,40 @@ class LimiteIntento(Base):
         Index("idx_limite_intentos_purga", "contador", "momento"),
         {"prefixes": ["UNLOGGED"]},
     )
+
+
+# -----------------------------------------------------------------------------
+# 046 — anillo_pases (docs/ESPEC_pase_acotado.md §1.5)
+# -----------------------------------------------------------------------------
+class AnilloPase(Base):
+    """Un pase acotado hacia EVA o SET: su huella (nunca el pase), de quién es,
+    de qué institución, para qué audiencia, cuándo vence y cuándo se gastó.
+
+    `usado_en` nulo = vivo. Lo escriben solo `src/anillo/service.py` (emitir y
+    gastar); la hora la pone siempre la base.
+    """
+
+    __tablename__ = "anillo_pases"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    hash: Mapped[str] = mapped_column(Text, nullable=False)
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    audiencia: Mapped[str] = mapped_column(Text, nullable=False)
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expira_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    usado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("hash", name="anillo_pases_hash_key"),
+        CheckConstraint("audiencia IN ('eva','set')", name="anillo_pases_audiencia_check"),
+        CheckConstraint("hash ~ '^[0-9a-f]{64}$'", name="anillo_pases_hash_check"),
+        Index("idx_anillo_pases_perfil", "profile_id"),
+        Index("idx_anillo_pases_expira", "expira_en"),
+    )

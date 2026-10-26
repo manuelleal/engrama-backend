@@ -84,7 +84,7 @@ RUTA_HUMO = RAIZ_BACKEND / "tests" / "_salida" / "humo_integ.json"
 # reporta; NO se ajusta este diccionario para que pase.
 HUMO_ESPERADO: dict[str, Any] = {
     "alembic_version": "047_economia_ola1",  # la economía de la ola 1 (salta la 046, ERR-45)
-    "tablas_con_rls": 47,  # 46 + 1 (046, limite_intentos), con RLS y sin políticas
+    "tablas_con_rls": 48,  # 46 + 1 (limite_intentos) + 1 (anillo_pases), con RLS y sin políticas
     # 19 x 2 + 13 especiales (029); la 030 reemplaza 2, no suma; la 031 no toca políticas
     "politicas_public": 51,
     "auth_uid_existe": True,
