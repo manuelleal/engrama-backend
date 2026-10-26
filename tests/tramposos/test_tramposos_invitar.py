@@ -23,6 +23,7 @@ from src.main import app
 from src.registro.cuentas import get_cuentas_de_invitacion
 from src.shared.models import Group, InvitacionDocente, Membership, Profile
 from tests.invitar import _ayuda as ay
+from tests.integ import test_migracion_050 as tm50
 from tests.invitar import test_invitar as ti
 
 pytestmark = pytest.mark.integ
@@ -134,6 +135,11 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     "XP11": (_parche(schemas_mod.InvitacionIn, "correo_normalizado", lambda self: self.correo),
              ti.test_ip5_mismo_correo_dos_veces_en_la_misma_institucion,
              r"IP5: \{'status': \(201, 500\)"),
+    # XP14 (H-1): la 050 sin el REVOKE: con privilegios por defecto abiertos, los clientes leerían los correos.
+    "XP14": (_parche(tm50.M050, "SQL_SUBIR", tuple(s for s in tm50.M050.SQL_SUBIR
+                                                  if not s.startswith("REVOKE"))),
+             tm50.test_mg50b_cerrada_aunque_los_privilegios_por_defecto_la_abran,
+             r"MG50b: \{'privilegios_de_clientes': 'anon:DELETE,anon:INSERT"),
 }
 
 

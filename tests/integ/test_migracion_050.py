@@ -13,7 +13,10 @@ from typing import Any
 
 import pytest
 
-from tests.integ.test_migracion_035 import cargar, resumen, sube_baja_sube
+import asyncpg  # type: ignore[import-untyped]
+
+from tests.integ.test_migracion_033 import en_transaccion
+from tests.integ.test_migracion_035 import cargar, correr, resumen, sube_baja_sube
 
 pytestmark = pytest.mark.integ
 
@@ -49,3 +52,19 @@ def test_mg50_sube_baja_y_vuelve_a_subir_identica(integ: Any) -> None:
         "privilegios_de_clientes": None,
         "cabeza": "050_invitaciones_docente",
     }, f"MG50: {observado}"
+
+
+def test_mg50b_cerrada_aunque_los_privilegios_por_defecto_la_abran(integ: Any) -> None:
+    """IP13b (H-1): con privilegios por defecto que SÍ darían todo a los clientes,
+    la tabla nace cerrada igual (el REVOKE de la 050). Todo en una transacción que se deshace."""
+    visto: dict[str, Any] = {}
+
+    async def cuerpo(conn: asyncpg.Connection) -> None:
+        await correr(conn, M050.SQL_BAJAR, "bajar")
+        await conn.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+                           "GRANT ALL ON TABLES TO anon, authenticated")
+        await correr(conn, M050.SQL_SUBIR, "subir con privilegios por defecto abiertos")
+        visto["privilegios_de_clientes"] = await conn.fetchval(PRIVILEGIOS_DE_CLIENTES)
+
+    en_transaccion(integ, cuerpo)
+    assert visto == {"privilegios_de_clientes": None}, f"MG50b: {visto}"

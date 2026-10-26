@@ -20,7 +20,8 @@ Qué hace (`SQL_SUBIR`, idempotente):
      - el CHECK exige el correo en minúsculas: dos escrituras del mismo correo
        no pueden ser dos invitaciones.
   2. RLS activo y SIN políticas (como 035 y 036): ningún rol de cliente lee ni
-     escribe; por la 031, tampoco reciben privilegios sobre tablas nuevas. El
+     escribe; por la 031, tampoco reciben privilegios sobre tablas nuevas, y
+     además se revocan a mano (`REVOKE ALL ... FROM anon, authenticated`). El
      aislamiento por institución lo hace el backend (`tenant_id` en cada ruta).
 
 El correo del profe se guarda solo aquí, en la fila de su institución.
@@ -62,6 +63,10 @@ SQL_SUBIR: tuple[str, ...] = (
     );
     """,
     "ALTER TABLE invitaciones_docente ENABLE ROW LEVEL SECURITY;",
+    # Defensa en profundidad (auditoría de invitar, H-1): aunque la 031 ya deja sin
+    # privilegios a los roles de cliente en las tablas nuevas, si unos privilegios
+    # por defecto cambiaran, esta tabla (correos de profes) sigue cerrada.
+    "REVOKE ALL ON invitaciones_docente FROM anon, authenticated;",
 )
 
 SQL_BAJAR: tuple[str, ...] = (
