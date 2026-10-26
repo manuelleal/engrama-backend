@@ -21,6 +21,9 @@ pytestmark = pytest.mark.integ
 client = TestClient(app)
 
 RUTA = RAIZ_BACKEND / "tests" / "_salida" / "humo_panel_super.json"
+# Las tres respuestas CRUDAS (con las etiquetas sintéticas): la web las guarda en `contratos/` y su
+# prueba de contrato pinta las pantallas con ellas (la forma real, no la del doble).
+RUTA_CRUDAS = RAIZ_BACKEND / "tests" / "_salida" / "panel_super_respuestas.json"
 
 
 def test_humo_panel_super_escribe_su_archivo(integ, monkeypatch) -> None:
@@ -40,6 +43,9 @@ def test_humo_panel_super_escribe_su_archivo(integ, monkeypatch) -> None:
     RUTA.parent.mkdir(parents=True, exist_ok=True)
     RUTA.write_text(json.dumps(salida, ensure_ascii=False, indent=1, sort_keys=True),
                     encoding="utf-8")
+    crudas = {"GET /super/clientes": lista.json(), "GET /super/clientes/{id}": detalle.json(),
+              "GET /admin/metricas": admin.json()}
+    RUTA_CRUDAS.write_text(json.dumps(crudas, ensure_ascii=False, indent=1), encoding="utf-8")
     leido = json.loads(RUTA.read_text(encoding="utf-8"))
     assert leido["estados"] == [200, 200, 200], leido["estados"]
     assert leido["clientes"] == {"Cliente 01": sb.ESPERADO_A, "Cliente 02": sb.ESPERADO_B}
