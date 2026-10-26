@@ -1,9 +1,12 @@
 """El ÚNICO módulo del proceso web que usa la clave de servicio de GoTrue.
 
 `docs/ESPEC_autorregistro.md` §1.9 (errata a `ESPEC_login_piloto.md` §1.7).
-La usa para dos llamadas de la API admin y ninguna más:
+La usa para estas llamadas de la API admin y ninguna más:
   - crear la cuenta de quien se registra, con `id = profiles.id`;
-  - borrarla (compensación de un registro que no terminó, o rechazo del profe).
+  - borrarla (compensación de un registro que no terminó, o rechazo del profe);
+  - invitar a un profe (`docs/ESPEC_invitar_profe.md` §3.4): mirar su cuenta por
+    id, crearla sin contraseña y pedir el correo de invitación o de recuperar.
+    La invitación usa la clave por este mismo módulo: la cerca (SR1) no cambia.
 
 `tests/registro/test_unit.py` (SR1) falla si la clave o el adaptador admin
 aparecen en cualquier otro módulo de `src/`, salvo la CLI del operador. La
@@ -32,6 +35,35 @@ class CuentasDeRegistro(Protocol):
 
 
 def get_cuentas_de_registro() -> CuentasDeRegistro | None:
+    """Dependencia: el adaptador real, o `None` si falta la URL o la clave (-> 503)."""
+    url = url_de_gotrue(settings)
+    clave = settings.supabase_service_role_key
+    if not url or not clave:
+        return None
+    return GoTrueAdmin(url, clave, timeout=TIEMPO_MAXIMO_S)
+
+
+class CuentasDeInvitacion(Protocol):
+    """Lo que la invitación de profes necesita de GoTrue (ESPEC_invitar_profe §3.4)."""
+
+    async def estado_de_cuenta(self, id: UUID) -> tuple[str, bool] | None:
+        """(correo, confirmada) de la cuenta `id`, o `None` si no existe."""
+        ...
+
+    async def crear_invitado(self, id: UUID, correo: str) -> str:
+        """Crea la cuenta sin contraseña y sin confirmar: `creada` o `correo_en_uso`."""
+        ...
+
+    async def invitar(self, correo: str) -> str:
+        """Pide el correo de invitación: `enviada`, `limite_de_correos` o `ya_confirmada`."""
+        ...
+
+    async def recuperar(self, correo: str) -> str:
+        """Pide el correo de recuperar: `enviada` o `limite_de_correos`."""
+        ...
+
+
+def get_cuentas_de_invitacion() -> CuentasDeInvitacion | None:
     """Dependencia: el adaptador real, o `None` si falta la URL o la clave (-> 503)."""
     url = url_de_gotrue(settings)
     clave = settings.supabase_service_role_key
