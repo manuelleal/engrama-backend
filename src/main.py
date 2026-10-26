@@ -10,6 +10,7 @@ from src.datos.router import usuario as datos_usuario_router
 from src.engrama_core.router import router as core_router
 from src.foco.router import router as foco_router
 from src.grader.router import router as grader_router
+from src.invitar.router import router as invitar_router
 from src.refuerzo.router import router as refuerzo_router
 from src.registro.router import docente as registro_docente_router
 from src.registro.router import publico as registro_publico_router
@@ -64,6 +65,9 @@ app.include_router(bolsillo_economia_router, prefix="/economia", tags=["economia
 app.include_router(tienda_economia_router, prefix="/economia", tags=["economia"])
 app.include_router(bolsillo_admin_router, prefix="/admin", tags=["economia"])
 app.include_router(subasta_router, prefix="/subastas", tags=["subastas"])
+# El admin invita profes por correo: la cuenta la crea el backend sin contraseña
+# y el profe pone la suya con el enlace (docs/ESPEC_invitar_profe.md).
+app.include_router(invitar_router, prefix="/admin", tags=["invitar"])
 
 
 @app.get("/health")

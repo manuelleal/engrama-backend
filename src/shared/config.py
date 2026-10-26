@@ -74,6 +74,14 @@ class Settings(BaseSettings):
     # respuestas `creado` tardó 376 ms y se salió del techo (250 + 20 % = 300).
     # 400 queda por encima de ese máximo; el despliegue lo vuelve a medir.
     registro_piso_ms: int = Field(default=400, ge=0, le=5000)
+    # Invitar profes por correo (docs/ESPEC_invitar_profe.md §3.1 y §3.3).
+    # Envíos (invitar + reenviar) por ADMIN en la última hora; se cuentan en la
+    # base, así que valen con dos procesos y tras reiniciar. 10 queda bajo los 12
+    # correos por hora que GoTrue deja salir para todo el servidor (§1.1, L1).
+    invitaciones_por_hora: int = Field(default=10, ge=1, le=100)
+    # Segundos entre dos envíos de la MISMA invitación: GoTrue no limita el
+    # reenvío de invitaciones (P3), así que lo limita el backend.
+    invitacion_espera_reenvio_s: int = Field(default=60, ge=0, le=3600)
     # Secretos HMAC de la puerta de eventos del anillo, UNO POR ORIGEN
     # (ESPEC_eventos_anillo §1.2): EVA firma como `live` y SET como `set`. 32
     # caracteres o más, al azar. Vacío = ese origen está apagado (401). No son
