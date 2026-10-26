@@ -2015,6 +2015,10 @@ class InvitacionDocente(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     envios: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    # Interno (auditoría H-3): lo último que dijo el envío. Ninguna respuesta lo trae.
+    ultimo_resultado: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ultimo_resultado_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("profile_id", name="invitaciones_docente_perfil_key"),
@@ -2022,6 +2026,10 @@ class InvitacionDocente(Base):
         CheckConstraint("correo = lower(correo) AND length(correo) BETWEEN 3 AND 254",
                         name="invitaciones_docente_correo_check"),
         CheckConstraint("envios >= 1", name="invitaciones_docente_envios_check"),
+        CheckConstraint(
+            "ultimo_resultado IS NULL OR ultimo_resultado IN "
+            "('enviada','recuperacion','cuenta_ajena','limite_de_correos','fallo')",
+            name="invitaciones_docente_resultado_check"),
     )
 
 

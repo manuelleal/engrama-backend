@@ -36,13 +36,14 @@ async def invitar_profe(
     background: BackgroundTasks,
     auth: AuthContext = Depends(require_admin),
     cuentas: CuentasDeInvitacion | None = Depends(get_cuentas_de_invitacion),
+    sesiones: envio.Sesiones = Depends(envio.get_sesiones),
     db: AsyncSession = Depends(get_db),
 ) -> InvitacionOut:
     """Invita a un profe a un grupo de la institución. El mismo 201 pase lo que pase con el correo."""
     listas = _exigir_cuentas(cuentas)
     resultado = await service.invitar(db, auth, payload)
     await db.commit()
-    background.add_task(envio.enviar, listas, resultado.pedido)
+    background.add_task(envio.enviar, listas, resultado.pedido, sesiones)
     return resultado.salida
 
 
@@ -63,11 +64,12 @@ async def reenviar_invitacion(
     background: BackgroundTasks,
     auth: AuthContext = Depends(require_admin),
     cuentas: CuentasDeInvitacion | None = Depends(get_cuentas_de_invitacion),
+    sesiones: envio.Sesiones = Depends(envio.get_sesiones),
     db: AsyncSession = Depends(get_db),
 ) -> InvitacionOut:
     """Vuelve a mandar el correo de una invitación que no se ha aceptado."""
     listas = _exigir_cuentas(cuentas)
     resultado = await service.reenviar(db, auth, invitacion_id)
     await db.commit()
-    background.add_task(envio.enviar, listas, resultado.pedido)
+    background.add_task(envio.enviar, listas, resultado.pedido, sesiones)
     return resultado.salida

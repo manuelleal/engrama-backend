@@ -17,8 +17,13 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
+from sqlalchemy import func, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from src.onboarding.cuentas import CREADA, ENVIADA, YA_CONFIRMADA, ErrorCuenta
 from src.registro.cuentas import CuentasDeInvitacion
+from src.shared.db import AsyncSessionLocal
+from src.shared.models import InvitacionDocente
 
 logger = logging.getLogger("engrama.invitar")
 
@@ -61,12 +66,30 @@ async def _enviar(cuentas: CuentasDeInvitacion, pedido: PedidoDeEnvio) -> str:
     return await _invitar_o_recuperar(cuentas, pedido.correo, confirmada)
 
 
-async def enviar(cuentas: CuentasDeInvitacion, pedido: PedidoDeEnvio) -> str:
-    """Asegura la cuenta y pide el correo. NUNCA lanza: corre después de responder.
+Sesiones = async_sessionmaker[AsyncSession]
 
-    El log lleva el id de la invitación y el resultado; nunca el correo, el
-    nombre ni la clave de servicio (UI5).
-    """
+
+def get_sesiones() -> Sesiones:
+    """Dependencia: con qué abrir una sesión PROPIA después de responder (la de la
+    petición ya se cerró). Las pruebas la reemplazan por la del arnés."""
+    return AsyncSessionLocal
+
+
+async def _guardar_resultado(sesiones: Sesiones, invitacion_id: int, resultado: str) -> None:
+    """`ultimo_resultado` de la fila (H-3): interno, solo para el operador."""
+    try:
+        async with sesiones() as db:
+            await db.execute(update(InvitacionDocente)
+                             .where(InvitacionDocente.id == invitacion_id)
+                             .values(ultimo_resultado=resultado,
+                                     ultimo_resultado_en=func.now()))
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001 — corre tras la respuesta: nada puede escapar
+        logger.error("invitar: invitacion=%s no se guardó el resultado (%s)", invitacion_id,
+                     type(exc).__name__)
+
+
+async def _intentar(cuentas: CuentasDeInvitacion, pedido: PedidoDeEnvio) -> str:
     try:
         resultado = await _enviar(cuentas, pedido)
     except ErrorCuenta as exc:
@@ -78,4 +101,18 @@ async def enviar(cuentas: CuentasDeInvitacion, pedido: PedidoDeEnvio) -> str:
         return FALLO
     nivel = logging.INFO if resultado in (ENVIADA, RECUPERACION, CUENTA_AJENA) else logging.ERROR
     logger.log(nivel, "invitar: invitacion=%s resultado=%s", pedido.invitacion_id, resultado)
+    return resultado
+
+
+async def enviar(cuentas: CuentasDeInvitacion, pedido: PedidoDeEnvio,
+                 sesiones: Sesiones | None = None) -> str:
+    """Asegura la cuenta y pide el correo. NUNCA lanza: corre después de responder.
+
+    El log lleva el id de la invitación y el resultado; nunca el correo, el
+    nombre ni la clave de servicio (UI5). Con `sesiones`, el resultado queda
+    también en la fila (`ultimo_resultado`, H-3), que ninguna ruta devuelve.
+    """
+    resultado = await _intentar(cuentas, pedido)
+    if sesiones is not None:
+        await _guardar_resultado(sesiones, pedido.invitacion_id, resultado)
     return resultado

@@ -87,6 +87,14 @@ async def _sin_espera(db: AsyncSession, invitacion_id: int) -> None:
     return None
 
 
+async def _sin_tope_global(db: AsyncSession) -> None:
+    return None
+
+
+async def _no_guarda(sesiones: Any, invitacion_id: int, resultado: str) -> None:
+    return None
+
+
 # --- XP7: el grupo por id, sin la barrera de institución ----------------------------
 class _AccesoSinBarrera:
     @staticmethod
@@ -135,6 +143,13 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     "XP11": (_parche(schemas_mod.InvitacionIn, "correo_normalizado", lambda self: self.correo),
              ti.test_ip5_mismo_correo_dos_veces_en_la_misma_institucion,
              r"IP5: \{'status': \(201, 500\)"),
+    # XP16 y XP17 (H-3): sin tope global; el resultado del envío no se guarda.
+    "XP16": (_parche(service_mod, "_exigir_tope_global", _sin_tope_global),
+             ti.test_ip15_tope_global_de_todas_las_instituciones,
+             r"'cuarta_de_b': \(201, None, False\)"),
+    "XP17": (_parche(envio_mod, "_guardar_resultado", _no_guarda),
+             ti.test_ip14_el_resultado_del_envio_queda_solo_para_el_operador,
+             r"IP14: \{'resultados': \[None, None, None, None\]"),
     # XP14 (H-1): la 050 sin el REVOKE: con privilegios por defecto abiertos, los clientes leerían los correos.
     "XP14": (_parche(tm50.M050, "SQL_SUBIR", tuple(s for s in tm50.M050.SQL_SUBIR
                                                   if not s.startswith("REVOKE"))),

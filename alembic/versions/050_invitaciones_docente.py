@@ -25,6 +25,8 @@ Qué hace (`SQL_SUBIR`, idempotente):
      aislamiento por institución lo hace el backend (`tenant_id` en cada ruta).
 
 El correo del profe se guarda solo aquí, en la fila de su institución.
+`ultimo_resultado` es interno (solo el operador lo lee en la base): ninguna
+ruta lo devuelve.
 
 Downgrade (`SQL_BAJAR`): borra la tabla. Los perfiles y las membresías de los
 profes invitados no se tocan. En producción NO se baja: se restaura el respaldo.
@@ -55,11 +57,18 @@ SQL_SUBIR: tuple[str, ...] = (
       created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
       ultimo_envio_en TIMESTAMPTZ NOT NULL DEFAULT now(),
       envios          INTEGER NOT NULL DEFAULT 1,
+      -- Interno, SOLO para el operador (auditoría H-3): lo último que dijo el envío en
+      -- segundo plano. Ninguna respuesta de la API lo trae (el admin no debe distinguir
+      -- `cuenta_ajena` de `enviada`).
+      ultimo_resultado    TEXT,
+      ultimo_resultado_en TIMESTAMPTZ,
       CONSTRAINT invitaciones_docente_perfil_key UNIQUE (profile_id),
       CONSTRAINT invitaciones_docente_correo_key UNIQUE (tenant_id, correo),
       CONSTRAINT invitaciones_docente_correo_check
         CHECK (correo = lower(correo) AND length(correo) BETWEEN 3 AND 254),
-      CONSTRAINT invitaciones_docente_envios_check CHECK (envios >= 1)
+      CONSTRAINT invitaciones_docente_envios_check CHECK (envios >= 1),
+      CONSTRAINT invitaciones_docente_resultado_check CHECK (ultimo_resultado IS NULL
+        OR ultimo_resultado IN ('enviada','recuperacion','cuenta_ajena','limite_de_correos','fallo'))
     );
     """,
     "ALTER TABLE invitaciones_docente ENABLE ROW LEVEL SECURITY;",

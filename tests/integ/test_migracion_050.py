@@ -43,6 +43,7 @@ def test_mg50_sube_baja_y_vuelve_a_subir_identica(integ: Any) -> None:
             "invitaciones_docente_envios_check", "invitaciones_docente_group_id_fkey",
             "invitaciones_docente_invitada_por_fkey", "invitaciones_docente_perfil_key",
             "invitaciones_docente_pkey", "invitaciones_docente_profile_id_fkey",
+            "invitaciones_docente_resultado_check",
             "invitaciones_docente_tenant_id_fkey"]},
         "indices": {"invitaciones_docente": [
             "invitaciones_docente_correo_key", "invitaciones_docente_perfil_key",

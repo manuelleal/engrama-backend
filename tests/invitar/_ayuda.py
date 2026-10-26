@@ -24,7 +24,10 @@ from sqlalchemy import text
 
 from src.auth.cuentas import get_cambio_de_clave
 from src.main import app
-from src.onboarding.cuentas import CORREO_EN_USO, CREADA, ENVIADA, YA_CONFIRMADA, ErrorCuenta
+from src.invitar import envio
+from src.onboarding.cuentas import (
+    CORREO_EN_USO, CREADA, ENVIADA, LIMITE_DE_CORREOS, YA_CONFIRMADA, ErrorCuenta,
+)
 from src.registro.cuentas import get_cuentas_de_invitacion
 from src.shared.models import TeacherGroup
 
@@ -37,6 +40,7 @@ class GoTrueFalso:
         self.cuentas: dict[UUID, dict[str, Any]] = {}
         self.llamadas: list[tuple[str, ...]] = []
         self.fallar = False
+        self.limite = False  # el cupo de correos de GoTrue lleno (L1): invitar y recuperar dan 429
 
     def _quizas_falla(self) -> None:
         if self.fallar:
@@ -75,12 +79,20 @@ class GoTrueFalso:
         if cid is None:  # P9: GoTrue crea la cuenta con un id que elige él
             self.cuentas[uuid4()] = {"correo": correo.lower(), "confirmada": False}
             return ENVIADA
-        return YA_CONFIRMADA if self.cuentas[cid]["confirmada"] else ENVIADA
+        if self.cuentas[cid]["confirmada"]:
+            return YA_CONFIRMADA
+        return LIMITE_DE_CORREOS if self.limite else ENVIADA
 
     async def recuperar(self, correo: str) -> str:
         self.llamadas.append(("recuperar", correo))
         self._quizas_falla()
-        return ENVIADA
+        return LIMITE_DE_CORREOS if self.limite else ENVIADA
+
+    async def borrar(self, id: UUID) -> None:
+        """Como GoTrue: borrar una cuenta que no existe no es un error."""
+        self.llamadas.append(("borrar", str(id)))
+        self._quizas_falla()
+        self.cuentas.pop(id, None)
 
     def de_correo(self, nombre: str) -> list[tuple[str, ...]]:
         """Las llamadas de correo (`invitar`/`recuperar`), para contar envíos."""
@@ -94,10 +106,12 @@ class CambioFalso:
         return None
 
 
-def preparar() -> GoTrueFalso:
+def preparar(integ: Any) -> GoTrueFalso:
+    """El doble de GoTrue, el del cambio de clave y las sesiones del envío (las del arnés)."""
     falso = GoTrueFalso()
     app.dependency_overrides[get_cuentas_de_invitacion] = lambda: falso
     app.dependency_overrides[get_cambio_de_clave] = lambda: CambioFalso()
+    app.dependency_overrides[envio.get_sesiones] = lambda: integ.Session
     return falso
 
 
@@ -105,6 +119,7 @@ def soltar() -> None:
     """El dict de overrides es global: `test_h3_sin_overrides_de_dependencias_filtrados`."""
     app.dependency_overrides.pop(get_cuentas_de_invitacion, None)
     app.dependency_overrides.pop(get_cambio_de_clave, None)
+    app.dependency_overrides.pop(envio.get_sesiones, None)
 
 
 @dataclass(frozen=True)
@@ -188,3 +203,8 @@ def filas_de(integ: Any, profile_id: UUID) -> dict[str, Any]:
         "invitaciones": integ.valor("select count(*) from invitaciones_docente "
                                     "where profile_id = :p", p=profile_id),
     }
+
+
+def resultado_de(integ: Any, inv_id: int) -> Any:
+    """El campo INTERNO `ultimo_resultado` de la fila (H-3)."""
+    return integ.valor("select ultimo_resultado from invitaciones_docente where id = :i", i=inv_id)

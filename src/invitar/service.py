@@ -73,6 +73,28 @@ async def _exigir_tope(db: AsyncSession, auth: AuthContext) -> None:
     """), {"admin": auth.profile_id, "accion": ACCION_AUDITORIA, "ventana": VENTANA_S})).one()
     if int(fila.n) >= settings.invitaciones_por_hora:
         raise _429(DEMASIADAS, math.ceil(float(fila.espera or VENTANA_S)))
+    await _exigir_tope_global(db)
+
+
+async def _exigir_tope_global(db: AsyncSession) -> None:
+    """429 si TODOS los admins juntos ya hicieron `invitaciones_globales_por_hora` envíos (H-3).
+
+    Invitar y recuperar comparten el cupo de correos de GoTrue: este tope deja
+    reserva para recuperar. El mismo `detail` que el tope por admin: el admin no
+    aprende si otras instituciones están invitando. Candado global DESPUÉS del
+    del admin (siempre en ese orden: sin abrazo mortal).
+    """
+    await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:llave, 0))"),
+                     {"llave": "invitar:global"})
+    fila = (await db.execute(text("""
+        SELECT count(*) AS n,
+               extract(epoch FROM (min(created_at) + make_interval(secs => :ventana) - now()))
+                 AS espera
+        FROM audit_logs
+        WHERE action_type = :accion AND created_at > now() - make_interval(secs => :ventana)
+    """), {"accion": ACCION_AUDITORIA, "ventana": VENTANA_S})).one()
+    if int(fila.n) >= settings.invitaciones_globales_por_hora:
+        raise _429(DEMASIADAS, math.ceil(float(fila.espera or VENTANA_S)))
 
 
 async def _auditar(db: AsyncSession, auth: AuthContext, invitacion_id: int, tipo: str) -> None:

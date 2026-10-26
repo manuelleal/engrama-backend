@@ -42,7 +42,7 @@ def _id(r: Any) -> int:
 
 
 def test_ip1_invitar_un_correo_nuevo(integ: Any) -> None:
-    falso = ay.preparar()
+    falso = ay.preparar(integ)
     a = ay.colegio(integ)
     r = ay.invitar(integ, a, ay.cuerpo(a, 1, correo="Profe1@Sintetico.test"))
     cuerpo = ay.json_de(r) or {}
@@ -75,7 +75,7 @@ def test_ip1_invitar_un_correo_nuevo(integ: Any) -> None:
 
 
 def test_ip2_el_profe_acepta_y_entra_con_su_rol(integ: Any) -> None:
-    ay.preparar()
+    ay.preparar(integ)
     a = ay.colegio(integ)
     r = ay.invitar(integ, a, ay.cuerpo(a))
     pid = ay.perfil_de(integ, _id(r))
@@ -105,7 +105,7 @@ def test_ip2_el_profe_acepta_y_entra_con_su_rol(integ: Any) -> None:
 
 
 def test_ip3_correo_de_otra_institucion_se_ve_igual(integ: Any) -> None:
-    falso = ay.preparar()
+    falso = ay.preparar(integ)
     a, b = ay.colegio(integ, "GA"), ay.colegio(integ, "GB")
     integ.crear_perfil(b.tenant, rol="teacher")  # la persona de B, con su cuenta en GoTrue
     ajena = falso.sembrar("ajena@sintetico.test")
@@ -152,7 +152,7 @@ def test_ip3_correo_de_otra_institucion_se_ve_igual(integ: Any) -> None:
 
 
 def test_ip4_solo_el_admin_de_esa_institucion(integ: Any) -> None:
-    ay.preparar()
+    ay.preparar(integ)
     a, b = ay.colegio(integ, "GA"), ay.colegio(integ, "GB")
     inv = _id(ay.invitar(integ, a, ay.cuerpo(a)))
     profe_a = ay.profe_de(integ, a)
@@ -180,7 +180,7 @@ def test_ip4_solo_el_admin_de_esa_institucion(integ: Any) -> None:
 
 
 def test_ip5_mismo_correo_dos_veces_en_la_misma_institucion(integ: Any) -> None:
-    falso = ay.preparar()
+    falso = ay.preparar(integ)
     a = ay.colegio(integ)
     primera = ay.invitar(integ, a, ay.cuerpo(a, 1))
     segunda = ay.invitar(integ, a, ay.cuerpo(a, 1, correo="PROFE1@SINTETICO.TEST",
@@ -197,7 +197,7 @@ def test_ip5_mismo_correo_dos_veces_en_la_misma_institucion(integ: Any) -> None:
 
 
 def test_ip6_tope_por_admin(integ: Any) -> None:
-    falso = ay.preparar()
+    falso = ay.preparar(integ)
     antes = settings.invitaciones_por_hora
     settings.invitaciones_por_hora = 3
     try:
@@ -235,7 +235,7 @@ def test_ip6_tope_por_admin(integ: Any) -> None:
 
 
 def test_ip7_espera_del_reenvio_y_aceptada(integ: Any) -> None:
-    falso = ay.preparar()
+    falso = ay.preparar(integ)
     a = ay.colegio(integ)
     inv = _id(ay.invitar(integ, a, ay.cuerpo(a)))
     inmediato = ay.reenviar(integ, a.admin, inv)
@@ -262,7 +262,7 @@ def test_ip7_espera_del_reenvio_y_aceptada(integ: Any) -> None:
 
 
 def test_ip8_abrio_el_enlace_y_no_termino_recibe_recuperar(integ: Any) -> None:
-    falso = ay.preparar()
+    falso = ay.preparar(integ)
     a = ay.colegio(integ)
     inv = _id(ay.invitar(integ, a, ay.cuerpo(a)))
     pid = ay.perfil_de(integ, inv)
@@ -278,7 +278,7 @@ def test_ip8_abrio_el_enlace_y_no_termino_recibe_recuperar(integ: Any) -> None:
 
 
 def test_ip9_gotrue_caido_no_rompe_y_el_reenvio_recupera(integ: Any) -> None:
-    falso = ay.preparar()
+    falso = ay.preparar(integ)
     falso.fallar = True
     a = ay.colegio(integ)
     r = ay.invitar(integ, a, ay.cuerpo(a))
@@ -299,7 +299,7 @@ def test_ip9_gotrue_caido_no_rompe_y_el_reenvio_recupera(integ: Any) -> None:
 
 
 def test_ip10_sin_clave_de_servicio_503(integ: Any) -> None:
-    ay.preparar()
+    ay.preparar(integ)
     app.dependency_overrides[get_cuentas_de_invitacion] = lambda: None
     a = ay.colegio(integ)
     r = ay.invitar(integ, a, ay.cuerpo(a))
@@ -312,7 +312,7 @@ def test_ip10_sin_clave_de_servicio_503(integ: Any) -> None:
 
 
 def test_ip11_cuerpo_invalido_422_sin_eco(integ: Any) -> None:
-    ay.preparar()
+    ay.preparar(integ)
     a = ay.colegio(integ)
     malos = {
         "correo_sin_arroba": ay.cuerpo(a, correo="profe-sintetica.test"),
@@ -334,7 +334,7 @@ def test_ip11_cuerpo_invalido_422_sin_eco(integ: Any) -> None:
 
 def test_ip12_gotrue_se_llama_despues_de_responder(integ: Any) -> None:
     """La respuesta sale ANTES de cualquier llamada a GoTrue (§1.3): se mide el orden en ASGI."""
-    falso = ay.preparar()
+    falso = ay.preparar(integ)
     eventos: list[str] = []
     for nombre in ("estado_de_cuenta", "crear_invitado", "invitar", "recuperar"):
         original = getattr(falso, nombre)
@@ -360,3 +360,63 @@ def test_ip12_gotrue_se_llama_despues_de_responder(integ: Any) -> None:
         "eventos": ["respuesta_enviada", "gotrue:estado_de_cuenta", "gotrue:crear_invitado",
                     "gotrue:invitar"],
     }, f"IP12: {observado}"
+
+
+def test_ip14_el_resultado_del_envio_queda_solo_para_el_operador(integ: Any) -> None:
+    """IP14 (H-3): `ultimo_resultado` guarda lo que dijo el envío; ninguna respuesta lo trae."""
+    falso = ay.preparar(integ)
+    a, b = ay.colegio(integ, "GA"), ay.colegio(integ, "GB")
+    integ.crear_perfil(b.tenant, rol="teacher")
+    falso.sembrar("ajena@sintetico.test")
+    nueva = ay.invitar(integ, a, ay.cuerpo(a, 1))
+    ajena = ay.invitar(integ, a, ay.cuerpo(a, 2, correo="ajena@sintetico.test"))
+    falso.limite = True
+    llena = ay.invitar(integ, a, ay.cuerpo(a, 3))
+    falso.limite, falso.fallar = False, True
+    caida = ay.invitar(integ, a, ay.cuerpo(a, 4))
+    falso.fallar = False
+    lista = ay.listar(integ, a.admin)
+    textos = " ".join(r.text for r in (nueva, ajena, llena, caida, lista))
+    observado = {
+        "resultados": [ay.resultado_de(integ, _id(r)) for r in (nueva, ajena, llena, caida)],
+        "estados_hacia_afuera": sorted(i.get("estado") for i in (ay.json_de(lista) or [])),
+        "claves": sorted({k for i in (ay.json_de(lista) or []) for k in i}),
+        "el_interno_en_alguna_respuesta": any(x in textos for x in (
+            "ultimo_resultado", "cuenta_ajena", "limite_de_correos", "fallo")),
+    }
+    assert observado == {
+        "resultados": ["enviada", "cuenta_ajena", "limite_de_correos", "fallo"],
+        "estados_hacia_afuera": ["enviada"] * 4,
+        "claves": ["correo", "enviada_en", "envios", "estado", "group_code", "group_id", "id",
+                   "nombre"],
+        "el_interno_en_alguna_respuesta": False,
+    }, f"IP14: {observado}"
+
+
+def test_ip15_tope_global_de_todas_las_instituciones(integ: Any) -> None:
+    """IP15 (H-3): la suma de todos los admins no pasa de `invitaciones_globales_por_hora`."""
+    ay.preparar(integ)
+    antes = settings.invitaciones_globales_por_hora
+    settings.invitaciones_globales_por_hora = 3
+    try:
+        a, b = ay.colegio(integ, "GA"), ay.colegio(integ, "GB")
+        pasan = [ay.invitar(integ, a, ay.cuerpo(a, 1)).status_code,
+                 ay.invitar(integ, a, ay.cuerpo(a, 2)).status_code,
+                 ay.invitar(integ, b, ay.cuerpo(b, 3)).status_code]
+        de_b = ay.invitar(integ, b, ay.cuerpo(b, 4))
+        de_a = ay.invitar(integ, a, ay.cuerpo(a, 5))
+    finally:
+        settings.invitaciones_globales_por_hora = antes
+    observado = {
+        "primeras_tres": pasan,
+        "cuarta_de_b": (de_b.status_code, (ay.json_de(de_b) or {}).get("detail"),
+                        bool(de_b.headers.get("retry-after"))),
+        "quinta_de_a": de_a.status_code,
+        "filas": integ.valor("select count(*) from invitaciones_docente"),
+    }
+    assert observado == {
+        "primeras_tres": [201, 201, 201],
+        "cuarta_de_b": (429, "demasiadas_invitaciones", True),
+        "quinta_de_a": 429,
+        "filas": 3,
+    }, f"IP15: {observado}"

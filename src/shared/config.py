@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     # base, así que valen con dos procesos y tras reiniciar. 10 queda bajo los 12
     # correos por hora que GoTrue deja salir para todo el servidor (§1.1, L1).
     invitaciones_por_hora: int = Field(default=10, ge=1, le=100)
+    # Tope GLOBAL (la suma de todos los admins de todas las instituciones) por hora
+    # (auditoría de invitar, H-3). Invitar y recuperar la contraseña gastan el MISMO
+    # cupo de correos de GoTrue (GOTRUE_LIMITE_CORREOS, 30 por hora en el servidor):
+    # 15 deja la otra mitad para quien olvida su contraseña.
+    invitaciones_globales_por_hora: int = Field(default=15, ge=1, le=300)
     # Segundos entre dos envíos de la MISMA invitación: GoTrue no limita el
     # reenvío de invitaciones (P3), así que lo limita el backend.
     invitacion_espera_reenvio_s: int = Field(default=60, ge=0, le=3600)
