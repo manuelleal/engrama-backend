@@ -21,7 +21,8 @@ Cada proceso:
     con el `Limitador` de antes (el código de `f7f7aeb`).
   - `sin_candado` (tramposo ZR42): `_candado` no hace nada.
 
-Guarda: solo acepta la URL del contenedor de pruebas (127.0.0.1:55432).
+Guarda: solo acepta la URL del contenedor de pruebas (127.0.0.1 y el puerto del
+arnés: 55432 o el de ENGRAMA_TEST_PG_PUERTO).
 """
 from __future__ import annotations
 
@@ -115,8 +116,13 @@ def main() -> None:
     p.add_argument("--etiqueta", default="a")
     p.add_argument("--empezar-en", type=float, default=0.0)
     a = p.parse_args()
-    if "@127.0.0.1:55432/" not in a.url:
-        raise SystemExit("GUARDA: DP1 solo corre contra el contenedor de pruebas 127.0.0.1:55432")
+    # El host y el puerto del contenedor de pruebas salen del arnés
+    # (`tests/integ_db.py`), que los lee de ENGRAMA_TEST_PG_PUERTO y solo acepta
+    # 127.0.0.1 y 55432-55499 (ERR-44): el subproceso hereda el entorno del test.
+    from tests.integ_db import HOST, PUERTO
+
+    if f"@{HOST}:{PUERTO}/" not in a.url:
+        raise SystemExit(f"GUARDA: DP1 solo corre contra el contenedor de pruebas {HOST}:{PUERTO}")
 
     from src.registro import limite
 
