@@ -36,7 +36,8 @@ def _parche(modulo: Any, nombre: str, valor: Any) -> Aplicar:
 class _ArrancaEnB2(Settings):
     """ZP1: sin SET, la práctica arranca en B2."""
 
-    practica_nivel_inicial: str = "B2"
+    # A propósito un str fuera del Literal de Settings: es el tramposo ZP1 (mypy lo marcaría).
+    practica_nivel_inicial: str = "B2"  # type: ignore[assignment]
 
 
 def _sin_limites(ancla: str | None) -> tuple[int, int]:
