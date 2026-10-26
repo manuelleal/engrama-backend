@@ -30,6 +30,8 @@ tests/_salida/humo_economia_oleada0.json
 tests/_salida/humo_reto_del_dia.json
 tests/_salida/humo_ola1_economia.json
 tests/_salida/replica_reto_del_dia.json
+tests/_salida/humo_limite_compartido.json
+tests/_salida/replica_limite_compartido.json
 
 # Salidas sueltas de herramientas
 *_output.txt

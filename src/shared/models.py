@@ -1978,3 +1978,30 @@ class PracticeTanda(Base):
                         name="practice_tandas_modo_check"),
         CheckConstraint("numero >= 1 AND preguntas >= 0", name="practice_tandas_numero_check"),
     )
+
+
+class LimiteIntento(Base):
+    """Un evento del límite de intentos del registro (`src/registro/limite.py`).
+
+    Migración 046 (`docs/ESPEC_limites_registro.md` §1.2). Antes estos eventos
+    vivían en la memoria de cada proceso; aquí los ven todos. `llave` es una
+    huella HMAC (nunca la IP ni el código de grupo) y `momento` los segundos
+    del reloj del backend. La tabla es UNLOGGED: es estado de diez minutos.
+    Sin `tenant_id`: el límite protege una ruta pública, antes de saber de
+    qué institución es nadie.
+    """
+
+    __tablename__ = "limite_intentos"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    contador: Mapped[str] = mapped_column(Text, nullable=False)
+    llave: Mapped[str] = mapped_column(Text, nullable=False)
+    momento: Mapped[float] = mapped_column(Float, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("contador IN ('por_ip','malos_por_ip','por_codigo','global')",
+                        name="limite_intentos_contador_check"),
+        Index("idx_limite_intentos_llave", "contador", "llave", "momento"),
+        Index("idx_limite_intentos_purga", "contador", "momento"),
+        {"prefixes": ["UNLOGGED"]},
+    )
