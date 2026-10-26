@@ -130,3 +130,16 @@ Unitarias (sin base, `tests/panel/test_unit.py`): `codigo_de(n)`, la ventana de 
 - **FUNCIONA** si PS1-PS7, AM1-AM4, RO1, RG1 pasan, los 7 tramposos ponen rojo su test, el humo escribe su archivo, la réplica pasa, las suites
   completas de los dos repos dan 0 fallas, ruff y mypy 0, y hay capturas a 375 y 1280.
 - **NO** si un admin ve cifras de otro cliente, si alguien que no es super admin lee `/super/*`, o si la respuesta del admin trae un nombre.
+
+## Adenda 1 (2026-10-26, antes del commit de la web) · dos correcciones de lo que NO se toca y del nombre de la base
+Las encontró el Creador al escribir la web; no cambian ningún criterio de §2 ni de §4, solo dónde vive el código:
+1. **`src/vistas/panel_docente.js` SÍ cambia (3 líneas):** la regla "margen" de la web (`tests/unit/panel_diferido.test.mjs`) exige que toda
+   pantalla del profe y del admin entre por el panel diferido (un solo `import()` con reintento), y prohíbe un `import()` suelto de `vistas/admin/`.
+   Las tres pantallas nuevas se exportan desde ahí y `app.js` las pide con `panel.vista(...)`, como `#/admin/profesores`. Choque esperado al
+   integrar con `cuentas/invitar-profe`, que también agrega una línea ahí: es de líneas vecinas, se resuelve a mano dejando las dos.
+2. **Las pruebas de la barra del admin que nombran sus entradas cambian, declaradas:** U60 (`ui_nav_inferior`), U62 (`nav_barra`,
+   `nav_encabezado`), U69 (`nav_rutas`), R9-W70 (`regresion_nav`) y el conteo de íconos (`ui_iconos`) pasan de "Grupos · Perfil" a
+   "Grupos · Tablero · Perfil" y suman las tres rutas. Sus NOMBRES no cambian (los citan los manifiestos de los tramposos), aunque digan "2".
+3. **La base de prueba se llama `engrama-test-pg-super` (puerto 55445), no `engrama_test_super`:** la guarda de `tests/integ_db.py` solo acepta
+   `engrama-test-pg(-…)` y puertos 55432-55499, para que su `docker rm -f` nunca toque otro contenedor. Para desarrollar se usó además
+   `engrama-test-pg-superdev` (55446), para no borrar la corrida de la línea base que iba en paralelo.
