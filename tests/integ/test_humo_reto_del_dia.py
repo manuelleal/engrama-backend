@@ -43,7 +43,7 @@ CEROS: dict[str, int] = {
 
 # H8: el archivo entero. Los criterios son los de arriba; los demás números
 # salieron de la PRIMERA medición con el código bueno (la semilla manda) y no se mueven.
-HUMO_ESPERADO: dict[str, Any] = {'alembic_version': '047_economia_ola1',
+HUMO_ESPERADO: dict[str, Any] = {'alembic_version': '049_anillo_pases',
  'criterios': {'claves_antes_de_responder': 0,
                'errores_5xx': 0,
                'nivel_escrito': 0,

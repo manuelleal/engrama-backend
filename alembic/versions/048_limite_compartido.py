@@ -1,8 +1,8 @@
 """el límite del registro compartido entre procesos: tabla limite_intentos
 
-Revision ID: 046_limite_compartido
-Revises: 045_correccion_por_pregunta
-Create Date: 2026-10-20
+Revision ID: 048_limite_compartido
+Revises: 047_economia_ola1
+Create Date: 2026-10-20 (renumerada de 046 a 048 al integrar en fase0/backend, ERR-45)
 
 Espec: docs/ESPEC_limites_registro.md §1.2 (auditoría 03, S-3 resto).
 
@@ -26,7 +26,7 @@ Downgrade (`SQL_BAJAR`): borra la tabla. Lo que se pierde son, a lo sumo, diez
 minutos de conteo.
 
 `upgrade()` y `downgrade()` solo recorren estas tuplas: el test de
-`tests/integ/test_migracion_046.py` ejecuta exactamente el mismo SQL.
+`tests/integ/test_migracion_048.py` ejecuta exactamente el mismo SQL.
 """
 from __future__ import annotations
 
@@ -34,8 +34,8 @@ from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = "046_limite_compartido"
-down_revision: Union[str, None] = "045_correccion_por_pregunta"
+revision: str = "048_limite_compartido"
+down_revision: Union[str, None] = "047_economia_ola1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

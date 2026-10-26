@@ -22,7 +22,7 @@ from typing import Any
 import pytest
 
 from src.registro import limite as limite_mod
-from tests.integ import test_migracion_046 as mg
+from tests.integ import test_migracion_048 as mg
 from tests.registro import test_limite_compartido as tlc
 
 pytestmark = pytest.mark.integ

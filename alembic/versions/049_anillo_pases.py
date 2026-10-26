@@ -1,8 +1,8 @@
 """el pase acotado del anillo: una fila por pase, con su huella y no el pase
 
-Revision ID: 046_anillo_pases
-Revises: 045_correccion_por_pregunta
-Create Date: 2026-10-20
+Revision ID: 049_anillo_pases
+Revises: 048_limite_compartido
+Create Date: 2026-10-20 (renumerada de 046 a 049 al integrar en fase0/backend, ERR-45)
 
 Espec: docs/ESPEC_pase_acotado.md §1.5 (auditoría de seguridad 03, S-10).
 
@@ -18,7 +18,7 @@ Qué hace (`SQL_SUBIR`, idempotente y ADITIVA):
 Downgrade (`SQL_BAJAR`): borra la tabla. En producción NO se baja.
 
 `upgrade()` y `downgrade()` solo recorren estas tuplas: el test de
-`tests/integ/test_migracion_046.py` ejecuta exactamente el mismo SQL.
+`tests/integ/test_migracion_049.py` ejecuta exactamente el mismo SQL.
 """
 from __future__ import annotations
 
@@ -26,8 +26,8 @@ from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = "046_anillo_pases"
-down_revision: Union[str, None] = "045_correccion_por_pregunta"
+revision: str = "049_anillo_pases"
+down_revision: Union[str, None] = "048_limite_compartido"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

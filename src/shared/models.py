@@ -1983,7 +1983,7 @@ class PracticeTanda(Base):
 class LimiteIntento(Base):
     """Un evento del límite de intentos del registro (`src/registro/limite.py`).
 
-    Migración 046 (`docs/ESPEC_limites_registro.md` §1.2). Antes estos eventos
+    Migración 048 (`docs/ESPEC_limites_registro.md` §1.2; era la 046). Antes estos eventos
     vivían en la memoria de cada proceso; aquí los ven todos. `llave` es una
     huella HMAC (nunca la IP ni el código de grupo) y `momento` los segundos
     del reloj del backend. La tabla es UNLOGGED: es estado de diez minutos.
@@ -2008,7 +2008,7 @@ class LimiteIntento(Base):
 
 
 # -----------------------------------------------------------------------------
-# 046 — anillo_pases (docs/ESPEC_pase_acotado.md §1.5)
+# 049 — anillo_pases (docs/ESPEC_pase_acotado.md §1.5; era la 046, ERR-45)
 # -----------------------------------------------------------------------------
 class AnilloPase(Base):
     """Un pase acotado hacia EVA o SET: su huella (nunca el pase), de quién es,

@@ -1,4 +1,4 @@
-"""MG46: la migración 046 (el límite compartido) sube, baja y vuelve a subir idéntica.
+"""MG46: la migración 048 (el límite compartido; era la 046, ERR-45) sube, baja y vuelve a subir idéntica.
 
 `docs/ESPEC_limites_registro.md` §1.2 y C6. Usa las funciones de
 `test_migracion_035.py` (ERR-24): una conexión propia, `BEGIN`, el SQL de la
@@ -24,7 +24,7 @@ from tests.integ.test_migracion_035 import cargar, correr, esquema_de
 pytestmark = pytest.mark.integ
 
 TABLA = "limite_intentos"
-M046 = cargar("046_limite_compartido.py")
+M046 = cargar("048_limite_compartido.py")
 
 
 async def _persistencia(conn: asyncpg.Connection) -> str | None:

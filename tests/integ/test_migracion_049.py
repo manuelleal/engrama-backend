@@ -1,4 +1,4 @@
-"""MG46: la migración 046 (el pase acotado) sube, baja y vuelve a subir idéntica.
+"""MG46: la migración 049 (el pase acotado; era la 046, ERR-45) sube, baja y vuelve a subir idéntica.
 
 `docs/ESPEC_pase_acotado.md` §1.5. Usa las funciones de `test_migracion_035.py`
 (ERR-24). Una sola tabla nueva: al bajar se va solo ella.
@@ -14,7 +14,7 @@ from tests.integ.test_migracion_035 import cargar, sube_baja_sube
 pytestmark = pytest.mark.integ
 
 NUEVA = "anillo_pases"
-M046 = cargar("046_anillo_pases.py")
+M046 = cargar("049_anillo_pases.py")
 
 
 def _nombres(esquema: dict[str, Any], que: str) -> list[str]:
