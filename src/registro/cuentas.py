@@ -62,11 +62,46 @@ class CuentasDeInvitacion(Protocol):
         """Pide el correo de recuperar: `enviada` o `limite_de_correos`."""
         ...
 
+    async def borrar(self, id: UUID) -> None:
+        """Borra la cuenta `id` (solo al cancelar una invitación propia sin confirmar)."""
+        ...
+
+
+class FachadaDeInvitacion:
+    """La puerta de la invitación hacia GoTrue: SOLO lo que la invitación usa (auditoría H-6).
+
+    Envuelve el adaptador admin, que sabe más (crear con contraseña, cambiar la
+    clave de cualquiera...). La ruta de invitar recibe esta fachada y no el
+    adaptador: los cuatro métodos de la espec (§3.4) más `borrar`, que pide
+    "Cancelar invitación" (H-4). `tests/invitar/test_adaptador.py` UI6 se pone
+    rojo si expone algo más.
+    """
+
+    __slots__ = ("_admin",)
+
+    def __init__(self, admin: GoTrueAdmin) -> None:
+        self._admin = admin
+
+    async def estado_de_cuenta(self, id: UUID) -> tuple[str, bool] | None:
+        return await self._admin.estado_de_cuenta(id)
+
+    async def crear_invitado(self, id: UUID, correo: str) -> str:
+        return await self._admin.crear_invitado(id, correo)
+
+    async def invitar(self, correo: str) -> str:
+        return await self._admin.invitar(correo)
+
+    async def recuperar(self, correo: str) -> str:
+        return await self._admin.recuperar(correo)
+
+    async def borrar(self, id: UUID) -> None:
+        await self._admin.borrar(id)
+
 
 def get_cuentas_de_invitacion() -> CuentasDeInvitacion | None:
-    """Dependencia: el adaptador real, o `None` si falta la URL o la clave (-> 503)."""
+    """Dependencia: la fachada sobre el adaptador real, o `None` sin URL o sin clave (-> 503)."""
     url = url_de_gotrue(settings)
     clave = settings.supabase_service_role_key
     if not url or not clave:
         return None
-    return GoTrueAdmin(url, clave, timeout=TIEMPO_MAXIMO_S)
+    return FachadaDeInvitacion(GoTrueAdmin(url, clave, timeout=TIEMPO_MAXIMO_S))

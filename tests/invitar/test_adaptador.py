@@ -125,3 +125,28 @@ def test_ui3_estado_de_cuenta_lee_la_confirmacion() -> None:
         "caida": "ErrorCuenta: estado: GoTrue respondió 503 ",
         "peticion": [{"metodo": "GET", "ruta": f"/admin/users/{ID}", "cuerpo": None}],
     }, f"UI3: {observado}"
+
+
+def test_ui6_la_invitacion_recibe_una_fachada_que_no_expone_mas() -> None:
+    """UI6 (H-6): la dependencia da una fachada con exactamente sus 5 métodos públicos."""
+    from src.registro import cuentas as registro_cuentas
+    from src.shared.config import settings
+
+    antes = (settings.gotrue_url, settings.supabase_service_role_key)
+    settings.gotrue_url, settings.supabase_service_role_key = "http://gotrue.sintetico", "clave"
+    try:
+        fachada = registro_cuentas.get_cuentas_de_invitacion()
+    finally:
+        settings.gotrue_url, settings.supabase_service_role_key = antes
+    publicos = sorted(n for n in dir(fachada) if not n.startswith("_"))
+    observado = {
+        "tipo": type(fachada).__name__,
+        "publicos": publicos,
+        "no_es_el_adaptador": not isinstance(fachada, GoTrueAdmin),
+        "sin_diccionario": not hasattr(fachada, "__dict__"),
+    }
+    assert observado == {
+        "tipo": "FachadaDeInvitacion",
+        "publicos": ["borrar", "crear_invitado", "estado_de_cuenta", "invitar", "recuperar"],
+        "no_es_el_adaptador": True, "sin_diccionario": True,
+    }, f"UI6: {observado}"

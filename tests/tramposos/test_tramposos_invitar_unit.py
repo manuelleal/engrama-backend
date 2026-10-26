@@ -3,6 +3,7 @@
   XP9   `crear_invitado` crea la cuenta ya confirmada (GoTrue no invitaría, P7) -> UI1
   XP12  `enviar` deja salir la excepción de GoTrue                               -> UI5
   XP13  `enviar` escribe el correo en el log                                     -> UI5
+  XP15  la dependencia da el adaptador admin entero, sin la fachada (H-6)         -> UI6
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ import pytest
 
 from src.invitar import envio as envio_mod
 from src.onboarding.cuentas import CORREO_EN_USO, CREADA, GoTrueAdmin
+from src.registro import cuentas as registro_cuentas
 from tests.invitar import test_adaptador as ta
 from tests.invitar import test_envio as te
 
@@ -52,6 +54,9 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[], None], str]] = {
     "XP13": (lambda mp: mp.setattr(envio_mod, "enviar", _con_el_correo),
              te.test_ui5_enviar_no_lanza_y_no_escribe_el_correo,
              r"'con_el_correo': \['invitar: invitacion=7 correo=profe-ui5@sintetico\.test'"),
+    "XP15": (lambda mp: mp.setattr(registro_cuentas, "FachadaDeInvitacion", lambda admin: admin),
+             ta.test_ui6_la_invitacion_recibe_una_fachada_que_no_expone_mas,
+             r"UI6: \{'tipo': 'GoTrueAdmin', 'publicos': \[.*'cambiar_clave'"),
 }
 
 
