@@ -265,6 +265,17 @@ Tramposos de la web: `x_invitar_sin_validar` (WI1), `x_invitar_canjea_como_recov
 
 Nada más debe cambiar: si otro test cambia, se detiene y se reporta.
 
+### 7.2 Errata (2026-10-26, después de la suite completa; candidato a ERR)
+
+La suite completa de la rama dio 4 rojos que §7.1 NO declaraba. Los cuatro son **inventarios de rutas** que existen justamente para ponerse rojos con toda ruta nueva; no hubo ningún cambio de comportamiento fuera de lo declarado:
+
+- `tests/teachers/test_access.py` U4 (dos tests): el mapa `EXPECTED_GUARDS` no traía las 3 rutas nuevas. Se agregan con su guarda (`admin`), en un bloque `_INVITAR`.
+- `tests/tramposos/test_tramposos_422_sin_eco.py` ZE1 y ZE2: el tramposo del manejador global de los 422 ahora rompe **32** rutas con cuerpo en vez de 31 (y 30 en vez de 29): la ruta nueva `POST /admin/invitaciones` quedó cubierta sola por el manejador. Se suben los dos números.
+
+Por qué no se declaró: §7.1 se armó buscando `alembic_version` y el conteo de tablas, no los inventarios de rutas. Regla propuesta: toda espec que agregue rutas declara de una vez U4 (`EXPECTED_GUARDS`) y SE2 (rutas con cuerpo).
+
+Además, los tramposos XP12 y XP13 (UI5: `enviar` deja salir la excepción / escribe el correo en el log) se agregaron a los de §4.1.
+
 ## 8. Lo que hay que configurar en el servidor (no se aplica aquí)
 
 1. **Plantilla:** copiar `docs/correo_invitacion.html` a `ENGRAMA/despliegue/correo/invitacion.html` (Caddy ya sirve esa carpeta en `:8091`, solo a la red interna).

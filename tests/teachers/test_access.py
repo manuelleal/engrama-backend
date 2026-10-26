@@ -208,9 +208,16 @@ _OLA1: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/subastas/{aid}/cerrar", frozenset({"POST"})): "teacher",
 }
 
+# docs/ESPEC_invitar_profe.md §3: las tres rutas de invitar profes, solo el admin.
+_INVITAR: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/admin/invitaciones", frozenset({"POST"})): "admin",
+    ("/admin/invitaciones", frozenset({"GET"})): "admin",
+    ("/admin/invitaciones/{invitacion_id}/reenviar", frozenset({"POST"})): "admin",
+}
+
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS, **_EVENTOS,
-    **_CATALOGO, **_GRADER, **_FOCO, **_REFUERZO, **_RACHA, **_TANDA, **_L1, **_OLA1}
+    **_CATALOGO, **_GRADER, **_FOCO, **_REFUERZO, **_RACHA, **_TANDA, **_L1, **_OLA1, **_INVITAR}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:
