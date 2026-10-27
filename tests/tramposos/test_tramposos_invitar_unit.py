@@ -4,6 +4,7 @@
   XP12  `enviar` deja salir la excepción de GoTrue                               -> UI5
   XP13  `enviar` escribe el correo en el log                                     -> UI5
   XP15  la dependencia da el adaptador admin entero, sin la fachada (H-6)         -> UI6
+  XP21  el correo con la regex floja de antes (H-8a)                              -> UI7
 """
 from __future__ import annotations
 
@@ -13,11 +14,14 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from pydantic import Field, create_model
 
 from src.invitar import envio as envio_mod
+from src.invitar import schemas as schemas_mod
 from src.onboarding.cuentas import CORREO_EN_USO, CREADA, GoTrueAdmin
 from src.registro import cuentas as registro_cuentas
 from tests.invitar import test_adaptador as ta
+from tests.invitar import test_correo as tc
 from tests.invitar import test_envio as te
 
 Aplicar = Callable[[pytest.MonkeyPatch], None]
@@ -45,6 +49,11 @@ async def _con_el_correo(cuentas: Any, pedido: envio_mod.PedidoDeEnvio) -> str:
     return resultado
 
 
+_CorreoFlojo = create_model("InvitacionFloja", __base__=schemas_mod.InvitacionIn,
+                            correo=(str, Field(min_length=3, max_length=254,
+                                               pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")))
+
+
 TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[], None], str]] = {
     "XP9": (lambda mp: mp.setattr(GoTrueAdmin, "crear_invitado", _crea_confirmada),
             ta.test_ui1_crear_invitado_sin_clave_y_sin_confirmar, r"'email_confirm': True"),
@@ -57,6 +66,8 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[[], None], str]] = {
     "XP15": (lambda mp: mp.setattr(registro_cuentas, "FachadaDeInvitacion", lambda admin: admin),
              ta.test_ui6_la_invitacion_recibe_una_fachada_que_no_expone_mas,
              r"UI6: \{'tipo': 'GoTrueAdmin', 'publicos': \[.*'cambiar_clave'"),
+    "XP21": (lambda mp: mp.setattr(schemas_mod, "InvitacionIn", _CorreoFlojo),
+             tc.test_ui7_correo_estricto, r"'malos_aceptados': \['a\.\.b@uis\.edu\.co'"),
 }
 
 
