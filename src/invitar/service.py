@@ -72,7 +72,7 @@ async def _exigir_tope(db: AsyncSession, auth: AuthContext) -> None:
           AND created_at > now() - make_interval(secs => :ventana)
     """), {"admin": auth.profile_id, "accion": ACCION_AUDITORIA, "ventana": VENTANA_S})).one()
     if int(fila.n) >= settings.invitaciones_por_hora:
-        raise _429(DEMASIADAS, math.ceil(float(fila.espera or VENTANA_S)))
+        raise _429(DEMASIADAS, min(VENTANA_S, math.ceil(float(fila.espera or VENTANA_S))))
     await _exigir_tope_global(db)
 
 
@@ -94,7 +94,7 @@ async def _exigir_tope_global(db: AsyncSession) -> None:
         WHERE action_type = :accion AND created_at > now() - make_interval(secs => :ventana)
     """), {"accion": ACCION_AUDITORIA, "ventana": VENTANA_S})).one()
     if int(fila.n) >= settings.invitaciones_globales_por_hora:
-        raise _429(DEMASIADAS, math.ceil(float(fila.espera or VENTANA_S)))
+        raise _429(DEMASIADAS, min(VENTANA_S, math.ceil(float(fila.espera or VENTANA_S))))
 
 
 async def _auditar(db: AsyncSession, auth: AuthContext, invitacion_id: int, tipo: str) -> None:
