@@ -11,6 +11,8 @@ from src.datos.router import usuario as datos_usuario_router
 from src.engrama_core.router import router as core_router
 from src.foco.router import router as foco_router
 from src.grader.router import router as grader_router
+from src.panel.router import admin as panel_admin_router
+from src.panel.router import super_ as panel_super_router
 from src.refuerzo.router import router as refuerzo_router
 from src.registro.router import docente as registro_docente_router
 from src.registro.router import publico as registro_publico_router
@@ -68,6 +70,11 @@ app.include_router(bolsillo_economia_router, prefix="/economia", tags=["economia
 app.include_router(tienda_economia_router, prefix="/economia", tags=["economia"])
 app.include_router(bolsillo_admin_router, prefix="/admin", tags=["economia"])
 app.include_router(subasta_router, prefix="/subastas", tags=["subastas"])
+# El panel del super admin y el tablero del admin, de solo lectura
+# (docs/ESPEC_panel_super_admin.md): /super/* solo para profiles.role = 'super_admin';
+# /admin/metricas, del admin de su institución activa.
+app.include_router(panel_super_router, prefix="/super", tags=["panel"])
+app.include_router(panel_admin_router, prefix="/admin", tags=["panel"])
 
 
 @app.get("/health")

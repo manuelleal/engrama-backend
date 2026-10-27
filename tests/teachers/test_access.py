@@ -19,6 +19,7 @@ from collections.abc import Iterable
 from fastapi.routing import APIRoute
 
 from src.main import app
+from src.panel.acceso import require_super_admin
 from src.shared.deps import get_current_user, require_admin, require_teacher
 
 # -----------------------------------------------------------------------------
@@ -34,12 +35,18 @@ def _recolectar(dependants: Iterable) -> set:  # type: ignore[type-arg]
 
 
 def guardia(route: APIRoute) -> str:
-    """'admin' / 'teacher' / 'user' / 'public' según la Depends más estricta.
+    """'super' / 'admin' / 'teacher' / 'user' / 'public' según la Depends más estricta.
+
+    'super' (docs/ESPEC_panel_super_admin.md §1.1, declarado): `require_super_admin`
+    valida el JWT, el perfil, la cuenta activa y la clave definitiva por su cuenta
+    (sin `get_current_user`, porque no exige membresía) y exige `profiles.role`.
 
     `require_admin` y `require_teacher` dependen a su vez de `get_current_user`
     (deps.py), así que basta buscar la más estricta presente en el árbol.
     """
     funciones = _recolectar(route.dependant.dependencies)
+    if require_super_admin in funciones:
+        return "super"
     if require_admin in funciones:
         return "admin"
     if require_teacher in funciones:
@@ -215,10 +222,17 @@ _PASE_ACOTADO: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/anillo/canje", frozenset({"POST"})): "public",
 }
 
+# El panel del super admin y el tablero del admin (docs/ESPEC_panel_super_admin.md §1.4).
+_PANEL: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
+    ("/super/clientes", frozenset({"GET"})): "super",
+    ("/super/clientes/{tenant_id}", frozenset({"GET"})): "super",
+    ("/admin/metricas", frozenset({"GET"})): "admin",
+}
+
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     **_PREVIAS, **_NUEVAS, **_LOGIN_PILOTO, **_AUTORREGISTRO, **_SOLICITUD_DATOS, **_EVENTOS,
     **_CATALOGO, **_GRADER, **_FOCO, **_REFUERZO, **_RACHA, **_TANDA, **_L1, **_OLA1,
-    **_PASE_ACOTADO}
+    **_PASE_ACOTADO, **_PANEL}
 
 
 def test_u4_guardas_de_las_rutas_existentes() -> None:

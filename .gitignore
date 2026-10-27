@@ -41,3 +41,6 @@ tests/_salida/humo_422_sin_eco.json
 tests/_salida/humo_camino.json
 tests/_salida/humo_pase_acotado.json
 tests/_salida/humo_pase_acotado_replica.json
+tests/_salida/humo_panel_super.json
+tests/_salida/replica_panel_super.json
+tests/_salida/panel_super_respuestas.json
