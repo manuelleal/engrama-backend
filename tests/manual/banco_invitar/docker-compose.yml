@@ -1,0 +1,75 @@
+# Banco DESECHABLE del humo de invitar profes (docs/ESPEC_invitar_profe.md §6). NO es el piloto:
+#   - proyecto propio `engrama-invitar-banco`, puertos SOLO en 127.0.0.1 (18432 la base, 18399 GoTrue, 18325 la bandeja);
+#   - secretos SINTÉTICOS que genera humo_invitar_banco.py en cada corrida y pasa por el entorno (nunca en un archivo);
+#   - `pull_policy: never`: solo imágenes que ya están en la máquina; lo tumba el humo con `down -v`.
+# Imita el servidor con el correo encendido (ESPEC_correo_recuperacion §3.2): GoTrue v2.196.0 con autoconfirm en false,
+# registro libre cerrado, 12 correos por hora, la plantilla de invitación servida por Caddy en la red interna, y Mailpit
+# en el papel de Brevo. El backend de esta rama corre FUERA de Docker (uvicorn), contra la base y el GoTrue de aquí.
+name: engrama-invitar-banco
+
+services:
+  db:
+    image: public.ecr.aws/supabase/postgres:17.6.1.167
+    pull_policy: never
+    environment:
+      POSTGRES_PASSWORD: ${BANCO_PG_CLAVE:?lo pone humo_invitar_banco.py}
+    volumes:
+      - ./roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
+    ports:
+      - "127.0.0.1:18432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+  plantillas:
+    image: caddy:2-alpine
+    pull_policy: never
+    command: ["caddy", "file-server", "--root", "/srv", "--listen", ":8091"]
+    volumes:
+      - ../../../docs/correo_invitacion.html:/srv/invitacion.html:ro
+
+  mailpit:
+    image: public.ecr.aws/supabase/mailpit:v1.30.2
+    pull_policy: never
+    ports:
+      - "127.0.0.1:18325:8025"
+
+  gotrue:
+    image: public.ecr.aws/supabase/gotrue:v2.196.0
+    pull_policy: never
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18399:9999"
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: "9999"
+      API_EXTERNAL_URL: https://engramaingles.sintetico.test/auth/v1
+      GOTRUE_SITE_URL: https://engramaingles.sintetico.test
+      GOTRUE_URI_ALLOW_LIST: https://engramaingles.sintetico.test
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${BANCO_PG_CLAVE}@db:5432/postgres
+      GOTRUE_JWT_SECRET: ${BANCO_JWT:?lo pone humo_invitar_banco.py}
+      GOTRUE_JWT_EXP: "3600"
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false"
+      GOTRUE_MAILER_AUTOCONFIRM: "false"
+      GOTRUE_PASSWORD_MIN_LENGTH: "10"
+      GOTRUE_PASSWORD_REQUIRED_CHARACTERS: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:0123456789-_.!@#$$%&*+"
+      GOTRUE_SMTP_HOST: mailpit
+      GOTRUE_SMTP_PORT: "1025"
+      GOTRUE_SMTP_ADMIN_EMAIL: no-responder@engramaingles.sintetico.test
+      GOTRUE_SMTP_SENDER_NAME: ENGRAMA
+      GOTRUE_SMTP_MAX_FREQUENCY: 60s
+      GOTRUE_MAILER_OTP_EXP: "3600"
+      GOTRUE_MAILER_SUBJECTS_INVITE: "ENGRAMA: crea tu contraseña de profe"
+      GOTRUE_MAILER_TEMPLATES_INVITE: http://plantillas:8091/invitacion.html
+      GOTRUE_RATE_LIMIT_EMAIL_SENT: "12"
+      GOTRUE_LOG_LEVEL: info

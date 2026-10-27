@@ -8,14 +8,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import cast, func, select
+from sqlalchemy import cast, exists, func, select
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from src.bolsillo import reglas
 from src.shared.config import settings
-from src.shared.models import CoinLedger, Group, Membership
+from src.shared.models import CoinLedger, Group, InvitacionDocente, Membership, Profile
 
 # Las acciones del libro que escribe la ola 1 (§1.1).
 RECARGA = "budget_allocation"
@@ -35,13 +35,30 @@ def lunes_actual() -> datetime:
     return reglas.inicio_semana(ahora(), settings.engrama_utc_offset_hours)
 
 
+def sin_invitacion_pendiente():  # type: ignore[no-untyped-def]
+    """Condición: el perfil NO es un profe invitado que aún no aceptó (invitar profes, H-4b).
+
+    Un invitado sin aceptar (fila en `invitaciones_docente` y la bandera arriba) no
+    entra al reparto de monedas: no puede entrar todavía, y con un correo ajeno no
+    entrará nunca. Los profes del alta de la CLI con contraseña temporal no tienen
+    fila de invitación: siguen igual.
+    """
+    return ~exists(
+        select(InvitacionDocente.id)
+        .join(Profile, Profile.id == InvitacionDocente.profile_id)
+        .where(InvitacionDocente.profile_id == Membership.profile_id,
+               InvitacionDocente.tenant_id == Membership.tenant_id,
+               Profile.force_password_reset.is_(True)))
+
+
 async def membresia_personal(db: AsyncSession, tenant_id: UUID, profile_id: UUID) -> Membership | None:
-    """La membresía activa de profe o admin de ese perfil en ESA institución."""
+    """La membresía activa de profe o admin de ese perfil en ESA institución (no un invitado pendiente)."""
     stmt = select(Membership).where(
         Membership.tenant_id == tenant_id,
         Membership.profile_id == profile_id,
         Membership.role.in_(ROLES_CON_BOLSILLO),
         Membership.is_active.is_(True),
+        sin_invitacion_pendiente(),
     )
     return (await db.execute(stmt)).scalar_one_or_none()
 

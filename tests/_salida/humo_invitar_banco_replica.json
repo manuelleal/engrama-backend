@@ -1,0 +1,70 @@
+{
+  "datos": {
+    "H1": {
+      "status": 201,
+      "correos": 1,
+      "asunto": "ENGRAMA: crea tu contraseña de profe",
+      "boton": true,
+      "enlace_invitacion": true
+    },
+    "H2": {
+      "verify": 200,
+      "contrasena": 204
+    },
+    "H3": {
+      "login": 200,
+      "must_change_password": false,
+      "rol": [
+        "teacher"
+      ],
+      "institucion_a": true,
+      "grupo_a": true,
+      "estado": [
+        "aceptada"
+      ]
+    },
+    "H4": {
+      "status": 201,
+      "mismo_cuerpo": true,
+      "reenvio": 202,
+      "correos_a_la_ajena": 0,
+      "ajena_entra": 200,
+      "estado": [
+        "enviada"
+      ]
+    },
+    "H5": {
+      "ms_correo_nuevo": [
+        610,
+        390,
+        922
+      ],
+      "ms_correo_ajeno": [
+        406,
+        625,
+        953
+      ]
+    },
+    "H6": {
+      "reenviar_aceptada": 409,
+      "lista_de_b": 0,
+      "b_reenvia_la_de_a": 404
+    },
+    "H8": {
+      "alta": 201,
+      "reenvio": 202,
+      "correos": 2,
+      "primero_llego": true,
+      "viejo": 403,
+      "nuevo": 200
+    },
+    "H7": {
+      "status": 429,
+      "detail": "demasiadas_invitaciones",
+      "retry_after": true,
+      "correos_a_r": 0
+    }
+  },
+  "difieren_de_lo_esperado": {},
+  "segundos": 43
+}

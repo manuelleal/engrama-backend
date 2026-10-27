@@ -1,0 +1,93 @@
+"""invitaciones de profes por correo
+
+Revision ID: 050_invitaciones_docente
+Revises: 049_anillo_pases
+Create Date: 2026-10-26
+
+Espec: docs/ESPEC_invitar_profe.md §3.6.
+
+Número 050 reservado por el coordinador (ERR-45): sube sobre la 049
+(`049_anillo_pases`), que es la base que corre hoy en el servidor (`fase0/backend`).
+
+Qué hace (`SQL_SUBIR`, idempotente):
+  1. `invitaciones_docente`: a quién invitó el admin de UNA institución, a qué
+     grupo, con qué correo y cuándo pidió el último envío. El perfil del profe
+     (rol `teacher`, `force_password_reset = true`) nace con la invitación; la
+     invitación está "aceptada" cuando esa bandera baja (no hay columna de
+     estado que se pueda desincronizar).
+     - `UNIQUE (tenant_id, correo)`: el mismo correo una sola vez POR
+       institución (otra institución puede invitarlo: no se entera de nada).
+     - el CHECK exige el correo en minúsculas: dos escrituras del mismo correo
+       no pueden ser dos invitaciones.
+  2. RLS activo y SIN políticas (como 035 y 036): ningún rol de cliente lee ni
+     escribe; por la 031, tampoco reciben privilegios sobre tablas nuevas, y
+     además se revocan a mano (`REVOKE ALL ... FROM anon, authenticated`). El
+     aislamiento por institución lo hace el backend (`tenant_id` en cada ruta).
+
+El correo del profe se guarda solo aquí, en la fila de su institución.
+`ultimo_resultado` es interno (solo el operador lo lee en la base): ninguna
+ruta lo devuelve.
+
+Downgrade (`SQL_BAJAR`): borra la tabla. Los perfiles y las membresías de los
+profes invitados no se tocan. En producción NO se baja: se restaura el respaldo.
+
+`upgrade()` y `downgrade()` solo recorren estas tuplas: el test
+`tests/integ/test_migracion_050.py` ejecuta exactamente el mismo SQL.
+"""
+from __future__ import annotations
+
+from typing import Sequence, Union
+
+from alembic import op
+
+revision: str = "050_invitaciones_docente"
+down_revision: Union[str, None] = "049_anillo_pases"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+SQL_SUBIR: tuple[str, ...] = (
+    """
+    CREATE TABLE IF NOT EXISTS invitaciones_docente (
+      id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      profile_id      UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+      group_id        UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      correo          TEXT NOT NULL,
+      invitada_por    UUID REFERENCES profiles(id) ON DELETE SET NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+      ultimo_envio_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+      envios          INTEGER NOT NULL DEFAULT 1,
+      -- Interno, SOLO para el operador (auditoría H-3): lo último que dijo el envío en
+      -- segundo plano. Ninguna respuesta de la API lo trae (el admin no debe distinguir
+      -- `cuenta_ajena` de `enviada`).
+      ultimo_resultado    TEXT,
+      ultimo_resultado_en TIMESTAMPTZ,
+      CONSTRAINT invitaciones_docente_perfil_key UNIQUE (profile_id),
+      CONSTRAINT invitaciones_docente_correo_key UNIQUE (tenant_id, correo),
+      CONSTRAINT invitaciones_docente_correo_check
+        CHECK (correo = lower(correo) AND length(correo) BETWEEN 3 AND 254),
+      CONSTRAINT invitaciones_docente_envios_check CHECK (envios >= 1),
+      CONSTRAINT invitaciones_docente_resultado_check CHECK (ultimo_resultado IS NULL
+        OR ultimo_resultado IN ('enviada','recuperacion','cuenta_ajena','limite_de_correos','fallo'))
+    );
+    """,
+    "ALTER TABLE invitaciones_docente ENABLE ROW LEVEL SECURITY;",
+    # Defensa en profundidad (auditoría de invitar, H-1): aunque la 031 ya deja sin
+    # privilegios a los roles de cliente en las tablas nuevas, si unos privilegios
+    # por defecto cambiaran, esta tabla (correos de profes) sigue cerrada.
+    "REVOKE ALL ON invitaciones_docente FROM anon, authenticated;",
+)
+
+SQL_BAJAR: tuple[str, ...] = (
+    "DROP TABLE IF EXISTS invitaciones_docente;",
+)
+
+
+def upgrade() -> None:
+    for sql in SQL_SUBIR:
+        op.execute(sql)
+
+
+def downgrade() -> None:
+    for sql in SQL_BAJAR:
+        op.execute(sql)

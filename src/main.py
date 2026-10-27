@@ -11,6 +11,7 @@ from src.datos.router import usuario as datos_usuario_router
 from src.engrama_core.router import router as core_router
 from src.foco.router import router as foco_router
 from src.grader.router import router as grader_router
+from src.invitar.router import router as invitar_router
 from src.panel.router import admin as panel_admin_router
 from src.panel.router import super_ as panel_super_router
 from src.refuerzo.router import router as refuerzo_router
@@ -75,6 +76,9 @@ app.include_router(subasta_router, prefix="/subastas", tags=["subastas"])
 # /admin/metricas, del admin de su institución activa.
 app.include_router(panel_super_router, prefix="/super", tags=["panel"])
 app.include_router(panel_admin_router, prefix="/admin", tags=["panel"])
+# El admin invita profes por correo: la cuenta la crea el backend sin contraseña
+# y el profe pone la suya con el enlace (docs/ESPEC_invitar_profe.md).
+app.include_router(invitar_router, prefix="/admin", tags=["invitar"])
 
 
 @app.get("/health")

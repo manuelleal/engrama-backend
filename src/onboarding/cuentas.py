@@ -23,6 +23,10 @@ import httpx
 
 CREADA = "creada"
 CORREO_EN_USO = "correo_en_uso"
+# Resultados de `invitar` y `recuperar` (docs/ESPEC_invitar_profe.md §3.4, UI2).
+ENVIADA = "enviada"
+LIMITE_DE_CORREOS = "limite_de_correos"
+YA_CONFIRMADA = "ya_confirmada"
 
 
 class ErrorCuenta(Exception):
@@ -110,6 +114,67 @@ class GoTrueAdmin:
         if r.status_code not in (200, 204, 404):
             raise ErrorCuenta(
                 f"borrar: GoTrue respondió {r.status_code} {_codigo_de_error(r)}")
+
+    # ---------------------------------------------- invitar profes (ESPEC_invitar_profe §3.4)
+    async def estado_de_cuenta(self, id: UUID) -> tuple[str, bool] | None:
+        """(correo, confirmada) de la cuenta con ese `id`, o `None` si no existe (UI3).
+
+        "Confirmada" = GoTrue ya tiene `email_confirmed_at`: la persona canjeó un
+        enlace (P4). Una cuenta invitada que no lo ha abierto lo tiene nulo (P1).
+        """
+        r = await self._pedir("GET", f"/admin/users/{id}")
+        if r.status_code == 404:
+            return None
+        if r.status_code != 200:
+            raise ErrorCuenta(
+                f"estado: GoTrue respondió {r.status_code} {_codigo_de_error(r)}")
+        datos = r.json()
+        return str(datos.get("email") or ""), bool(datos.get("email_confirmed_at"))
+
+    async def crear_invitado(self, id: UUID, correo: str) -> str:
+        """Crea la cuenta del profe invitado: con ESE `id`, SIN contraseña y SIN confirmar (UI1).
+
+        Sin confirmar a propósito: GoTrue solo manda la invitación a una cuenta
+        sin confirmar (P7: a una confirmada responde 422 `email_exists`). Sin
+        contraseña: nadie la conoce; la pone el profe con el enlace.
+        """
+        r = await self._pedir("POST", "/admin/users",
+                              {"id": str(id), "email": correo, "email_confirm": False})
+        if r.status_code in (200, 201):
+            if str(r.json().get("id") or "") != str(id):
+                raise ErrorCuenta("crear_invitado: GoTrue no respetó el id pedido (P1)")
+            return CREADA
+        codigo = _codigo_de_error(r)
+        if r.status_code == 422 and (codigo == "email_exists"
+                                     or "already been registered" in r.text):
+            return CORREO_EN_USO
+        raise ErrorCuenta(f"crear_invitado: GoTrue respondió {r.status_code} {codigo}")
+
+    async def invitar(self, correo: str) -> str:
+        """`POST /invite`: GoTrue manda el correo de invitación con su plantilla (UI2).
+
+        OJO (P9): a un correo SIN cuenta, `/invite` CREA la cuenta con un id que
+        elige GoTrue. Por eso solo se llama después de `crear_invitado` y de
+        comprobar por id que la cuenta es la de ESTA invitación (§3.4).
+        """
+        r = await self._pedir("POST", "/invite", {"email": correo})
+        return self._resultado_de_correo(r, "invitar")
+
+    async def recuperar(self, correo: str) -> str:
+        """`POST /recover`: el correo de crear contraseña nueva (cuenta ya confirmada)."""
+        r = await self._pedir("POST", "/recover", {"email": correo})
+        return self._resultado_de_correo(r, "recuperar")
+
+    @staticmethod
+    def _resultado_de_correo(r: httpx.Response, que: str) -> str:
+        if r.status_code == 200:
+            return ENVIADA
+        codigo = _codigo_de_error(r)
+        if r.status_code == 429:
+            return LIMITE_DE_CORREOS  # el cubo de GOTRUE_RATE_LIMIT_EMAIL_SENT (L1)
+        if r.status_code == 422 and codigo == "email_exists":
+            return YA_CONFIRMADA
+        raise ErrorCuenta(f"{que}: GoTrue respondió {r.status_code} {codigo}")
 
     async def cambiar_clave(self, id: UUID, clave: str) -> None:
         r = await self._pedir("PUT", f"/admin/users/{id}", {"password": clave})

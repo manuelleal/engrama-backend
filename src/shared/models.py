@@ -1219,6 +1219,7 @@ __all__ = [
     "SolicitudDatos",
     "LearningEvent",
     "ConfirmedLevel",
+    "InvitacionDocente",
 ]
 
 
@@ -1977,6 +1978,58 @@ class PracticeTanda(Base):
         CheckConstraint("modo IN ('nuevo','segunda_vuelta','repetir')",
                         name="practice_tandas_modo_check"),
         CheckConstraint("numero >= 1 AND preguntas >= 0", name="practice_tandas_numero_check"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# 050 — invitaciones de profes por correo (docs/ESPEC_invitar_profe.md §3.6)
+# -----------------------------------------------------------------------------
+class InvitacionDocente(Base):
+    """El admin de UNA institución invitó a un profe por correo.
+
+    No hay columna de estado: la invitación está "aceptada" cuando el perfil del
+    profe ya no tiene `force_password_reset` (lo baja `POST /auth/contrasena`).
+    El correo vive solo aquí, en minúsculas (CHECK), una vez por institución.
+    """
+
+    __tablename__ = "invitaciones_docente"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tenant_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    profile_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    group_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("groups.id", ondelete="CASCADE"), nullable=False
+    )
+    correo: Mapped[str] = mapped_column(Text, nullable=False)
+    invitada_por: Mapped[Any | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    ultimo_envio_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    envios: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    # Interno (auditoría H-3): lo último que dijo el envío. Ninguna respuesta lo trae.
+    ultimo_resultado: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ultimo_resultado_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("profile_id", name="invitaciones_docente_perfil_key"),
+        UniqueConstraint("tenant_id", "correo", name="invitaciones_docente_correo_key"),
+        CheckConstraint("correo = lower(correo) AND length(correo) BETWEEN 3 AND 254",
+                        name="invitaciones_docente_correo_check"),
+        CheckConstraint("envios >= 1", name="invitaciones_docente_envios_check"),
+        CheckConstraint(
+            "ultimo_resultado IS NULL OR ultimo_resultado IN "
+            "('enviada','recuperacion','cuenta_ajena','limite_de_correos','fallo')",
+            name="invitaciones_docente_resultado_check"),
     )
 
 

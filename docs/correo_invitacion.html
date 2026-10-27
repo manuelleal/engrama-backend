@@ -1,0 +1,31 @@
+<!-- Plantilla del correo "te invitaron como profe" de GoTrue (docs/ESPEC_invitar_profe.md §8).
+     En el servidor va como despliegue/correo/invitacion.html: Caddy ya sirve esa carpeta en http://caddy:8091/ (solo red interna)
+     y GoTrue la pide con GOTRUE_MAILER_TEMPLATES_INVITE = http://caddy:8091/invitacion.html. La llena con su plantilla de Go:
+     .SiteURL es GOTRUE_SITE_URL (= URL_PUBLICA) y .TokenHash es el token del enlace (medido en v2.196.0, P2).
+     El enlace lleva el token en el FRAGMENTO (#): no llega a ningún servidor ni queda en un registro. La web lo canjea con
+     POST /auth/v1/verify {type: "invite"} solo cuando la persona escribe su contraseña (un escáner que abre el enlace no lo gasta).
+     Sin el nombre de la institución ni de quien invita (los clientes no llevan nombre visible). Colores de diseno/tokens.json
+     (primario #003366, fondo #F6F8FB, superficie #FFFFFF, texto #1B1F27, borde #DFE4EA), escritos a mano: un correo no lee
+     variables de CSS. Sin imágenes ni enlaces externos. -->
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ENGRAMA · Crea tu contraseña de profe</title></head>
+<body style="margin:0;padding:0;background:#F6F8FB;color:#1B1F27;font-family:'Nunito Sans',system-ui,Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F8FB;padding:24px 12px;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#FFFFFF;border:1px solid #DFE4EA;border-radius:16px;">
+<tr><td style="background:#003366;color:#FFFFFF;padding:16px 24px;border-radius:16px 16px 0 0;font-family:'Baloo 2',system-ui,Arial,sans-serif;font-size:22px;font-weight:700;letter-spacing:1px;">ENGRAMA</td></tr>
+<tr><td style="padding:24px;font-size:16px;line-height:1.5;">
+<p style="margin:0 0 12px;font-size:20px;font-weight:700;">Te invitaron a ENGRAMA como profe</p>
+<p style="margin:0 0 20px;">Toca el botón y crea tu contraseña. Desde ese momento entras con este correo y esa contraseña.</p>
+<p style="margin:0 0 20px;"><a href="{{ .SiteURL }}/#/invitacion?token_hash={{ .TokenHash }}" style="display:inline-block;background:#003366;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:12px;border-bottom:4px solid #002347;">Crear mi contraseña</a></p>
+<p style="margin:0 0 8px;font-size:14px;">El enlace sirve una sola vez y vence en 1 hora.</p>
+<p style="margin:0 0 8px;font-size:14px;">Si venció, pide a quien te invitó que te lo reenvíe, o entra a ENGRAMA, toca «¿Olvidaste tu contraseña?» y escribe este correo.</p>
+<p style="margin:0 0 8px;font-size:14px;">Si no esperabas esta invitación, ignora este correo.</p>
+<p style="margin:16px 0 0;font-size:12px;word-break:break-all;">Si el botón no abre, copia esta dirección en el navegador:<br>{{ .SiteURL }}/#/invitacion?token_hash={{ .TokenHash }}</p>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>

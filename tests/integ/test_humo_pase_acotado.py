@@ -38,7 +38,7 @@ REPLICA = os.environ.get("ENGRAMA_REPLICA_PASE") == "1"
 
 # Contenido exacto (ESPEC §3). Si difiere se reporta; no se ajusta para que pase.
 HUMO_ESPERADO: dict[str, Any] = {
-    "alembic_version": "049_anillo_pases", "semilla": 46,
+    "alembic_version": "050_invitaciones_docente", "semilla": 46,
     "emitidos_201": 13, "canjes_200": 11, "canjes_401": 3, "canjes_403": 0,
     "reintento": 401, "cruzado": 401, "vencido": 401, "bearer_en_auth_me": 401,
     "filas": 13, "gastadas": 13, "el_pase_en_la_base": False,

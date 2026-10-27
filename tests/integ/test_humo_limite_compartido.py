@@ -112,7 +112,7 @@ def test_hlc1_humo_limite_compartido(integ) -> None:
                    validos=1, grupo="G1")
     _escribir(ruta, datos)
     assert json.loads(ruta.read_text(encoding="utf-8")) == {
-        "alembic_version": "049_anillo_pases",
+        "alembic_version": "050_invitaciones_docente",
         "respuestas": {"buenos": [201], "malo_desde_el_64": 403, "malo_desde_la_ipv4": 403},
         "por_contador_llaves_y_filas": {"global": [1, 1], "malos_por_ip": [2, 2],
                                         "por_codigo": [1, 1], "por_ip": [2, 3]},
@@ -128,7 +128,7 @@ def test_rlc1_replica_limite_compartido(integ) -> None:
                    ipv4_como_se_ve="198.51.100.77", validos=2, grupo="GR")
     _escribir(ruta, datos)
     assert json.loads(ruta.read_text(encoding="utf-8")) == {
-        "alembic_version": "049_anillo_pases",
+        "alembic_version": "050_invitaciones_docente",
         "respuestas": {"buenos": [201, 201], "malo_desde_el_64": 403, "malo_desde_la_ipv4": 403},
         "por_contador_llaves_y_filas": {"global": [1, 2], "malos_por_ip": [2, 2],
                                         "por_codigo": [1, 2], "por_ip": [2, 4]},
