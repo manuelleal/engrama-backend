@@ -35,14 +35,14 @@
     },
     "H5": {
       "ms_correo_nuevo": [
-        734,
-        828,
-        1734
+        610,
+        390,
+        922
       ],
       "ms_correo_ajeno": [
-        360,
-        1141,
-        891
+        406,
+        625,
+        953
       ]
     },
     "H6": {
@@ -66,5 +66,5 @@
     }
   },
   "difieren_de_lo_esperado": {},
-  "segundos": 56
+  "segundos": 43
 }
