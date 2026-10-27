@@ -304,3 +304,20 @@ Además, los tramposos XP12 y XP13 (UI5: `enviar` deja salir la excepción / esc
 - Sumar un profe ya invitado a otro grupo desde la misma pantalla.
 - Invitar admins.
 - Avisar al admin cuando el profe acepta.
+
+## 11. Adenda: correcciones de la auditoría (LISTO CON CORRECCIONES, 2026-10-26)
+
+H-1, H-3 y H-6 se hicieron antes de esta adenda (commits `b3d4d4b`, `5a1e54d`, `1dedaf0`, `91a3967`); se declaran aquí igual. H-4 y H-8 se escriben aquí ANTES de su código.
+
+| # | Qué cambia | Prueba | Tramposo |
+|---|---|---|---|
+| H-1 | `fase0/backend` (71e26a1, base `049_anillo_pases` del servidor) debajo; la 050 baja sobre la 049 y hace `REVOKE ALL ... FROM anon, authenticated` | MG50b: con privilegios por defecto abiertos, 0 privilegios de clientes | XP14 sin el REVOKE |
+| H-3 | tope GLOBAL `invitaciones_globales_por_hora` (15), mismo 429; `ultimo_resultado` interno en la fila, ninguna ruta lo devuelve | IP14, IP15 | XP16, XP17 |
+| H-6 | la ruta recibe `FachadaDeInvitacion` (estado_de_cuenta, crear_invitado, invitar, recuperar y **borrar**, que pide H-4: 5 métodos y no 4) | UI6 | XP15 |
+| H-4a | `DELETE /admin/invitaciones/{id}`: 404 si no es de la institución; 409 `ya_aceptada`; si no, mira la cuenta por id: la borra en GoTrue SOLO si existe, su correo es el de la invitación y NO está confirmada; después borra asignación, membresía, perfil e invitación (el UNIQUE queda libre). GoTrue caído → 502 `gotrue_no_disponible` y no se borra nada. 204. Deja auditoría `invitacion_cancelada` (no cuenta para el tope) | IP16 | XP18 (borra la cuenta sin mirar), XP19 (cancela una aceptada) |
+| H-4b | los invitados sin aceptar (fila en `invitaciones_docente` y bandera arriba) no salen en `GET /admin/presupuestos` ni se les puede recargar o devolver (404 `profe_no_encontrado`), igual sea correo nuevo o ajeno; al aceptar, salen. Los profes del alta de la CLI con contraseña temporal NO cambian (no tienen fila de invitación) | IP17 | XP20 (sin el filtro) |
+| H-8a | correo estricto en el backend: partes con caracteres permitidos, sin puntos dobles ni al borde, dominio con etiquetas de 1 a 63 y TLD de 2+ letras; 422 sin eco | IP11 ampliado | XP21 (la regex floja de antes) |
+| H-8b (web) | "Cancelar" con segundo toque en las enviadas; con "grupo nuevo", si la invitación falla se recargan los grupos y queda elegido el recién creado; el hash del correo se borra con `replaceState` también con sesión; el mismo correo estricto | WI8, WI9, WI10 | `x_invitar_cancela_sin_confirmar`, `x_invitar_grupo_nuevo_sin_recargar`, `x_invitar_correo_flojo` |
+
+Riesgo que queda (H-4a): una cuenta propia **confirmada** sin contraseña (abrió el enlace y no terminó) no se borra, como pidió la auditoría; ese correo queda con cuenta en GoTrue y una invitación nueva a él se tratará como "cuenta ajena" (nunca llega). El tiempo de cancelar difiere en una llamada a GoTrue (borrar) entre cuenta propia y ajena.
+H-2 (`medir_superficie_gotrue.mjs` en engrama-docs) no entra en esta tanda.
