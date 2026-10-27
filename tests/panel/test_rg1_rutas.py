@@ -114,6 +114,16 @@ DE_FASE0: frozenset[tuple[str, str]] = frozenset({
 })
 
 
+# Lo que trae cuentas/invitar-profe @ a3d3d68, unida en salida/backend: las rutas del admin para
+# invitar profes (docs/ESPEC_invitar_profe.md §3). No es del panel; se declara aquí.
+DE_INVITAR: frozenset[tuple[str, str]] = frozenset({
+    ("POST", "/admin/invitaciones"),
+    ("GET", "/admin/invitaciones"),
+    ("POST", "/admin/invitaciones/{invitacion_id}/reenviar"),
+    ("DELETE", "/admin/invitaciones/{invitacion_id}"),
+})
+
+
 def _rutas() -> set[tuple[str, str]]:
     return {(m, r.path) for r in app.routes if isinstance(r, APIRoute) for m in r.methods}
 
@@ -121,6 +131,6 @@ def _rutas() -> set[tuple[str, str]]:
 def test_rg1_inventario_de_rutas_es_el_congelado_mas_las_nuevas() -> None:
     actuales = _rutas()
     faltan = CONGELADAS - actuales
-    sobran = actuales - CONGELADAS - NUEVAS - DE_FASE0
+    sobran = actuales - CONGELADAS - NUEVAS - DE_FASE0 - DE_INVITAR
     assert not faltan and not sobran, f"RG1: faltan {sorted(faltan)}, sobran {sorted(sobran)}"
     assert len(CONGELADAS) == 84
