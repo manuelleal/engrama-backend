@@ -6,10 +6,11 @@ con la base y se envía; el correo lo pide `envio.enviar` DESPUÉS, en
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.schemas import AuthContext
+from src.invitar import cancelar as cancelar_mod
 from src.invitar import envio, service
 from src.invitar.schemas import InvitacionIn, InvitacionOut
 from src.registro.cuentas import CuentasDeInvitacion, get_cuentas_de_invitacion
@@ -73,3 +74,18 @@ async def reenviar_invitacion(
     await db.commit()
     background.add_task(envio.enviar, listas, resultado.pedido, sesiones)
     return resultado.salida
+
+
+@router.delete("/invitaciones/{invitacion_id}", status_code=status.HTTP_204_NO_CONTENT,
+               response_class=Response)
+async def cancelar_invitacion(
+    invitacion_id: int,
+    auth: AuthContext = Depends(require_admin),
+    cuentas: CuentasDeInvitacion | None = Depends(get_cuentas_de_invitacion),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Cancela una invitación que no se aceptó (§11, H-4a): 204, 404, 409 o 502."""
+    listas = _exigir_cuentas(cuentas)
+    await cancelar_mod.cancelar(db, auth, invitacion_id, listas)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

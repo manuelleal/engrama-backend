@@ -208,3 +208,7 @@ def filas_de(integ: Any, profile_id: UUID) -> dict[str, Any]:
 def resultado_de(integ: Any, inv_id: int) -> Any:
     """El campo INTERNO `ultimo_resultado` de la fila (H-3)."""
     return integ.valor("select ultimo_resultado from invitaciones_docente where id = :i", i=inv_id)
+
+
+def cancelar(integ: Any, quien: UUID, inv: Any) -> httpx.Response:
+    return client.delete(f"{RUTA}/{inv}", headers=integ.headers(quien))

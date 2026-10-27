@@ -162,6 +162,7 @@ async def panel_admin(db: AsyncSession, auth: AuthContext) -> PanelBolsillosOut:
             Membership.tenant_id == auth.tenant_id,
             Membership.role.in_(consultas.ROLES_CON_BOLSILLO),
             Membership.is_active.is_(True),
+            consultas.sin_invitacion_pendiente(),  # invitar profes, H-4b
         ).order_by(Membership.created_at, Membership.profile_id))).scalars().all()
     return PanelBolsillosOut(
         bolsa_saldo=int(bolsa.balance) if bolsa else 0, bolsa_emitida=int(emitido or 0),

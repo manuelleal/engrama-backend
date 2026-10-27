@@ -220,6 +220,7 @@ _INVITAR: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]
     ("/admin/invitaciones", frozenset({"POST"})): "admin",
     ("/admin/invitaciones", frozenset({"GET"})): "admin",
     ("/admin/invitaciones/{invitacion_id}/reenviar", frozenset({"POST"})): "admin",
+    ("/admin/invitaciones/{invitacion_id}", frozenset({"DELETE"})): "admin",
 }
 
 EXPECTED_GUARDS: dict[tuple[str, frozenset], str] = {  # type: ignore[type-arg]

@@ -13,17 +13,20 @@ from uuid import UUID
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy import true as sa_true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.schemas import AuthContext
+from src.bolsillo import consultas as consultas_mod
+from src.invitar import cancelar as cancelar_mod
 from src.invitar import envio as envio_mod
 from src.invitar import schemas as schemas_mod
 from src.invitar import service as service_mod
 from src.main import app
 from src.registro.cuentas import get_cuentas_de_invitacion
 from src.shared.models import Group, InvitacionDocente, Membership, Profile
-from tests.invitar import _ayuda as ay
 from tests.integ import test_migracion_050 as tm50
+from tests.invitar import _ayuda as ay
 from tests.invitar import test_invitar as ti
 
 pytestmark = pytest.mark.integ
@@ -91,6 +94,20 @@ async def _sin_tope_global(db: AsyncSession) -> None:
     return None
 
 
+async def _borra_sin_mirar(cuentas: Any, inv: Any) -> bool:
+    """XP18: borra la cuenta del id de la invitación sin mirar si es nuestra ni si está confirmada."""
+    await cuentas.borrar(inv.profile_id)
+    return True
+
+
+class _ServiceAceptaCancelar:
+    """XP19: cancelar no mira si la invitación ya se aceptó."""
+
+    ACEPTADA = "nunca"
+    YA_ACEPTADA = service_mod.YA_ACEPTADA
+    una = staticmethod(service_mod.una)
+
+
 async def _no_guarda(sesiones: Any, invitacion_id: int, resultado: str) -> None:
     return None
 
@@ -150,6 +167,14 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     "XP17": (_parche(envio_mod, "_guardar_resultado", _no_guarda),
              ti.test_ip14_el_resultado_del_envio_queda_solo_para_el_operador,
              r"IP14: \{'resultados': \[None, None, None, None\]"),
+    # XP18 a XP20 (H-4).
+    "XP18": (_parche(cancelar_mod, "_borrar_cuenta_si_es_nuestra", _borra_sin_mirar),
+             ti.test_ip16_cancelar_una_invitacion_no_aceptada, r"'llamadas_borrar': \[[^]]+, "),
+    "XP19": (_parche(cancelar_mod, "service", _ServiceAceptaCancelar),
+             ti.test_ip16_cancelar_una_invitacion_no_aceptada, r"'codigos': \[204, 204, 204, 204\]"),
+    "XP20": (_parche(consultas_mod, "sin_invitacion_pendiente", sa_true),
+             ti.test_ip17_los_invitados_pendientes_no_entran_al_reparto,
+             r"IP17: \{'antes': \[True, True, True, True\]"),
     # XP14 (H-1): la 050 sin el REVOKE: con privilegios por defecto abiertos, los clientes leerían los correos.
     "XP14": (_parche(tm50.M050, "SQL_SUBIR", tuple(s for s in tm50.M050.SQL_SUBIR
                                                   if not s.startswith("REVOKE"))),

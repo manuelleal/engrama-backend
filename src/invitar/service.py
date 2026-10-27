@@ -144,7 +144,7 @@ async def listar(db: AsyncSession, auth: AuthContext) -> list[InvitacionOut]:
     return [_salida(*fila) for fila in filas]
 
 
-async def _una(db: AsyncSession, auth: AuthContext, invitacion_id: int,
+async def una(db: AsyncSession, auth: AuthContext, invitacion_id: int,
                *, para_actualizar: bool = False) -> InvitacionOut:
     stmt = _consulta(auth).where(InvitacionDocente.id == invitacion_id)
     if para_actualizar:
@@ -226,7 +226,7 @@ async def _exigir_espera(db: AsyncSession, invitacion_id: int) -> None:
 
 async def reenviar(db: AsyncSession, auth: AuthContext, invitacion_id: int) -> Resultado:
     """§3.3: 404, 409, espera, tope y 202. No hace commit ni llama a GoTrue."""
-    actual = await _una(db, auth, invitacion_id, para_actualizar=True)
+    actual = await una(db, auth, invitacion_id, para_actualizar=True)
     if actual.estado == ACEPTADA:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=YA_ACEPTADA)
     await _exigir_espera(db, invitacion_id)
@@ -236,7 +236,7 @@ async def reenviar(db: AsyncSession, auth: AuthContext, invitacion_id: int) -> R
                             InvitacionDocente.tenant_id == auth.tenant_id)
                      .values(ultimo_envio_en=func.now(), envios=InvitacionDocente.envios + 1))
     await _auditar(db, auth, invitacion_id, "reenviar")
-    nueva = await _una(db, auth, invitacion_id)
+    nueva = await una(db, auth, invitacion_id)
     perfil = (await db.execute(select(InvitacionDocente.profile_id).where(
         InvitacionDocente.id == invitacion_id))).scalar_one()
     return Resultado(nueva, PedidoDeEnvio(invitacion_id, perfil, nueva.correo))

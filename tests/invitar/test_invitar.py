@@ -420,3 +420,80 @@ def test_ip15_tope_global_de_todas_las_instituciones(integ: Any) -> None:
         "quinta_de_a": 429,
         "filas": 3,
     }, f"IP15: {observado}"
+
+
+def _filas_de_todo(integ: Any, pid: Any) -> dict[str, Any]:
+    return {t: integ.valor(f"select count(*) from {t} where {c} = :p", p=pid) for t, c in (
+        ("profiles", "id"), ("memberships", "profile_id"), ("teacher_groups", "teacher_id"),
+        ("invitaciones_docente", "profile_id"))}
+
+
+def test_ip16_cancelar_una_invitacion_no_aceptada(integ: Any) -> None:
+    """IP16 (H-4a): borra todo lo que nació con la invitación; la cuenta de GoTrue solo si es nuestra."""
+    falso = ay.preparar(integ)
+    a, b = ay.colegio(integ, "GA"), ay.colegio(integ, "GB")
+    ajena = falso.sembrar("ajena@sintetico.test")
+    nueva = _id(ay.invitar(integ, a, ay.cuerpo(a, 1)))
+    otra = _id(ay.invitar(integ, a, ay.cuerpo(a, 2, correo="ajena@sintetico.test")))
+    abierta = _id(ay.invitar(integ, a, ay.cuerpo(a, 3)))
+    aceptada = _id(ay.invitar(integ, a, ay.cuerpo(a, 4)))
+    p_nueva, p_otra, p_abierta, p_aceptada = (ay.perfil_de(integ, i) for i in (nueva, otra, abierta, aceptada))
+    falso.cuentas[p_abierta]["confirmada"] = True  # abrió el enlace y no terminó
+    ay.ejecutar(integ, "update profiles set force_password_reset = false where id = :p", p=p_aceptada)
+    profe_a = ay.profe_de(integ, a)
+    ajenos = {"b": ay.cancelar(integ, b.admin, nueva).status_code,
+              "profe": ay.cancelar(integ, profe_a, nueva).status_code}
+    falso.fallar = True
+    caido = ay.cancelar(integ, a.admin, nueva).status_code
+    falso.fallar = False
+    falso.llamadas.clear()
+    codigos = [ay.cancelar(integ, a.admin, i).status_code for i in (nueva, otra, abierta, aceptada)]
+    observado = {
+        "ajenos": ajenos, "gotrue_caido": caido, "codigos": codigos,
+        "llamadas_borrar": [c[1] for c in falso.llamadas if c[0] == "borrar"],
+        "filas_nueva": _filas_de_todo(integ, p_nueva), "filas_otra": _filas_de_todo(integ, p_otra),
+        "filas_aceptada": _filas_de_todo(integ, p_aceptada),
+        "cuenta_ajena_sigue": ajena in falso.cuentas, "cuenta_abierta_sigue": p_abierta in falso.cuentas,
+        "otra_vez_el_mismo_correo": ay.invitar(integ, a, ay.cuerpo(a, 1)).status_code,
+    }
+    vacias = {"profiles": 0, "memberships": 0, "teacher_groups": 0, "invitaciones_docente": 0}
+    assert observado == {
+        "ajenos": {"b": 404, "profe": 403}, "gotrue_caido": 502, "codigos": [204, 204, 204, 409],
+        "llamadas_borrar": [str(p_nueva)],
+        "filas_nueva": vacias, "filas_otra": vacias,
+        "filas_aceptada": {"profiles": 1, "memberships": 1, "teacher_groups": 1,
+                           "invitaciones_docente": 1},
+        "cuenta_ajena_sigue": True, "cuenta_abierta_sigue": True,
+        "otra_vez_el_mismo_correo": 201,
+    }, f"IP16: {observado}"
+
+
+def test_ip17_los_invitados_pendientes_no_entran_al_reparto(integ: Any) -> None:
+    """IP17 (H-4b): sin aceptar no salen en /admin/presupuestos ni se les recarga; al aceptar, sí."""
+    falso = ay.preparar(integ)
+    a = ay.colegio(integ)
+    falso.sembrar("ajena@sintetico.test")
+    p_nueva = ay.perfil_de(integ, _id(ay.invitar(integ, a, ay.cuerpo(a, 1))))
+    p_otra = ay.perfil_de(integ, _id(ay.invitar(integ, a, ay.cuerpo(a, 2, correo="ajena@sintetico.test"))))
+    de_cli = integ.crear_perfil(a.tenant, rol="teacher")  # alta de la CLI con contraseña temporal
+    ay.ejecutar(integ, "update profiles set force_password_reset = true where id = :p", p=de_cli)
+
+    def en_el_panel() -> list[str]:
+        r = ay.client.get("/admin/presupuestos", headers=integ.headers(a.admin))
+        return sorted(str(f.get("teacher_id")) for f in (ay.json_de(r) or {}).get("profes", []))
+
+    antes = en_el_panel()
+    recarga = ay.client.post(f"/admin/presupuestos/{p_nueva}/recargar", json={"monto": 5, "llave": "llave-ip17-sint"},
+                             headers=integ.headers(a.admin))
+    ay.client.post("/auth/contrasena", json={"nueva": CLAVE_NUEVA}, headers=integ.headers(p_nueva))
+    despues = en_el_panel()
+    observado = {
+        "antes": [x in antes for x in (str(p_nueva), str(p_otra), str(de_cli), str(a.admin))],
+        "recarga_pendiente": (recarga.status_code, (ay.json_de(recarga) or {}).get("detail")),
+        "despues": [x in despues for x in (str(p_nueva), str(p_otra), str(de_cli), str(a.admin))],
+    }
+    assert observado == {
+        "antes": [False, False, True, True],
+        "recarga_pendiente": (404, "Profe no encontrado en tu institución."),  # el detail del bolsillo
+        "despues": [True, False, True, True],
+    }, f"IP17: {observado}"
