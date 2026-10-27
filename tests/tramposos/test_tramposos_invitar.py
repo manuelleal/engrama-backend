@@ -115,6 +115,12 @@ async def _borra_sin_mirar(cuentas: Any, inv: Any) -> bool:
     return True
 
 
+def _acepta_cancelar_sin_mirar(mp: pytest.MonkeyPatch) -> None:
+    """XP19: cancelar no mira si se aceptó, ni antes ni al borrar (la segunda barrera es la del delta H-1)."""
+    mp.setattr(cancelar_mod, "service", _ServiceAceptaCancelar)
+    mp.setattr(cancelar_mod, "_borrar_perfil_si_sigue_pendiente", _borra_aunque_haya_aceptado)
+
+
 class _ServiceAceptaCancelar:
     """XP19: cancelar no mira si la invitación ya se aceptó."""
 
@@ -185,10 +191,7 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     # XP18 a XP20 (H-4).
     "XP18": (_parche(cancelar_mod, "_borrar_cuenta_si_es_nuestra", _borra_sin_mirar),
              ti.test_ip16_cancelar_una_invitacion_no_aceptada, r"'llamadas_borrar': \[[^]]+, "),
-    # XP19: cancelar no mira si se aceptó, ni antes ni al borrar (la segunda barrera es la del delta H-1).
-    "XP19": (lambda mp: (_parche(cancelar_mod, "service", _ServiceAceptaCancelar)(mp),
-                         _parche(cancelar_mod, "_borrar_perfil_si_sigue_pendiente",
-                                 _borra_aunque_haya_aceptado)(mp)),
+    "XP19": (_acepta_cancelar_sin_mirar,
              ti.test_ip16_cancelar_una_invitacion_no_aceptada, r"'codigos': \[204, 204, 204, 204\]"),
     "XP20": (_parche(consultas_mod, "sin_invitacion_pendiente", sa_true),
              ti.test_ip17_los_invitados_pendientes_no_entran_al_reparto,
