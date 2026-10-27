@@ -21,7 +21,7 @@ from src.auth.schemas import AuthContext
 from src.invitar import service
 from src.onboarding.cuentas import ErrorCuenta
 from src.registro.cuentas import CuentasDeInvitacion
-from src.shared.models import InvitacionDocente, Profile, TeacherGroup
+from src.shared.models import InvitacionDocente, TeacherGroup
 
 logger = logging.getLogger("engrama.invitar")
 GOTRUE_NO_DISPONIBLE = "gotrue_no_disponible"
@@ -38,6 +38,19 @@ async def _borrar_cuenta_si_es_nuestra(cuentas: CuentasDeInvitacion, inv: Invita
         return False
     await cuentas.borrar(inv.profile_id)
     return True
+
+
+async def _borrar_perfil_si_sigue_pendiente(db: AsyncSession, perfil: object) -> bool:
+    """Borra el perfil SOLO si la bandera sigue arriba (auditoría del delta, H-1).
+
+    El `FOR UPDATE` bloquea la invitación, no el perfil: si el profe acepta entre la
+    lectura y este punto (`POST /auth/contrasena` baja la bandera), el DELETE no
+    encuentra fila y la cancelación se aborta con 409. La membresía y la
+    invitación caen en cascada con el perfil.
+    """
+    hecho = await db.execute(text(
+        "DELETE FROM profiles WHERE id = :p AND force_password_reset RETURNING id"), {"p": perfil})
+    return hecho.first() is not None
 
 
 async def cancelar(db: AsyncSession, auth: AuthContext, invitacion_id: int,
@@ -59,8 +72,9 @@ async def cancelar(db: AsyncSession, auth: AuthContext, invitacion_id: int,
     perfil = inv.profile_id
     await db.execute(delete(TeacherGroup).where(TeacherGroup.teacher_id == perfil,
                                                 TeacherGroup.tenant_id == auth.tenant_id))
-    # La membresía y la invitación caen en cascada con el perfil.
-    await db.execute(delete(Profile).where(Profile.id == perfil))
+    if not await _borrar_perfil_si_sigue_pendiente(db, perfil):
+        await db.rollback()  # aceptó en medio: no se borra nada (ni la asignación)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=service.YA_ACEPTADA)
     await db.execute(text("""
         INSERT INTO audit_logs (tenant_id, user_id, action_type, result, metadata)
         VALUES (:tenant, :admin, :accion, 'success',

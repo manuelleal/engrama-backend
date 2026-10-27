@@ -58,14 +58,16 @@ def _consulta_sin_tenant(auth: AuthContext):  # type: ignore[no-untyped-def]
 
 
 # --- XP2 y XP10: invitar sin respetar la cuenta ajena -------------------------------
-async def _invita_aunque_sea_ajena(cuentas: Any, pedido: envio_mod.PedidoDeEnvio) -> str:
+async def _invita_aunque_sea_ajena(cuentas: Any, pedido: envio_mod.PedidoDeEnvio,
+                                   sesiones: Any = None) -> str:
     """XP2: con `correo_en_uso` sigue y pide la invitación igual."""
     if await cuentas.estado_de_cuenta(pedido.profile_id) is None:
         await cuentas.crear_invitado(pedido.profile_id, pedido.correo)
     return str(await cuentas.invitar(pedido.correo))
 
 
-async def _invita_sin_mirar_el_id(cuentas: Any, pedido: envio_mod.PedidoDeEnvio) -> str:
+async def _invita_sin_mirar_el_id(cuentas: Any, pedido: envio_mod.PedidoDeEnvio,
+                                  sesiones: Any = None) -> str:
     """XP10: pide la invitación por correo sin comprobar de quién es la cuenta (P9)."""
     return str(await cuentas.invitar(pedido.correo))
 
@@ -92,6 +94,19 @@ async def _sin_espera(db: AsyncSession, invitacion_id: int) -> None:
 
 async def _sin_tope_global(db: AsyncSession) -> None:
     return None
+
+
+async def _borra_aunque_haya_aceptado(db: AsyncSession, perfil: object) -> bool:
+    """XP22: el DELETE de antes, sin mirar la bandera."""
+    await db.execute(select(Profile.id).where(Profile.id == perfil))
+    from sqlalchemy import delete as _delete
+    await db.execute(_delete(Profile).where(Profile.id == perfil))
+    return True
+
+
+async def _siempre_sigue(sesiones: Any, invitacion_id: int) -> bool:
+    """XP23: el envío no mira si la invitación se canceló."""
+    return True
 
 
 async def _borra_sin_mirar(cuentas: Any, inv: Any) -> bool:
@@ -170,11 +185,21 @@ TRAMPOSOS: dict[str, tuple[Aplicar, Callable[..., None], str]] = {
     # XP18 a XP20 (H-4).
     "XP18": (_parche(cancelar_mod, "_borrar_cuenta_si_es_nuestra", _borra_sin_mirar),
              ti.test_ip16_cancelar_una_invitacion_no_aceptada, r"'llamadas_borrar': \[[^]]+, "),
-    "XP19": (_parche(cancelar_mod, "service", _ServiceAceptaCancelar),
+    # XP19: cancelar no mira si se aceptó, ni antes ni al borrar (la segunda barrera es la del delta H-1).
+    "XP19": (lambda mp: (_parche(cancelar_mod, "service", _ServiceAceptaCancelar)(mp),
+                         _parche(cancelar_mod, "_borrar_perfil_si_sigue_pendiente",
+                                 _borra_aunque_haya_aceptado)(mp)),
              ti.test_ip16_cancelar_una_invitacion_no_aceptada, r"'codigos': \[204, 204, 204, 204\]"),
     "XP20": (_parche(consultas_mod, "sin_invitacion_pendiente", sa_true),
              ti.test_ip17_los_invitados_pendientes_no_entran_al_reparto,
              r"IP17: \{'antes': \[True, True, True, True\]"),
+    # XP22 y XP23 (auditoría del delta, H-1 y H-2).
+    "XP22": (_parche(cancelar_mod, "_borrar_perfil_si_sigue_pendiente", _borra_aunque_haya_aceptado),
+             ti.test_ip18_cancelar_no_borra_si_el_profe_acepta_en_medio,
+             r"IP18: \{'cancelar': \(204, None\)"),
+    "XP23": (_parche(envio_mod, "_sigue", _siempre_sigue),
+             ti.test_ip19_el_envio_no_hace_nada_si_la_invitacion_se_cancelo,
+             r"IP19: \{'antes': \('enviada', \['estado_de_cuenta', 'crear_invitado', 'invitar'\]\)"),
     # XP14 (H-1): la 050 sin el REVOKE: con privilegios por defecto abiertos, los clientes leerían los correos.
     "XP14": (_parche(tm50.M050, "SQL_SUBIR", tuple(s for s in tm50.M050.SQL_SUBIR
                                                   if not s.startswith("REVOKE"))),
