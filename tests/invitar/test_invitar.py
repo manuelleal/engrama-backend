@@ -497,3 +497,54 @@ def test_ip17_los_invitados_pendientes_no_entran_al_reparto(integ: Any) -> None:
         "recarga_pendiente": (404, "Profe no encontrado en tu institución."),  # el detail del bolsillo
         "despues": [True, False, True, True],
     }, f"IP17: {observado}"
+
+
+def test_ip18_cancelar_no_borra_si_el_profe_acepta_en_medio(integ: Any) -> None:
+    """IP18 (delta H-1): el profe acepta (baja la bandera) mientras se cancela: 409 y no se borra nada."""
+    falso = ay.preparar(integ)
+    a = ay.colegio(integ)
+    inv = _id(ay.invitar(integ, a, ay.cuerpo(a)))
+    pid = ay.perfil_de(integ, inv)
+    falso.al_mirar = ay.en_otra_conexion(
+        integ, "update profiles set force_password_reset = false where id = :p", p=pid)
+    r = ay.cancelar(integ, a.admin, inv)
+    falso.al_mirar = None
+    observado = {"cancelar": (r.status_code, (ay.json_de(r) or {}).get("detail")),
+                 "filas": _filas_de_todo(integ, pid),
+                 "estado": [i.get("estado") for i in (ay.json_de(ay.listar(integ, a.admin)) or [])]}
+    assert observado == {
+        "cancelar": (409, "ya_aceptada"),
+        "filas": {"profiles": 1, "memberships": 1, "teacher_groups": 1, "invitaciones_docente": 1},
+        "estado": ["aceptada"],
+    }, f"IP18: {observado}"
+
+
+def test_ip19_el_envio_no_hace_nada_si_la_invitacion_se_cancelo(integ: Any) -> None:
+    """IP19 (delta H-2): cancelada antes del envío, ni cuenta ni correo; cancelada en medio, ni correo."""
+    import asyncio
+    from uuid import uuid4
+
+    from src.invitar import envio
+    from src.invitar.envio import PedidoDeEnvio
+
+    falso = ay.preparar(integ)
+    a = ay.colegio(integ)
+    antes = PedidoDeEnvio(987654, uuid4(), "cancelada@sintetico.test")  # no existe la fila
+    r_antes = asyncio.run(envio.enviar(falso, antes, integ.Session))
+    llamadas_antes = [c[0] for c in falso.llamadas]
+    falso.llamadas.clear()
+    falso.fallar = True  # el envío de la ruta falla: la cuenta todavía no existe
+    inv = _id(ay.invitar(integ, a, ay.cuerpo(a, 2)))
+    falso.fallar = False
+    pid = ay.perfil_de(integ, inv)
+    falso.llamadas.clear()
+    falso.al_crear = ay.en_otra_conexion(integ, "delete from invitaciones_docente where id = :i", i=inv)
+    r_medio = asyncio.run(envio.enviar(falso, PedidoDeEnvio(inv, pid, "profe2@sintetico.test"),
+                                       integ.Session))
+    falso.al_crear = None
+    observado = {"antes": (r_antes, llamadas_antes),
+                 "en_medio": (r_medio, [c[0] for c in falso.llamadas])}
+    assert observado == {
+        "antes": ("cancelada", ["estado_de_cuenta"]),
+        "en_medio": ("cancelada", ["estado_de_cuenta", "crear_invitado"]),
+    }, f"IP19: {observado}"

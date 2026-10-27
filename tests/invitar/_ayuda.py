@@ -41,6 +41,9 @@ class GoTrueFalso:
         self.llamadas: list[tuple[str, ...]] = []
         self.fallar = False
         self.limite = False  # el cupo de correos de GoTrue lleno (L1): invitar y recuperar dan 429
+        # Para las carreras (auditoría del delta): algo que pasa EN MEDIO de una llamada.
+        self.al_mirar: Any = None    # corrutina sin argumentos, al entrar a estado_de_cuenta
+        self.al_crear: Any = None    # ídem, al entrar a crear_invitado
 
     def _quizas_falla(self) -> None:
         if self.fallar:
@@ -60,12 +63,16 @@ class GoTrueFalso:
 
     async def estado_de_cuenta(self, id: UUID) -> tuple[str, bool] | None:
         self.llamadas.append(("estado_de_cuenta", str(id)))
+        if self.al_mirar is not None:
+            await self.al_mirar()
         self._quizas_falla()
         c = self.cuentas.get(id)
         return None if c is None else (c["correo"], c["confirmada"])
 
     async def crear_invitado(self, id: UUID, correo: str) -> str:
         self.llamadas.append(("crear_invitado", str(id), correo))
+        if self.al_crear is not None:
+            await self.al_crear()
         self._quizas_falla()
         if self._id_de(correo) is not None:
             return CORREO_EN_USO
@@ -212,3 +219,12 @@ def resultado_de(integ: Any, inv_id: int) -> Any:
 
 def cancelar(integ: Any, quien: UUID, inv: Any) -> httpx.Response:
     return client.delete(f"{RUTA}/{inv}", headers=integ.headers(quien))
+
+
+def en_otra_conexion(integ: Any, sql: str, **params: Any) -> Any:
+    """Una corrutina que escribe y COMMITEA en otra conexión: lo que hace otra petición en medio."""
+    async def hacer() -> None:
+        async with integ.Session() as db:
+            await db.execute(text(sql), params)
+            await db.commit()
+    return hacer
